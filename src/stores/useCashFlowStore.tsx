@@ -76,21 +76,17 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
     let currentAccumulated = 0
 
-    // Find the first day or use a default starting balance
-    // In a real app, this would be more complex.
-    // We'll use the first day's opening balance from the mock or calculated from previous.
-
     const newEntries = sortedEntries.map((entry, index) => {
       const entryDate = parseISO(entry.date)
 
       // 1. Calculate Daily Totals from Receivables and Payables
       const dayReceivables = receivables
         .filter((r) => isSameDay(parseISO(r.due_date), entryDate))
-        .reduce((sum, r) => sum + r.updated_value, 0) // Updated Value used
+        .reduce((sum, r) => sum + r.updated_value, 0) // Updated Value used (Principal + Fine + Interest)
 
       const dayPayables = payables
         .filter((p) => isSameDay(parseISO(p.due_date), entryDate))
-        .reduce((sum, p) => sum + p.amount, 0)
+        .reduce((sum, p) => sum + p.amount, 0) // Amount is Updated Value
 
       // 2. Check for Manual Balance Override (Integration of Balances)
       const dayBalances = bankBalances.filter((b) =>
@@ -110,7 +106,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           ? manualBalanceSum
           : entry.opening_balance
       } else {
-        // If today has a manual balance, use it. Otherwise use yesterday's accumulated.
         openingBalance = hasManualBalance
           ? manualBalanceSum
           : currentAccumulated
@@ -167,10 +162,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updateBankBalances = (newBalances: BankBalance[]) => {
-    // This function replaces balances for the dates included in newBalances
-    // or appends them. For simplicity, we'll filter out old ones for the same dates and add new ones.
-
-    // Group new balances by date
     const datesToUpdate = new Set(newBalances.map((b) => b.date))
 
     setBankBalances((prev) => {
@@ -180,23 +171,40 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const importData = (type: 'receivable' | 'payable', data: any[]) => {
-    // Mock import logic
     if (type === 'receivable') {
-      // Transform generic data to Receivable type if needed
-      // For now assuming compatible structure or just adding mock
-      const newReceivables = data.map((d, i) => ({
-        ...mockReceivables[0],
-        id: `IMP-REC-${Date.now()}-${i}`,
-        ...d,
-      }))
+      const newReceivables = data.map((d, i) => {
+        const principal = Number(d.principal_value) || Number(d.amount) || 0
+        const fine = Number(d.fine) || 0
+        const interest = Number(d.interest) || 0
+
+        return {
+          ...mockReceivables[0],
+          id: `IMP-REC-${Date.now()}-${i}`,
+          principal_value: principal,
+          fine: fine,
+          interest: interest,
+          updated_value: principal + fine + interest,
+          ...d,
+        }
+      })
       setReceivables((prev) => [...prev, ...newReceivables])
     } else {
-      const newPayables = data.map((d, i) => ({
-        ...mockTransactions[0],
-        id: `IMP-PAY-${Date.now()}-${i}`,
-        type: 'payable' as const,
-        ...d,
-      }))
+      const newPayables = data.map((d, i) => {
+        const principal = Number(d.principal_value) || Number(d.amount) || 0
+        const fine = Number(d.fine) || 0
+        const interest = Number(d.interest) || 0
+
+        return {
+          ...mockTransactions[0],
+          id: `IMP-PAY-${Date.now()}-${i}`,
+          type: 'payable' as const,
+          principal_value: principal,
+          fine: fine,
+          interest: interest,
+          amount: principal + fine + interest,
+          ...d,
+        }
+      })
       setPayables((prev) => [...prev, ...newPayables])
     }
   }

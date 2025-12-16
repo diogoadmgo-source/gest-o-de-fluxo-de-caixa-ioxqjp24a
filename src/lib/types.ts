@@ -12,7 +12,10 @@ export interface Transaction {
   entity_document?: string
   issue_date: string
   due_date: string
-  amount: number
+  amount: number // This represents the TOTAL (Updated Value)
+  principal_value?: number // New
+  fine?: number // New
+  interest?: number // New
   net_amount?: number // for receivables
   category: string
   status: TransactionStatus

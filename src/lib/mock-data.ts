@@ -92,39 +92,46 @@ export const generateCashFlowData = (days: number = 30): CashFlowEntry[] => {
 }
 
 export const mockReceivables: Receivable[] = Array.from({ length: 20 }).map(
-  (_, i) => ({
-    id: `REC-${i + 1}`,
-    company: 'Hospcom Matriz',
-    issue_date: format(
-      subDays(new Date(), Math.floor(Math.random() * 30)),
-      'yyyy-MM-dd',
-    ),
-    order_number: `PED-${1000 + i}`,
-    invoice_number: `NF-${5000 + i}`,
-    title_status: Math.random() > 0.2 ? 'Aberto' : 'Liquidado',
-    code: `CLI-${100 + i}`,
-    customer: `Cliente Exemplo ${i + 1} Ltda`,
-    customer_doc: '12.345.678/0001-90',
-    state: 'SP',
-    regional: 'Sudeste',
-    salesperson: 'João Vendedor',
-    installment: '1/3',
-    due_date: format(
-      addDays(new Date(), Math.floor(Math.random() * 30) - 10),
-      'yyyy-MM-dd',
-    ),
-    days_overdue: 0,
-    principal_value: Math.random() * 5000 + 1000,
-    fine: 0,
-    interest: 0,
-    updated_value: Math.random() * 5000 + 1000,
-    utilization: 0,
-    is_negative: false,
-    payment_prediction: format(
-      addDays(new Date(), Math.floor(Math.random() * 30)),
-      'yyyy-MM-dd',
-    ),
-  }),
+  (_, i) => {
+    const principal = Math.random() * 5000 + 1000
+    const fine = Math.random() > 0.7 ? principal * 0.02 : 0
+    const interest = Math.random() > 0.7 ? principal * 0.01 : 0
+    const total = principal + fine + interest
+
+    return {
+      id: `REC-${i + 1}`,
+      company: 'Hospcom Matriz',
+      issue_date: format(
+        subDays(new Date(), Math.floor(Math.random() * 30)),
+        'yyyy-MM-dd',
+      ),
+      order_number: `PED-${1000 + i}`,
+      invoice_number: `NF-${5000 + i}`,
+      title_status: Math.random() > 0.3 ? 'Aberto' : 'Liquidado',
+      code: `CLI-${100 + i}`,
+      customer: `Cliente Exemplo ${i + 1} Ltda`,
+      customer_doc: '12.345.678/0001-90',
+      state: 'SP',
+      regional: 'Sudeste',
+      salesperson: 'João Vendedor',
+      installment: '1/3',
+      due_date: format(
+        addDays(new Date(), Math.floor(Math.random() * 30) - 10),
+        'yyyy-MM-dd',
+      ),
+      days_overdue: 0,
+      principal_value: parseFloat(principal.toFixed(2)),
+      fine: parseFloat(fine.toFixed(2)),
+      interest: parseFloat(interest.toFixed(2)),
+      updated_value: parseFloat(total.toFixed(2)),
+      utilization: 0,
+      is_negative: false,
+      payment_prediction: format(
+        addDays(new Date(), Math.floor(Math.random() * 30)),
+        'yyyy-MM-dd',
+      ),
+    }
+  },
 )
 
 export const mockBankBalances: BankBalance[] = [
@@ -197,6 +204,9 @@ export const mockTransactions: Transaction[] = [
     entity_name: 'AWS Services',
     issue_date: '2024-05-05',
     due_date: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+    principal_value: 1200,
+    fine: 0,
+    interest: 0,
     amount: 1200,
     category: 'Infraestrutura',
     status: 'pending',
@@ -208,6 +218,9 @@ export const mockTransactions: Transaction[] = [
     entity_name: 'Office Supplies Inc',
     issue_date: '2024-05-01',
     due_date: format(subDays(new Date(), 2), 'yyyy-MM-dd'),
+    principal_value: 400,
+    fine: 25,
+    interest: 25,
     amount: 450,
     category: 'Material de Escritório',
     status: 'overdue',

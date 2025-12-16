@@ -27,6 +27,8 @@ import {
   Trash2,
   Edit,
   Eye,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react'
 import {
   Dialog,
@@ -37,6 +39,16 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -46,12 +58,18 @@ import { toast } from 'sonner'
 import { format, parseISO } from 'date-fns'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Receivable } from '@/lib/types'
+import { FinancialStats } from '@/components/financial/FinancialStats'
+import { ReceivableForm } from '@/components/financial/ReceivableForm'
 
 export default function Receivables() {
-  const { receivables, deleteReceivable, importData } = useCashFlowStore()
+  const { receivables, updateReceivable, deleteReceivable, importData } =
+    useCashFlowStore()
   const [searchTerm, setSearchTerm] = useState('')
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const [editingItem, setEditingItem] = useState<Receivable | null>(null)
+  const [viewingItem, setViewingItem] = useState<Receivable | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Enhanced Filtering
   const filteredData = receivables.filter((t) => {
@@ -64,34 +82,65 @@ export default function Receivables() {
     )
   })
 
+  // Calculations for Mini-Dashboard
+  const openReceivables = receivables.filter((r) => r.title_status === 'Aberto')
+  const liquidatedReceivables = receivables.filter(
+    (r) => r.title_status === 'Liquidado',
+  )
+
+  const sumValues = (items: Receivable[]) =>
+    items.reduce(
+      (acc, curr) => ({
+        principal: acc.principal + curr.principal_value,
+        fine: acc.fine + curr.fine,
+        interest: acc.interest + curr.interest,
+        total: acc.total + curr.updated_value,
+      }),
+      { principal: 0, fine: 0, interest: 0, total: 0 },
+    )
+
+  const openStats = sumValues(openReceivables)
+  const liquidatedStats = sumValues(liquidatedReceivables)
+
   const handleImport = () => {
     setIsImporting(true)
     setTimeout(() => {
-      // Simulate import
       importData('receivable', [
         {
           customer: 'Cliente Importado',
           principal_value: 5000,
+          fine: 0,
+          interest: 0,
           due_date: format(new Date(), 'yyyy-MM-dd'),
+          invoice_number: 'IMP-001',
+          title_status: 'Aberto',
         },
       ])
 
       setIsImporting(false)
       setIsImportDialogOpen(false)
       toast.success(
-        'Importação concluída com sucesso! Registros atualizados e fluxo recalculado.',
+        'Importação concluída! Registros atualizados e fluxo recalculado.',
       )
     }, 2000)
   }
 
-  const handleDelete = (id: string) => {
-    deleteReceivable(id)
-    toast.success('Título removido com sucesso.')
+  const handleDelete = () => {
+    if (deletingId) {
+      deleteReceivable(deletingId)
+      toast.success('Título removido (marcado como inativo) com sucesso.')
+      setDeletingId(null)
+    }
   }
 
-  const calculateUpdatedValue = (item: Receivable) => {
-    return item.principal_value + item.fine + item.interest
+  const handleSaveEdit = (updated: Receivable) => {
+    updateReceivable(updated)
+    setEditingItem(null)
+    toast.success('Título atualizado com sucesso!')
   }
+
+  const formatCurrency = (val: number) =>
+    val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -128,11 +177,6 @@ export default function Receivables() {
                   <p className="text-sm font-medium">
                     Arraste seu arquivo aqui ou clique para selecionar
                   </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Colunas obrigatórias: Empresa, Data de Emissão, Nr do
-                    Pedido, NF, Status, Código, Cliente, CNPJ/CPF, UF, Regional,
-                    Vendedor, Parcela, Vencimento, Valores.
-                  </p>
                 </div>
               </div>
               <div className="flex justify-end gap-2">
@@ -148,12 +192,29 @@ export default function Receivables() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button>
+          <Button onClick={() => setEditingItem({} as Receivable)}>
             <Plus className="mr-2 h-4 w-4" />
             Novo Manual
           </Button>
         </div>
       </div>
+
+      <FinancialStats
+        stats={[
+          {
+            label: 'Total em Aberto',
+            ...openStats,
+            color: 'warning',
+            icon: AlertCircle,
+          },
+          {
+            label: 'Total Liquidado',
+            ...liquidatedStats,
+            color: 'success',
+            icon: CheckCircle2,
+          },
+        ]}
+      />
 
       <Card>
         <CardHeader>
@@ -186,125 +247,177 @@ export default function Receivables() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Empresa</TableHead>
-                  <TableHead>Emissão</TableHead>
-                  <TableHead>Nr Pedido</TableHead>
                   <TableHead>NF</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead>Parcela</TableHead>
                   <TableHead>Vencimento</TableHead>
-                  <TableHead className="text-right">Vlr Principal</TableHead>
-                  <TableHead className="text-right">Multa/Juros</TableHead>
-                  <TableHead className="text-right font-bold">Total</TableHead>
+                  <TableHead className="text-right">Principal</TableHead>
+                  <TableHead className="text-right">Multa</TableHead>
+                  <TableHead className="text-right">Juros</TableHead>
+                  <TableHead className="text-right font-bold">
+                    Atualizado
+                  </TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredData.map((item) => {
-                  const updatedTotal = calculateUpdatedValue(item)
-                  return (
-                    <TableRow key={item.id} className="hover:bg-muted/50">
-                      <TableCell className="font-medium text-xs">
-                        {item.company}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {item.issue_date
-                          ? format(parseISO(item.issue_date), 'dd/MM/yyyy')
-                          : '-'}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {item.order_number}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {item.invoice_number}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            item.title_status === 'Liquidado'
-                              ? 'default'
-                              : 'secondary'
-                          }
-                          className={
-                            item.title_status === 'Liquidado'
-                              ? 'bg-success hover:bg-success/80 text-[10px]'
-                              : 'text-[10px]'
-                          }
-                        >
-                          {item.title_status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell
-                        className="max-w-[200px] truncate text-xs"
-                        title={item.customer}
+                {filteredData.map((item) => (
+                  <TableRow key={item.id} className="hover:bg-muted/50">
+                    <TableCell className="font-medium text-xs">
+                      {item.company}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {item.invoice_number}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          item.title_status === 'Liquidado'
+                            ? 'default'
+                            : 'secondary'
+                        }
+                        className={
+                          item.title_status === 'Liquidado'
+                            ? 'bg-success hover:bg-success/80 text-[10px]'
+                            : 'text-[10px]'
+                        }
                       >
-                        {item.customer}
-                      </TableCell>
-                      <TableCell className="text-xs text-center">
-                        {item.installment}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {item.due_date
-                          ? format(parseISO(item.due_date), 'dd/MM/yyyy')
-                          : '-'}
-                      </TableCell>
-                      <TableCell className="text-right text-xs">
-                        {item.principal_value.toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
-                      </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground">
-                        {(item.fine + item.interest).toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-xs">
-                        {updatedTotal.toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-6 w-6 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                toast.info(`Detalhes: ${item.invoice_number}`)
-                              }
-                            >
-                              <Eye className="mr-2 h-4 w-4" /> Ver detalhes
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                toast.info('Edição não implementada')
-                              }
-                            >
-                              <Edit className="mr-2 h-4 w-4" /> Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => handleDelete(item.id)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" /> Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                        {item.title_status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell
+                      className="max-w-[200px] truncate text-xs"
+                      title={item.customer}
+                    >
+                      {item.customer}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {item.due_date
+                        ? format(parseISO(item.due_date), 'dd/MM/yyyy')
+                        : '-'}
+                    </TableCell>
+                    <TableCell className="text-right text-xs">
+                      {formatCurrency(item.principal_value)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">
+                      {formatCurrency(item.fine)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">
+                      {formatCurrency(item.interest)}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-xs">
+                      {formatCurrency(item.updated_value)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-6 w-6 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => setViewingItem(item)}
+                          >
+                            <Eye className="mr-2 h-4 w-4" /> Ver detalhes
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setEditingItem(item)}
+                          >
+                            <Edit className="mr-2 h-4 w-4" /> Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => setDeletingId(item.id)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit Dialog */}
+      <Dialog
+        open={!!editingItem}
+        onOpenChange={(open) => !open && setEditingItem(null)}
+      >
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>
+              {editingItem?.id ? 'Editar Título' : 'Novo Título'}
+            </DialogTitle>
+          </DialogHeader>
+          {editingItem && (
+            <ReceivableForm
+              initialData={editingItem}
+              onSave={handleSaveEdit}
+              onCancel={() => setEditingItem(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Dialog */}
+      <Dialog
+        open={!!viewingItem}
+        onOpenChange={(open) => !open && setViewingItem(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Detalhes do Título</DialogTitle>
+          </DialogHeader>
+          {viewingItem && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span className="font-semibold">Cliente:</span>
+                <span>{viewingItem.customer}</span>
+                <span className="font-semibold">NF:</span>
+                <span>{viewingItem.invoice_number}</span>
+                <span className="font-semibold">Valor Principal:</span>
+                <span>{formatCurrency(viewingItem.principal_value)}</span>
+                <span className="font-semibold">Valor Atualizado:</span>
+                <span className="font-bold">
+                  {formatCurrency(viewingItem.updated_value)}
+                </span>
+                <span className="font-semibold">Status:</span>
+                <span>{viewingItem.title_status}</span>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Alert */}
+      <AlertDialog
+        open={!!deletingId}
+        onOpenChange={(open) => !open && setDeletingId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação marcará o título como excluído e o removerá da
+              visualização principal.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -25,15 +25,25 @@ import {
   Edit,
   Trash2,
   Eye,
+  AlertCircle,
+  CheckCircle2,
 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,10 +52,17 @@ import {
 } from '@/components/ui/dropdown-menu'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { toast } from 'sonner'
+import { Transaction } from '@/lib/types'
+import { PayableForm } from '@/components/financial/PayableForm'
+import { FinancialStats } from '@/components/financial/FinancialStats'
+import { format, parseISO } from 'date-fns'
 
 export default function Payables() {
-  const { payables, deletePayable } = useCashFlowStore()
+  const { payables, updatePayable, deletePayable } = useCashFlowStore()
   const [searchTerm, setSearchTerm] = useState('')
+  const [editingItem, setEditingItem] = useState<Transaction | null>(null)
+  const [viewingItem, setViewingItem] = useState<Transaction | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const filteredData = payables.filter(
     (t) =>
@@ -53,10 +70,42 @@ export default function Payables() {
       t.document_number.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const handleDelete = (id: string) => {
-    deletePayable(id)
-    toast.success('Pagamento removido com sucesso.')
+  // Calculations for Mini-Dashboard
+  const pendingPayables = payables.filter(
+    (p) => p.status === 'pending' || p.status === 'overdue',
+  )
+  const paidPayables = payables.filter((p) => p.status === 'paid')
+
+  const sumValues = (items: Transaction[]) =>
+    items.reduce(
+      (acc, curr) => ({
+        principal: acc.principal + (curr.principal_value || curr.amount),
+        fine: acc.fine + (curr.fine || 0),
+        interest: acc.interest + (curr.interest || 0),
+        total: acc.total + curr.amount,
+      }),
+      { principal: 0, fine: 0, interest: 0, total: 0 },
+    )
+
+  const pendingStats = sumValues(pendingPayables)
+  const paidStats = sumValues(paidPayables)
+
+  const handleDelete = () => {
+    if (deletingId) {
+      deletePayable(deletingId)
+      toast.success('Pagamento removido com sucesso.')
+      setDeletingId(null)
+    }
   }
+
+  const handleSaveEdit = (updated: Transaction) => {
+    updatePayable(updated)
+    setEditingItem(null)
+    toast.success('Pagamento atualizado com sucesso!')
+  }
+
+  const formatCurrency = (val: number) =>
+    val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -67,43 +116,31 @@ export default function Payables() {
             Controle seus pagamentos e despesas.
           </p>
         </div>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="destructive">
-              <Plus className="mr-2 h-4 w-4" />
-              Novo Pagamento
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Adicionar Pagamento</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="supplier" className="text-right">
-                  Fornecedor
-                </Label>
-                <Input id="supplier" className="col-span-3" />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="amount" className="text-right">
-                  Valor
-                </Label>
-                <Input id="amount" type="number" className="col-span-3" />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="date" className="text-right">
-                  Vencimento
-                </Label>
-                <Input id="date" type="date" className="col-span-3" />
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <Button type="submit">Salvar</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button
+          variant="destructive"
+          onClick={() => setEditingItem({} as Transaction)}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Novo Pagamento
+        </Button>
       </div>
+
+      <FinancialStats
+        stats={[
+          {
+            label: 'Total a Pagar',
+            ...pendingStats,
+            color: 'destructive',
+            icon: AlertCircle,
+          },
+          {
+            label: 'Total Pago',
+            ...paidStats,
+            color: 'success',
+            icon: CheckCircle2,
+          },
+        ]}
+      />
 
       <Card>
         <CardHeader>
@@ -137,8 +174,10 @@ export default function Payables() {
                 <TableHead>Documento</TableHead>
                 <TableHead>Fornecedor</TableHead>
                 <TableHead>Vencimento</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Categoria</TableHead>
+                <TableHead className="text-right">Principal</TableHead>
+                <TableHead className="text-right">Multa</TableHead>
+                <TableHead className="text-right">Juros</TableHead>
+                <TableHead className="text-right font-bold">Total</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
@@ -153,13 +192,18 @@ export default function Payables() {
                   <TableCell>
                     {new Date(item.due_date).toLocaleDateString('pt-BR')}
                   </TableCell>
-                  <TableCell>
-                    {item.amount.toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL',
-                    })}
+                  <TableCell className="text-right text-xs">
+                    {formatCurrency(item.principal_value || item.amount)}
                   </TableCell>
-                  <TableCell>{item.category}</TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground">
+                    {formatCurrency(item.fine || 0)}
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground">
+                    {formatCurrency(item.interest || 0)}
+                  </TableCell>
+                  <TableCell className="text-right font-bold text-xs">
+                    {formatCurrency(item.amount)}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant={
@@ -190,17 +234,15 @@ export default function Payables() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => toast.info('Ver detalhes')}
-                        >
+                        <DropdownMenuItem onClick={() => setViewingItem(item)}>
                           <Eye className="mr-2 h-4 w-4" /> Ver detalhes
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toast.info('Editar')}>
+                        <DropdownMenuItem onClick={() => setEditingItem(item)}>
                           <Edit className="mr-2 h-4 w-4" /> Editar
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive"
-                          onClick={() => handleDelete(item.id)}
+                          onClick={() => setDeletingId(item.id)}
                         >
                           <Trash2 className="mr-2 h-4 w-4" /> Excluir
                         </DropdownMenuItem>
@@ -213,6 +255,90 @@ export default function Payables() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Edit Dialog */}
+      <Dialog
+        open={!!editingItem}
+        onOpenChange={(open) => !open && setEditingItem(null)}
+      >
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>
+              {editingItem?.id ? 'Editar Pagamento' : 'Novo Pagamento'}
+            </DialogTitle>
+          </DialogHeader>
+          {editingItem && (
+            <PayableForm
+              initialData={editingItem}
+              onSave={handleSaveEdit}
+              onCancel={() => setEditingItem(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Dialog */}
+      <Dialog
+        open={!!viewingItem}
+        onOpenChange={(open) => !open && setViewingItem(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Detalhes do Pagamento</DialogTitle>
+          </DialogHeader>
+          {viewingItem && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span className="font-semibold">Fornecedor:</span>
+                <span>{viewingItem.entity_name}</span>
+                <span className="font-semibold">Documento:</span>
+                <span>{viewingItem.document_number}</span>
+                <span className="font-semibold">Valor Principal:</span>
+                <span>
+                  {formatCurrency(
+                    viewingItem.principal_value || viewingItem.amount,
+                  )}
+                </span>
+                <span className="font-semibold">Valor Total:</span>
+                <span className="font-bold">
+                  {formatCurrency(viewingItem.amount)}
+                </span>
+                <span className="font-semibold">Status:</span>
+                <span>{viewingItem.status}</span>
+                <span className="font-semibold">Vencimento:</span>
+                <span>
+                  {format(parseISO(viewingItem.due_date), 'dd/MM/yyyy')}
+                </span>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Alert */}
+      <AlertDialog
+        open={!!deletingId}
+        onOpenChange={(open) => !open && setDeletingId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação marcará o pagamento como excluído e o removerá da
+              visualização principal.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
