@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { BankBalanceManager } from '@/components/cash-flow/BankBalanceManager'
 import { HistoricalBalanceList } from '@/components/cash-flow/HistoricalBalanceList'
+import { BankBalanceDashboard } from '@/components/cash-flow/BankBalanceDashboard'
 import { Calendar } from '@/components/ui/calendar'
 import { ptBR } from 'date-fns/locale'
-import { isSameDay, parseISO, format } from 'date-fns'
+import { isSameDay, parseISO } from 'date-fns'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { toast } from 'sonner'
 import { BankBalance, HistoricalBalance } from '@/lib/types'
@@ -32,7 +33,7 @@ import {
 } from '@/components/ui/alert-dialog'
 
 export default function Balances() {
-  const { bankBalances, updateBankBalances, resetBalanceHistory } =
+  const { bankBalances, updateBankBalances, resetBalanceHistory, banks } =
     useCashFlowStore()
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [currentBalances, setCurrentBalances] = useState<BankBalance[]>([])
@@ -139,6 +140,8 @@ export default function Balances() {
           </Dialog>
         </div>
       </div>
+
+      <BankBalanceDashboard banks={banks} balances={currentBalances} />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-1 space-y-6">
