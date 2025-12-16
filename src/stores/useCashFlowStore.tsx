@@ -95,32 +95,107 @@ const initialBanks: Bank[] = [
   },
 ]
 
-export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
-  const [receivables, setReceivables] = useState<Receivable[]>(mockReceivables)
-  const [payables, setPayables] = useState<Transaction[]>(
-    mockTransactions.filter((t) => t.type === 'payable'),
-  )
-  const [bankBalances, setBankBalances] =
-    useState<BankBalance[]>(mockBankBalances)
-  const [cashFlowEntries, setCashFlowEntries] = useState<CashFlowEntry[]>([])
-  const [banks, setBanks] = useState<Bank[]>(initialBanks)
-  const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>([
-    {
-      id: '1',
-      date: new Date().toISOString(),
-      filename: 'importacao_inicial.csv',
-      type: 'receivable',
-      status: 'success',
-      records_count: 20,
-      user_name: 'Sistema',
-    },
-  ])
+const STORAGE_KEYS = {
+  RECEIVABLES: 'hospcash_receivables',
+  PAYABLES: 'hospcash_payables',
+  BANK_BALANCES: 'hospcash_bankBalances',
+  BANKS: 'hospcash_banks',
+  CASH_FLOW_ENTRIES: 'hospcash_entries',
+  IMPORT_HISTORY: 'hospcash_importHistory',
+}
 
-  // Initialize Cash Flow Data (90 days)
+export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
+  // Load initial state from localStorage or use mock data
+  const [receivables, setReceivables] = useState<Receivable[]>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.RECEIVABLES)
+    return stored ? JSON.parse(stored) : mockReceivables
+  })
+
+  const [payables, setPayables] = useState<Transaction[]>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.PAYABLES)
+    return stored
+      ? JSON.parse(stored)
+      : mockTransactions.filter((t) => t.type === 'payable')
+  })
+
+  const [bankBalances, setBankBalances] = useState<BankBalance[]>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.BANK_BALANCES)
+    return stored ? JSON.parse(stored) : mockBankBalances
+  })
+
+  const [cashFlowEntries, setCashFlowEntries] = useState<CashFlowEntry[]>(
+    () => {
+      const stored = localStorage.getItem(STORAGE_KEYS.CASH_FLOW_ENTRIES)
+      // If no stored entries, we will generate them in useEffect
+      return stored ? JSON.parse(stored) : []
+    },
+  )
+
+  const [banks, setBanks] = useState<Bank[]>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.BANKS)
+    return stored ? JSON.parse(stored) : initialBanks
+  })
+
+  const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>(
+    () => {
+      const stored = localStorage.getItem(STORAGE_KEYS.IMPORT_HISTORY)
+      return stored
+        ? JSON.parse(stored)
+        : [
+            {
+              id: '1',
+              date: new Date().toISOString(),
+              filename: 'importacao_inicial.csv',
+              type: 'receivable',
+              status: 'success',
+              records_count: 20,
+              user_name: 'Sistema',
+            },
+          ]
+    },
+  )
+
+  // Persist state changes to localStorage
   useEffect(() => {
-    const initialData = generateCashFlowData(90)
-    setCashFlowEntries(initialData)
-  }, [])
+    localStorage.setItem(STORAGE_KEYS.RECEIVABLES, JSON.stringify(receivables))
+  }, [receivables])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.PAYABLES, JSON.stringify(payables))
+  }, [payables])
+
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_KEYS.BANK_BALANCES,
+      JSON.stringify(bankBalances),
+    )
+  }, [bankBalances])
+
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_KEYS.CASH_FLOW_ENTRIES,
+      JSON.stringify(cashFlowEntries),
+    )
+  }, [cashFlowEntries])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.BANKS, JSON.stringify(banks))
+  }, [banks])
+
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_KEYS.IMPORT_HISTORY,
+      JSON.stringify(importHistory),
+    )
+  }, [importHistory])
+
+  // Initialize Cash Flow Data (90 days) if empty
+  useEffect(() => {
+    if (cashFlowEntries.length === 0) {
+      const initialData = generateCashFlowData(90)
+      setCashFlowEntries(initialData)
+    }
+  }, []) // Run once on mount
 
   // Recalculate Cash Flow whenever dependencies change
   useEffect(() => {
@@ -205,6 +280,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       }
     })
 
+    // Only update if there are changes to avoid infinite loops if we were using it as dependency
+    // (though here we use JSON.stringify or specific checks usually, but direct set is OK as it triggers effect only if ref changes)
     setCashFlowEntries(newEntries)
   }
 

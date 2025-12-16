@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CashFlowGrid } from '@/components/cash-flow/CashFlowGrid'
 import { CashFlowFilters } from '@/components/cash-flow/CashFlowFilters'
 import { Button } from '@/components/ui/button'
@@ -49,19 +49,58 @@ import { Calendar } from '@/components/ui/calendar'
 import { cn } from '@/lib/utils'
 import { ptBR } from 'date-fns/locale'
 
+const STORAGE_KEYS = {
+  DATE_RANGE: 'hospcash_view_dateRange',
+  SELECTED_DATE: 'hospcash_view_selectedDate',
+}
+
 export default function CashFlow() {
   const { cashFlowEntries, recalculateCashFlow } = useCashFlowStore()
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [loading, setLoading] = useState(false)
 
-  // Default to today + 30 days
+  // Initialize selectedDate from localStorage or default to today
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.SELECTED_DATE)
+    return stored ? parseISO(stored) : new Date()
+  })
+
+  // Initialize dateRange from localStorage or default to today + 30 days
   const [dateRange, setDateRange] = useState<{
     from: Date
     to: Date
-  }>({
-    from: new Date(),
-    to: addDays(new Date(), 30),
+  }>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.DATE_RANGE)
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        return {
+          from: parseISO(parsed.from),
+          to: parseISO(parsed.to),
+        }
+      } catch (e) {
+        // Fallback if error parsing
+      }
+    }
+    return {
+      from: new Date(),
+      to: addDays(new Date(), 30),
+    }
   })
+
+  // Persist view state
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.SELECTED_DATE, selectedDate.toISOString())
+  }, [selectedDate])
+
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_KEYS.DATE_RANGE,
+      JSON.stringify({
+        from: dateRange.from.toISOString(),
+        to: dateRange.to.toISOString(),
+      }),
+    )
+  }, [dateRange])
 
   const handleRefresh = () => {
     setLoading(true)
