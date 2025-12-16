@@ -11,6 +11,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Plus, Trash2, Edit2, Check, X } from 'lucide-react'
 import { Bank } from '@/lib/types'
 import useCashFlowStore from '@/stores/useCashFlowStore'
@@ -29,6 +36,7 @@ export function BankListManager() {
     agency: '',
     account_number: '',
     account_digit: '',
+    type: 'bank',
   })
 
   const resetForm = () => {
@@ -38,6 +46,7 @@ export function BankListManager() {
       agency: '',
       account_number: '',
       account_digit: '',
+      type: 'bank',
     })
     setEditingId(null)
     setIsAdding(false)
@@ -64,21 +73,21 @@ export function BankListManager() {
 
     if (editingId) {
       updateBank({ ...formData, id: editingId } as Bank)
-      toast.success('Banco atualizado com sucesso!')
+      toast.success('Conta atualizada com sucesso!')
     } else {
       addBank({
         ...formData,
         id: Math.random().toString(36).substr(2, 9),
         active: true,
       } as Bank)
-      toast.success('Novo banco cadastrado com sucesso!')
+      toast.success('Nova conta cadastrada com sucesso!')
     }
     resetForm()
   }
 
   const handleDelete = (id: string) => {
     deleteBank(id)
-    toast.success('Banco inativado com sucesso.')
+    toast.success('Conta inativada com sucesso.')
   }
 
   return (
@@ -86,26 +95,65 @@ export function BankListManager() {
       {!isAdding && !editingId && (
         <div className="flex justify-end">
           <Button onClick={() => setIsAdding(true)} size="sm">
-            <Plus className="mr-2 h-4 w-4" /> Novo Banco
+            <Plus className="mr-2 h-4 w-4" /> Nova Conta/Caixa
           </Button>
         </div>
       )}
 
       {(isAdding || editingId) && (
         <div className="border rounded-lg p-4 bg-muted/20 space-y-4 animate-fade-in">
-          <h4 className="font-semibold text-sm">
-            {editingId ? 'Editar Banco' : 'Adicionar Novo Banco'}
-          </h4>
+          <div className="flex justify-between items-center">
+            <h4 className="font-semibold text-sm">
+              {editingId ? 'Editar Conta' : 'Adicionar Nova Conta'}
+            </h4>
+            {formData.type === 'cash' && (
+              <Badge
+                variant="outline"
+                className="bg-emerald-50 text-emerald-600 border-emerald-200"
+              >
+                Caixa Físico
+              </Badge>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Instituição (Ex: Banco Itaú)</Label>
+              <Label>Tipo de Conta</Label>
+              <Select
+                value={formData.type || 'bank'}
+                onValueChange={(val: 'bank' | 'cash') =>
+                  setFormData({ ...formData, type: val })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bank">Conta Bancária</SelectItem>
+                  <SelectItem value="cash">Caixa Físico</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>
+                {formData.type === 'cash'
+                  ? 'Local / Descrição'
+                  : 'Instituição (Ex: Banco Itaú)'}
+              </Label>
               <Input
                 value={formData.institution}
                 onChange={(e) =>
                   setFormData({ ...formData, institution: e.target.value })
                 }
+                placeholder={
+                  formData.type === 'cash'
+                    ? 'Ex: Cofre Loja 1'
+                    : 'Ex: Banco Itaú'
+                }
               />
             </div>
+
             <div className="space-y-2">
               <Label>Nome de Exibição (Apelido)</Label>
               <Input
@@ -116,6 +164,7 @@ export function BankListManager() {
                 placeholder="Ex: Itaú Principal"
               />
             </div>
+
             <div className="space-y-2">
               <Label>Agência</Label>
               <Input
@@ -123,9 +172,12 @@ export function BankListManager() {
                 onChange={(e) =>
                   setFormData({ ...formData, agency: e.target.value })
                 }
-                placeholder="0000"
+                placeholder={
+                  formData.type === 'cash' ? "Use '-' se não houver" : '0000'
+                }
               />
             </div>
+
             <div className="space-y-2">
               <Label>Conta / Dígito</Label>
               <div className="flex gap-2">
@@ -135,7 +187,11 @@ export function BankListManager() {
                   onChange={(e) =>
                     setFormData({ ...formData, account_number: e.target.value })
                   }
-                  placeholder="Ex: 12345"
+                  placeholder={
+                    formData.type === 'cash'
+                      ? "Use '-' se não houver"
+                      : 'Ex: 12345'
+                  }
                 />
                 <Input
                   className="w-16 text-center"
@@ -148,6 +204,7 @@ export function BankListManager() {
                     setFormData({ ...formData, account_digit: val })
                   }}
                   placeholder="X"
+                  disabled={formData.type === 'cash'}
                 />
               </div>
             </div>
@@ -168,6 +225,7 @@ export function BankListManager() {
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
+              <TableHead>Tipo</TableHead>
               <TableHead>Instituição</TableHead>
               <TableHead>Agência</TableHead>
               <TableHead>Conta</TableHead>
@@ -182,6 +240,23 @@ export function BankListManager() {
                 className={cn(!bank.active && 'opacity-50')}
               >
                 <TableCell className="font-medium">{bank.name}</TableCell>
+                <TableCell>
+                  {bank.type === 'cash' ? (
+                    <Badge
+                      variant="outline"
+                      className="text-emerald-600 bg-emerald-50 border-emerald-200"
+                    >
+                      Caixa
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="text-blue-600 bg-blue-50 border-blue-200"
+                    >
+                      Banco
+                    </Badge>
+                  )}
+                </TableCell>
                 <TableCell>{bank.institution}</TableCell>
                 <TableCell>{bank.agency || '-'}</TableCell>
                 <TableCell>

@@ -61,6 +61,7 @@ const initialBanks: Bank[] = [
     account_number: '12345',
     account_digit: '5',
     active: true,
+    type: 'bank',
   },
   {
     id: '2',
@@ -70,6 +71,7 @@ const initialBanks: Bank[] = [
     account_number: '98765',
     account_digit: '2',
     active: true,
+    type: 'bank',
   },
   {
     id: '3',
@@ -79,6 +81,17 @@ const initialBanks: Bank[] = [
     account_number: '45678',
     account_digit: '8',
     active: true,
+    type: 'bank',
+  },
+  {
+    id: '4',
+    name: 'Cofre Escritório',
+    institution: 'Caixa Físico',
+    agency: '-',
+    account_number: '-',
+    account_digit: '',
+    active: true,
+    type: 'cash',
   },
 ]
 

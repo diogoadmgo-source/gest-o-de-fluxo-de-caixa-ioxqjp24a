@@ -88,7 +88,7 @@ export function BankBalanceManager({
 
   const handleSaveEntry = () => {
     if (!selectedBankId || !amount) {
-      toast.error('Selecione o banco e informe o valor')
+      toast.error('Selecione a conta/caixa e informe o valor')
       return
     }
 
@@ -139,7 +139,7 @@ export function BankBalanceManager({
           }
           return newArr
         })
-        toast.success('Saldo do banco atualizado.')
+        toast.success('Saldo atualizado.')
       } else {
         // Create new
         const newEntry: BankBalance = {
@@ -197,7 +197,7 @@ export function BankBalanceManager({
         {/* Input Form */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end bg-muted/30 p-4 rounded-lg">
           <div className="space-y-2 md:col-span-1">
-            <Label>Conta Bancária</Label>
+            <Label>Conta / Caixa</Label>
             <Select value={selectedBankId} onValueChange={setSelectedBankId}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione..." />
@@ -205,7 +205,10 @@ export function BankBalanceManager({
               <SelectContent>
                 {activeBanks.map((bank) => (
                   <SelectItem key={bank.id} value={bank.id}>
-                    {bank.name} - {bank.account_number}
+                    {bank.name}{' '}
+                    {bank.account_number !== '-'
+                      ? `- ${bank.account_number}`
+                      : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -254,7 +257,7 @@ export function BankBalanceManager({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Banco</TableHead>
+                <TableHead>Banco / Caixa</TableHead>
                 <TableHead>Conta</TableHead>
                 <TableHead className="text-right">Saldo</TableHead>
                 <TableHead className="text-center">Status</TableHead>
@@ -277,7 +280,11 @@ export function BankBalanceManager({
                     <TableCell className="font-medium">
                       {balance.bank_name}
                     </TableCell>
-                    <TableCell>{balance.account_number || '-'}</TableCell>
+                    <TableCell>
+                      {balance.account_number !== '-'
+                        ? balance.account_number
+                        : ''}
+                    </TableCell>
                     <TableCell className="text-right font-medium">
                       {balance.balance.toLocaleString('pt-BR', {
                         style: 'currency',

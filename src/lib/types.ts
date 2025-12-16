@@ -90,6 +90,7 @@ export interface Bank {
   account_number: string
   account_digit?: string // New
   active: boolean
+  type: 'bank' | 'cash'
 }
 
 export interface BankBalance {
