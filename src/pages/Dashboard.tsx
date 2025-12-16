@@ -3,48 +3,44 @@ import { MetricCard } from '@/components/dashboard/MetricCard'
 import { ProjectionChart } from '@/components/dashboard/ProjectionChart'
 import { KPIPanel } from '@/components/dashboard/KPIPanel'
 import { AlertList } from '@/components/dashboard/AlertList'
-import { generateDailyBalances, mockKPIs, mockAlerts } from '@/lib/mock-data'
-import { DailyBalance } from '@/lib/types'
+import { mockKPIs, mockAlerts } from '@/lib/mock-data'
 import { Button } from '@/components/ui/button'
 import { Download, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
+import useCashFlowStore from '@/stores/useCashFlowStore'
+import { DailyBalance } from '@/lib/types'
 
 export default function Dashboard() {
+  const { cashFlowEntries, recalculateCashFlow } = useCashFlowStore()
+  const [loading, setLoading] = useState(false)
   const [data, setData] = useState<DailyBalance[]>([])
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Simulate API call
-    const timer = setTimeout(() => {
-      setData(generateDailyBalances())
-      setLoading(false)
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [])
+    // Map cash flow entries to daily balance format expected by dashboard components
+    const mappedData = cashFlowEntries
+      .map((entry) => ({
+        date: entry.date,
+        closing_balance: entry.accumulated_balance,
+        is_projected: entry.is_projected || false,
+        total_inflows: entry.total_receivables,
+        total_outflows: entry.total_payables,
+        net_flow: entry.daily_balance,
+      }))
+      .slice(0, 37) // Just first 37 days for display
+    setData(mappedData)
+  }, [cashFlowEntries])
 
   const handleRefresh = () => {
     setLoading(true)
     toast.info('Atualizando dados...')
     setTimeout(() => {
-      setData(generateDailyBalances())
+      recalculateCashFlow()
       setLoading(false)
       toast.success('Dados atualizados com sucesso!')
     }, 1000)
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-100px)]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    )
-  }
-
-  const currentBalance =
-    data.find(
-      (d) =>
-        !d.is_projected && d.date === new Date().toISOString().split('T')[0],
-    )?.closing_balance || data[7].closing_balance
+  const currentBalance = data[0]?.closing_balance || 0
   const prevBalance = 48000 // Mock previous
   const trendData = data.slice(0, 7).map((d) => ({ value: d.closing_balance }))
 
@@ -58,8 +54,15 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh}>
-            <RefreshCcw className="mr-2 h-4 w-4" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={loading}
+          >
+            <RefreshCcw
+              className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+            />
             Atualizar
           </Button>
           <Button size="sm">
@@ -94,7 +97,7 @@ export default function Dashboard() {
         />
         <MetricCard
           title="Saldo Projetado (30d)"
-          value={data[data.length - 1].closing_balance}
+          value={data[data.length - 1]?.closing_balance || 0}
           previousValue={currentBalance}
           trendData={data.slice(-7).map((d) => ({ value: d.closing_balance }))}
         />

@@ -17,8 +17,15 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { mockTransactions } from '@/lib/mock-data'
-import { Plus, Search, Filter, MoreHorizontal } from 'lucide-react'
+import {
+  Plus,
+  Search,
+  Filter,
+  MoreHorizontal,
+  Edit,
+  Trash2,
+  Eye,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -33,16 +40,23 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import useCashFlowStore from '@/stores/useCashFlowStore'
+import { toast } from 'sonner'
 
 export default function Payables() {
+  const { payables, deletePayable } = useCashFlowStore()
   const [searchTerm, setSearchTerm] = useState('')
-  const payables = mockTransactions.filter((t) => t.type === 'payable')
 
   const filteredData = payables.filter(
     (t) =>
       t.entity_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.document_number.toLowerCase().includes(searchTerm.toLowerCase()),
   )
+
+  const handleDelete = (id: string) => {
+    deletePayable(id)
+    toast.success('Pagamento removido com sucesso.')
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -176,10 +190,19 @@ export default function Payables() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Ver detalhes</DropdownMenuItem>
-                        <DropdownMenuItem>Editar</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
-                          Excluir
+                        <DropdownMenuItem
+                          onClick={() => toast.info('Ver detalhes')}
+                        >
+                          <Eye className="mr-2 h-4 w-4" /> Ver detalhes
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => toast.info('Editar')}>
+                          <Edit className="mr-2 h-4 w-4" /> Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => handleDelete(item.id)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" /> Excluir
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

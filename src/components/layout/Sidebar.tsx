@@ -11,6 +11,7 @@ import {
   Search,
   Menu,
   Wallet,
+  Landmark,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -25,6 +26,7 @@ import { useState } from 'react'
 const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
   { icon: Wallet, label: 'Fluxo de Caixa', path: '/fluxo-de-caixa' },
+  { icon: Landmark, label: 'Saldos', path: '/saldos' },
   { icon: ArrowDownToLine, label: 'Contas a Receber', path: '/recebiveis' },
   { icon: ArrowUpFromLine, label: 'Contas a Pagar', path: '/pagaveis' },
   { icon: Upload, label: 'Importações', path: '/importacoes' },
@@ -41,11 +43,11 @@ export function Sidebar() {
   const NavContent = () => (
     <div className="flex flex-col h-full py-4">
       <div className="px-6 mb-8 mt-2 flex items-center gap-3">
-        <div className="h-10 w-10 flex items-center justify-center bg-white rounded-md shadow-sm border p-1">
+        <div className="h-10 w-10 flex items-center justify-center rounded-md overflow-hidden bg-primary/5">
           <img
-            src="https://raw.githubusercontent.com/temos-ai/skip-assets/refs/heads/main/12247/e7a9b6c0-cd6a-4933-bf9c-297c554f6645.jpeg"
+            src="https://img.usecurling.com/i?q=hospcom&color=blue&shape=fill"
             alt="Hospcom"
-            className="h-full w-full object-contain"
+            className="h-full w-full object-contain p-1"
           />
         </div>
         <span className="font-bold text-xl tracking-tight text-primary">

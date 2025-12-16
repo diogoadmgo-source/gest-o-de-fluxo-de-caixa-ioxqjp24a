@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { CashFlowProvider } from '@/stores/useCashFlowStore'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import NotFound from './pages/NotFound'
@@ -14,29 +15,33 @@ import ManualAdjustments from './pages/ManualAdjustments'
 import Settings from './pages/Settings'
 import Audit from './pages/Audit'
 import CashFlow from './pages/CashFlow'
+import Balances from './pages/Balances'
 
 const App = () => (
   <BrowserRouter
     future={{ v7_startTransition: false, v7_relativeSplatPath: false }}
   >
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/fluxo-de-caixa" element={<CashFlow />} />
-          <Route path="/recebiveis" element={<Receivables />} />
-          <Route path="/pagaveis" element={<Payables />} />
-          <Route path="/importacoes" element={<Imports />} />
-          <Route path="/relatorios" element={<Reports />} />
-          <Route path="/fechamento" element={<PeriodClosing />} />
-          <Route path="/ajustes" element={<ManualAdjustments />} />
-          <Route path="/configuracoes" element={<Settings />} />
-          <Route path="/auditoria" element={<Audit />} />
-        </Route>
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <CashFlowProvider>
+        <Toaster />
+        <Sonner />
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/fluxo-de-caixa" element={<CashFlow />} />
+            <Route path="/saldos" element={<Balances />} />
+            <Route path="/recebiveis" element={<Receivables />} />
+            <Route path="/pagaveis" element={<Payables />} />
+            <Route path="/importacoes" element={<Imports />} />
+            <Route path="/relatorios" element={<Reports />} />
+            <Route path="/fechamento" element={<PeriodClosing />} />
+            <Route path="/ajustes" element={<ManualAdjustments />} />
+            <Route path="/configuracoes" element={<Settings />} />
+            <Route path="/auditoria" element={<Audit />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </CashFlowProvider>
     </TooltipProvider>
   </BrowserRouter>
 )

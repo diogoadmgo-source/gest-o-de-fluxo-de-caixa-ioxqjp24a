@@ -17,7 +17,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { mockReceivables } from '@/lib/mock-data'
 import {
   Plus,
   Search,
@@ -25,6 +24,9 @@ import {
   MoreHorizontal,
   Upload,
   FileSpreadsheet,
+  Trash2,
+  Edit,
+  Eye,
 } from 'lucide-react'
 import {
   Dialog,
@@ -42,30 +44,53 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { format, parseISO } from 'date-fns'
+import useCashFlowStore from '@/stores/useCashFlowStore'
+import { Receivable } from '@/lib/types'
 
 export default function Receivables() {
+  const { receivables, deleteReceivable, importData } = useCashFlowStore()
   const [searchTerm, setSearchTerm] = useState('')
-  const [data, setData] = useState(mockReceivables)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
 
-  const filteredData = data.filter(
-    (t) =>
-      t.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.order_number.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  // Enhanced Filtering
+  const filteredData = receivables.filter((t) => {
+    const term = searchTerm.toLowerCase()
+    return (
+      t.customer.toLowerCase().includes(term) ||
+      t.invoice_number.toLowerCase().includes(term) ||
+      t.order_number.toLowerCase().includes(term) ||
+      t.company.toLowerCase().includes(term)
+    )
+  })
 
   const handleImport = () => {
     setIsImporting(true)
-    // Simulation of import process with overwrite logic
     setTimeout(() => {
+      // Simulate import
+      importData('receivable', [
+        {
+          customer: 'Cliente Importado',
+          principal_value: 5000,
+          due_date: format(new Date(), 'yyyy-MM-dd'),
+        },
+      ])
+
       setIsImporting(false)
       setIsImportDialogOpen(false)
       toast.success(
-        'Importação concluída com sucesso! 20 registros atualizados.',
+        'Importação concluída com sucesso! Registros atualizados e fluxo recalculado.',
       )
     }, 2000)
+  }
+
+  const handleDelete = (id: string) => {
+    deleteReceivable(id)
+    toast.success('Título removido com sucesso.')
+  }
+
+  const calculateUpdatedValue = (item: Receivable) => {
+    return item.principal_value + item.fine + item.interest
   }
 
   return (
@@ -175,84 +200,106 @@ export default function Receivables() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredData.map((item) => (
-                  <TableRow key={item.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium text-xs">
-                      {item.company}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {format(parseISO(item.issue_date), 'dd/MM/yyyy')}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {item.order_number}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {item.invoice_number}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          item.title_status === 'Liquidado'
-                            ? 'default'
-                            : 'secondary'
-                        }
-                        className={
-                          item.title_status === 'Liquidado'
-                            ? 'bg-success hover:bg-success/80 text-[10px]'
-                            : 'text-[10px]'
-                        }
+                {filteredData.map((item) => {
+                  const updatedTotal = calculateUpdatedValue(item)
+                  return (
+                    <TableRow key={item.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium text-xs">
+                        {item.company}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {item.issue_date
+                          ? format(parseISO(item.issue_date), 'dd/MM/yyyy')
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {item.order_number}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {item.invoice_number}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            item.title_status === 'Liquidado'
+                              ? 'default'
+                              : 'secondary'
+                          }
+                          className={
+                            item.title_status === 'Liquidado'
+                              ? 'bg-success hover:bg-success/80 text-[10px]'
+                              : 'text-[10px]'
+                          }
+                        >
+                          {item.title_status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell
+                        className="max-w-[200px] truncate text-xs"
+                        title={item.customer}
                       >
-                        {item.title_status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell
-                      className="max-w-[200px] truncate text-xs"
-                      title={item.customer}
-                    >
-                      {item.customer}
-                    </TableCell>
-                    <TableCell className="text-xs text-center">
-                      {item.installment}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {format(parseISO(item.due_date), 'dd/MM/yyyy')}
-                    </TableCell>
-                    <TableCell className="text-right text-xs">
-                      {item.principal_value.toLocaleString('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      })}
-                    </TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">
-                      {(item.fine + item.interest).toLocaleString('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      })}
-                    </TableCell>
-                    <TableCell className="text-right font-bold text-xs">
-                      {item.updated_value.toLocaleString('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      })}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-6 w-6 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>Ver detalhes</DropdownMenuItem>
-                          <DropdownMenuItem>Editar</DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                        {item.customer}
+                      </TableCell>
+                      <TableCell className="text-xs text-center">
+                        {item.installment}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {item.due_date
+                          ? format(parseISO(item.due_date), 'dd/MM/yyyy')
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="text-right text-xs">
+                        {item.principal_value.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {(item.fine + item.interest).toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-xs">
+                        {updatedTotal.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-6 w-6 p-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                toast.info(`Detalhes: ${item.invoice_number}`)
+                              }
+                            >
+                              <Eye className="mr-2 h-4 w-4" /> Ver detalhes
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                toast.info('Edição não implementada')
+                              }
+                            >
+                              <Edit className="mr-2 h-4 w-4" /> Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => handleDelete(item.id)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>

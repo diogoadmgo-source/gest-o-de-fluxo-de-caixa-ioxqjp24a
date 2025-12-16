@@ -1,0 +1,95 @@
+import { useState, useEffect } from 'react'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { BankBalanceManager } from '@/components/cash-flow/BankBalanceManager'
+import { HistoricalBalanceList } from '@/components/cash-flow/HistoricalBalanceList'
+import { Calendar } from '@/components/ui/calendar'
+import { ptBR } from 'date-fns/locale'
+import { format, isSameDay, parseISO } from 'date-fns'
+import useCashFlowStore from '@/stores/useCashFlowStore'
+import { mockHistoricalBalances } from '@/lib/mock-data'
+import { toast } from 'sonner'
+import { BankBalance } from '@/lib/types'
+
+export default function Balances() {
+  const { bankBalances, updateBankBalances } = useCashFlowStore()
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [currentBalances, setCurrentBalances] = useState<BankBalance[]>([])
+
+  useEffect(() => {
+    // Filter balances for the selected date
+    const filtered = bankBalances.filter((b) =>
+      isSameDay(parseISO(b.date), selectedDate),
+    )
+    setCurrentBalances(filtered)
+  }, [selectedDate, bankBalances])
+
+  const handleSaveBalances = (newBalances: BankBalance[]) => {
+    updateBankBalances(newBalances)
+    toast.success('Saldos salvos e fluxo recalculado com sucesso!')
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">
+            Gestão de Saldos
+          </h2>
+          <p className="text-muted-foreground">
+            Defina os saldos iniciais de contas bancárias para alimentar o fluxo
+            de caixa.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-1 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Data de Referência</CardTitle>
+            </CardHeader>
+            <CardContent className="flex justify-center">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(d) => d && setSelectedDate(d)}
+                locale={ptBR}
+                className="rounded-md border"
+              />
+            </CardContent>
+          </Card>
+
+          <HistoricalBalanceList
+            history={mockHistoricalBalances}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+          />
+        </div>
+
+        <div className="lg:col-span-3">
+          <BankBalanceManager
+            selectedDate={selectedDate}
+            initialBalances={currentBalances}
+            onSave={handleSaveBalances}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}

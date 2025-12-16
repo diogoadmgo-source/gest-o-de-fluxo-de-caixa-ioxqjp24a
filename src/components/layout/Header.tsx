@@ -30,6 +30,8 @@ const getPageTitle = (pathname: string) => {
       return 'Dashboard'
     case '/fluxo-de-caixa':
       return 'Fluxo de Caixa'
+    case '/saldos':
+      return 'Gestão de Saldos'
     case '/recebiveis':
       return 'Contas a Receber'
     case '/pagaveis':

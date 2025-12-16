@@ -9,12 +9,11 @@ import {
 import { Button } from '@/components/ui/button'
 import {
   Upload,
-  FileText,
-  CheckCircle2,
-  AlertCircle,
   FileSpreadsheet,
   X,
   Play,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -27,8 +26,11 @@ import {
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
+import useCashFlowStore from '@/stores/useCashFlowStore'
+import { format } from 'date-fns'
 
 export default function Imports() {
+  const { importData } = useCashFlowStore()
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importType, setImportType] = useState('receivable')
@@ -102,9 +104,28 @@ export default function Imports() {
       setProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval)
+
+          // Trigger the import in the store
+          const mockData = [
+            {
+              description: 'Importado',
+              amount: 1500,
+              due_date: format(new Date(), 'yyyy-MM-dd'),
+            },
+            {
+              description: 'Importado 2',
+              amount: 2500,
+              due_date: format(new Date(), 'yyyy-MM-dd'),
+            },
+          ]
+
+          if (importType === 'receivable' || importType === 'payable') {
+            importData(importType as any, mockData)
+          }
+
           setIsProcessing(false)
           toast.success(
-            'Importação concluída! 25 registros processados com sucesso.',
+            'Importação concluída! Registros processados e dashboard atualizado.',
           )
           setSelectedFile(null)
           return 100
