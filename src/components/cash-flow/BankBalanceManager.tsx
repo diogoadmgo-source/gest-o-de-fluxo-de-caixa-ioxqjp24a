@@ -42,7 +42,7 @@ export function BankBalanceManager({
   initialBalances,
   onSave,
 }: BankBalanceManagerProps) {
-  const { banks } = useCashFlowStore()
+  const { banks, selectedCompanyId } = useCashFlowStore()
   const activeBanks = banks.filter((b) => b.active)
 
   const [balances, setBalances] = useState<BankBalance[]>(initialBalances)
@@ -112,6 +112,7 @@ export function BankBalanceManager({
                 bank_id: bank.id,
                 account_number: bank.account_number,
                 balance: val,
+                company_id: bank.company_id || selectedCompanyId || undefined,
               }
             : b,
         ),
@@ -136,6 +137,7 @@ export function BankBalanceManager({
             bank_name: bank.name,
             bank_id: bank.id,
             account_number: bank.account_number,
+            company_id: bank.company_id || selectedCompanyId || undefined,
           }
           return newArr
         })
@@ -150,6 +152,7 @@ export function BankBalanceManager({
           account_number: bank.account_number,
           balance: val,
           status: 'draft',
+          company_id: bank.company_id || selectedCompanyId || undefined,
         }
         setBalances((prev) => [...prev, newEntry])
         toast.success('Saldo adicionado à lista.')
@@ -203,16 +206,27 @@ export function BankBalanceManager({
                 <SelectValue placeholder="Selecione..." />
               </SelectTrigger>
               <SelectContent>
-                {activeBanks.map((bank) => (
-                  <SelectItem key={bank.id} value={bank.id}>
-                    {bank.name}{' '}
-                    {bank.account_number !== '-'
-                      ? `- ${bank.account_number}`
-                      : ''}
+                {activeBanks.length === 0 ? (
+                  <SelectItem value="none" disabled>
+                    Nenhuma conta disponível
                   </SelectItem>
-                ))}
+                ) : (
+                  activeBanks.map((bank) => (
+                    <SelectItem key={bank.id} value={bank.id}>
+                      {bank.name}{' '}
+                      {bank.account_number !== '-'
+                        ? `- ${bank.account_number}`
+                        : ''}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
+            {activeBanks.length === 0 && selectedCompanyId && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Nenhum banco encontrado para esta empresa.
+              </p>
+            )}
           </div>
           <div className="space-y-2 md:col-span-1">
             <Label>Saldo (R$)</Label>
@@ -228,6 +242,7 @@ export function BankBalanceManager({
               onClick={handleSaveEntry}
               className="w-full"
               variant={editingId ? 'secondary' : 'default'}
+              disabled={!selectedBankId}
             >
               {editingId ? (
                 <>

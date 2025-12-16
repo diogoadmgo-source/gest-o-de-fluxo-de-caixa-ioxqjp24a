@@ -4,6 +4,7 @@ import {
   ChevronDown,
   LogOut,
   Settings as SettingsIcon,
+  Building,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useLocation } from 'react-router-dom'
+import useCashFlowStore from '@/stores/useCashFlowStore'
 
 const getPageTitle = (pathname: string) => {
   switch (pathname) {
@@ -56,6 +58,8 @@ const getPageTitle = (pathname: string) => {
 export function Header() {
   const location = useLocation()
   const title = getPageTitle(location.pathname)
+  const { companies, selectedCompanyId, setSelectedCompanyId } =
+    useCashFlowStore()
 
   return (
     <header className="h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 fixed top-0 right-0 left-0 md:left-64 z-20 px-6 flex items-center justify-between transition-all duration-300">
@@ -64,15 +68,25 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="hidden md:block w-48">
-          <Select defaultValue="hospcom">
+        {/* Global Company Filter */}
+        <div className="hidden md:flex items-center gap-2 w-64">
+          <Building className="h-4 w-4 text-muted-foreground" />
+          <Select
+            value={selectedCompanyId || 'all'}
+            onValueChange={(val) =>
+              setSelectedCompanyId(val === 'all' ? null : val)
+            }
+          >
             <SelectTrigger className="h-9">
-              <SelectValue placeholder="Selecione a empresa" />
+              <SelectValue placeholder="Todas as Empresas" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="hospcom">Hospcom Matriz</SelectItem>
-              <SelectItem value="filial1">Hospcom Filial SP</SelectItem>
-              <SelectItem value="filial2">Hospcom Filial RJ</SelectItem>
+              <SelectItem value="all">Todas as Empresas</SelectItem>
+              {companies.map((company) => (
+                <SelectItem key={company.id} value={company.id}>
+                  {company.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

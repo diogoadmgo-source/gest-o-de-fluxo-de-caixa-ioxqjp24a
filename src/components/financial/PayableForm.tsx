@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Transaction } from '@/lib/types'
+import useCashFlowStore from '@/stores/useCashFlowStore'
 
 interface PayableFormProps {
   initialData?: Transaction
@@ -22,7 +23,10 @@ export function PayableForm({
   onSave,
   onCancel,
 }: PayableFormProps) {
+  const { companies, selectedCompanyId } = useCashFlowStore()
+
   const [formData, setFormData] = useState<Partial<Transaction>>({
+    company_id: selectedCompanyId || undefined,
     entity_name: '',
     document_number: '',
     principal_value: 0,
@@ -63,6 +67,27 @@ export function PayableForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
+          <Label htmlFor="company">Empresa</Label>
+          <Select
+            value={formData.company_id || 'none'}
+            onValueChange={(val) =>
+              handleChange('company_id', val === 'none' ? undefined : val)
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Selecione...</SelectItem>
+              {companies.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
           <Label htmlFor="doc">Documento</Label>
           <Input
             id="doc"
@@ -71,6 +96,19 @@ export function PayableForm({
             required
           />
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="supplier">Fornecedor</Label>
+        <Input
+          id="supplier"
+          value={formData.entity_name}
+          onChange={(e) => handleChange('entity_name', e.target.value)}
+          required
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="status">Status</Label>
           <Select
@@ -87,16 +125,15 @@ export function PayableForm({
             </SelectContent>
           </Select>
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="supplier">Fornecedor</Label>
-        <Input
-          id="supplier"
-          value={formData.entity_name}
-          onChange={(e) => handleChange('entity_name', e.target.value)}
-          required
-        />
+        <div className="space-y-2">
+          <Label htmlFor="dueDate">Vencimento</Label>
+          <Input
+            id="dueDate"
+            type="date"
+            value={formData.due_date}
+            onChange={(e) => handleChange('due_date', e.target.value)}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">

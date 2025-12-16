@@ -5,8 +5,14 @@ export type TransactionStatus =
   | 'overdue'
   | 'cancelled'
 
+export interface Company {
+  id: string
+  name: string
+}
+
 export interface Transaction {
   id: string
+  company_id?: string // Global Filter
   document_number: string
   entity_name: string // customer or supplier
   entity_document?: string
@@ -27,7 +33,8 @@ export interface Transaction {
 // New specific type for Accounts Receivable matching the requirements
 export interface Receivable {
   id: string
-  company: string // Empresa
+  company_id?: string // Global Filter
+  company: string // Empresa Name (Legacy/Display)
   issue_date: string // Data de Emissão
   order_number: string // Nr do Pedido
   invoice_number: string // NF
@@ -84,6 +91,7 @@ export interface CashFlowEntry {
 
 export interface Bank {
   id: string
+  company_id?: string // Global Filter
   name: string // Display Name (e.g. "Itaú Principal")
   institution: string // Bank Name (e.g. "Banco Itaú")
   agency?: string // New
@@ -95,6 +103,7 @@ export interface Bank {
 
 export interface BankBalance {
   id: string
+  company_id?: string // Global Filter
   date: string
   bank_name: string // This should ideally be bank_id, but keeping for compatibility
   bank_id?: string // Optional link to Bank entity

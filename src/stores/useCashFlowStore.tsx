@@ -12,33 +12,46 @@ import {
   BankBalance,
   Bank,
   ImportHistoryEntry,
+  Company,
 } from '@/lib/types'
 import {
   generateCashFlowData,
   mockReceivables,
   mockTransactions,
   mockBankBalances,
+  mockCompanies,
 } from '@/lib/mock-data'
 import { isSameDay, parseISO } from 'date-fns'
 
 interface CashFlowContextType {
+  companies: Company[]
+  selectedCompanyId: string | null
+  setSelectedCompanyId: (id: string | null) => void
+
+  // These are now FILTERED based on selectedCompanyId
   receivables: Receivable[]
   payables: Transaction[]
   bankBalances: BankBalance[]
   cashFlowEntries: CashFlowEntry[]
   banks: Bank[]
+
   importHistory: ImportHistoryEntry[]
+
   addReceivable: (receivable: Receivable) => void
   updateReceivable: (receivable: Receivable) => void
   deleteReceivable: (id: string) => void
+
   addPayable: (payable: Transaction) => void
   updatePayable: (payable: Transaction) => void
   deletePayable: (id: string) => void
+
   updateBankBalances: (balances: BankBalance[]) => void
   resetBalanceHistory: () => void
+
   addBank: (bank: Bank) => void
   updateBank: (bank: Bank) => void
   deleteBank: (id: string) => void
+
   importData: (
     type: 'receivable' | 'payable',
     data: any[],
@@ -55,6 +68,7 @@ const CashFlowContext = createContext<CashFlowContextType | undefined>(
 const initialBanks: Bank[] = [
   {
     id: '1',
+    company_id: 'c1',
     name: 'Itaú Principal',
     institution: 'Banco Itaú',
     agency: '1234',
@@ -65,6 +79,7 @@ const initialBanks: Bank[] = [
   },
   {
     id: '2',
+    company_id: 'c2',
     name: 'Santander Movimento',
     institution: 'Banco Santander',
     agency: '4321',
@@ -75,6 +90,7 @@ const initialBanks: Bank[] = [
   },
   {
     id: '3',
+    company_id: 'c3',
     name: 'Caixa Reserva',
     institution: 'Caixa Econômica',
     agency: '5678',
@@ -85,6 +101,7 @@ const initialBanks: Bank[] = [
   },
   {
     id: '4',
+    company_id: 'c1',
     name: 'Cofre Escritório',
     institution: 'Caixa Físico',
     agency: '-',
@@ -102,39 +119,52 @@ const STORAGE_KEYS = {
   BANKS: 'hospcash_banks',
   CASH_FLOW_ENTRIES: 'hospcash_entries',
   IMPORT_HISTORY: 'hospcash_importHistory',
+  COMPANIES: 'hospcash_companies',
+  SELECTED_COMPANY: 'hospcash_selectedCompany',
 }
 
 export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
-  // Load initial state from localStorage or use mock data
-  const [receivables, setReceivables] = useState<Receivable[]>(() => {
+  // --- Company State ---
+  const [companies, setCompanies] = useState<Company[]>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.COMPANIES)
+    return stored ? JSON.parse(stored) : mockCompanies
+  })
+
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(
+    () => {
+      return localStorage.getItem(STORAGE_KEYS.SELECTED_COMPANY) || null
+    },
+  )
+
+  // --- Data State (All Data) ---
+  const [allReceivables, setAllReceivables] = useState<Receivable[]>(() => {
     const stored = localStorage.getItem(STORAGE_KEYS.RECEIVABLES)
     return stored ? JSON.parse(stored) : mockReceivables
   })
 
-  const [payables, setPayables] = useState<Transaction[]>(() => {
+  const [allPayables, setAllPayables] = useState<Transaction[]>(() => {
     const stored = localStorage.getItem(STORAGE_KEYS.PAYABLES)
     return stored
       ? JSON.parse(stored)
       : mockTransactions.filter((t) => t.type === 'payable')
   })
 
-  const [bankBalances, setBankBalances] = useState<BankBalance[]>(() => {
+  const [allBankBalances, setAllBankBalances] = useState<BankBalance[]>(() => {
     const stored = localStorage.getItem(STORAGE_KEYS.BANK_BALANCES)
     return stored ? JSON.parse(stored) : mockBankBalances
+  })
+
+  const [allBanks, setAllBanks] = useState<Bank[]>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.BANKS)
+    return stored ? JSON.parse(stored) : initialBanks
   })
 
   const [cashFlowEntries, setCashFlowEntries] = useState<CashFlowEntry[]>(
     () => {
       const stored = localStorage.getItem(STORAGE_KEYS.CASH_FLOW_ENTRIES)
-      // If no stored entries, we will generate them in useEffect
       return stored ? JSON.parse(stored) : []
     },
   )
-
-  const [banks, setBanks] = useState<Bank[]>(() => {
-    const stored = localStorage.getItem(STORAGE_KEYS.BANKS)
-    return stored ? JSON.parse(stored) : initialBanks
-  })
 
   const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>(
     () => {
@@ -155,21 +185,40 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     },
   )
 
-  // Persist state changes to localStorage
+  // --- Persistence Effects ---
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.RECEIVABLES, JSON.stringify(receivables))
-  }, [receivables])
+    localStorage.setItem(STORAGE_KEYS.COMPANIES, JSON.stringify(companies))
+  }, [companies])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PAYABLES, JSON.stringify(payables))
-  }, [payables])
+    if (selectedCompanyId) {
+      localStorage.setItem(STORAGE_KEYS.SELECTED_COMPANY, selectedCompanyId)
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.SELECTED_COMPANY)
+    }
+  }, [selectedCompanyId])
+
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_KEYS.RECEIVABLES,
+      JSON.stringify(allReceivables),
+    )
+  }, [allReceivables])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.PAYABLES, JSON.stringify(allPayables))
+  }, [allPayables])
 
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEYS.BANK_BALANCES,
-      JSON.stringify(bankBalances),
+      JSON.stringify(allBankBalances),
     )
-  }, [bankBalances])
+  }, [allBankBalances])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.BANKS, JSON.stringify(allBanks))
+  }, [allBanks])
 
   useEffect(() => {
     localStorage.setItem(
@@ -179,32 +228,56 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }, [cashFlowEntries])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.BANKS, JSON.stringify(banks))
-  }, [banks])
-
-  useEffect(() => {
     localStorage.setItem(
       STORAGE_KEYS.IMPORT_HISTORY,
       JSON.stringify(importHistory),
     )
   }, [importHistory])
 
-  // Initialize Cash Flow Data (90 days) if empty
+  // --- Initialization ---
   useEffect(() => {
     if (cashFlowEntries.length === 0) {
       const initialData = generateCashFlowData(90)
       setCashFlowEntries(initialData)
     }
-  }, []) // Run once on mount
+  }, [])
 
-  // Recalculate Cash Flow whenever dependencies change
+  // --- Derived State (Filtering) ---
+  const receivables = selectedCompanyId
+    ? allReceivables.filter((r) => r.company_id === selectedCompanyId)
+    : allReceivables
+
+  const payables = selectedCompanyId
+    ? allPayables.filter((p) => p.company_id === selectedCompanyId)
+    : allPayables
+
+  const bankBalances = selectedCompanyId
+    ? allBankBalances.filter((b) => b.company_id === selectedCompanyId)
+    : allBankBalances
+
+  const banks = selectedCompanyId
+    ? allBanks.filter((b) => b.company_id === selectedCompanyId)
+    : allBanks
+
+  // --- Recalculation ---
   useEffect(() => {
+    // We only recalculate using the currently filtered views or ALL?
+    // User Story says: "Application-Wide Data Filtering: All data... must automatically update"
+    // So the CashFlowEntries should be recalculated based on the FILTERED receivables/payables.
     if (cashFlowEntries.length > 0) {
       performRecalculation()
     }
-  }, [receivables, payables, bankBalances])
+  }, [allReceivables, allPayables, allBankBalances, selectedCompanyId])
 
   const performRecalculation = () => {
+    // If we use 'cashFlowEntries' state, it is shared.
+    // If we filter, we might want to recalculate starting from 0 or just update the values.
+    // For simplicity, we re-run logic over the base entries structure but using filtered sums.
+
+    // NOTE: This updates the global 'cashFlowEntries' state which is then used by the UI.
+    // So the 'cashFlowEntries' will effectively become "filtered cash flow entries".
+    // This is desired behavior.
+
     const sortedEntries = [...cashFlowEntries].sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     )
@@ -214,7 +287,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     const newEntries = sortedEntries.map((entry, index) => {
       const entryDate = parseISO(entry.date)
 
-      // 1. Calculate Daily Totals from Receivables and Payables
+      // 1. Calculate Daily Totals using FILTERED data
       const dayReceivables = receivables
         .filter(
           (r) =>
@@ -244,8 +317,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       const hasManualBalance = dayBalances.length > 0
 
       // 3. Determine Opening Balance
-      // Opening balance is the accumulated balance from the previous day
-      // For the first entry, we use the entry's initial opening balance logic
       let openingBalance = 0
       if (index === 0) {
         openingBalance = entry.opening_balance
@@ -258,7 +329,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         dayReceivables - dayPayables - entry.imports - entry.other_expenses
 
       // 5. Calculate Accumulated Balance
-      // If a manual balance exists, it overrides the calculated closing balance
       let accumulatedBalance = openingBalance + dailyBalance
 
       if (hasManualBalance) {
@@ -280,64 +350,104 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       }
     })
 
-    // Only update if there are changes to avoid infinite loops if we were using it as dependency
-    // (though here we use JSON.stringify or specific checks usually, but direct set is OK as it triggers effect only if ref changes)
     setCashFlowEntries(newEntries)
   }
 
+  // --- Actions ---
   const addReceivable = (receivable: Receivable) => {
-    setReceivables((prev) => [...prev, receivable])
+    // If creating a receivable and a company is selected, ensure it has the ID
+    const newItem = {
+      ...receivable,
+      company_id: receivable.company_id || selectedCompanyId || undefined,
+    }
+    setAllReceivables((prev) => [...prev, newItem])
   }
 
   const updateReceivable = (updated: Receivable) => {
-    setReceivables((prev) =>
+    setAllReceivables((prev) =>
       prev.map((r) => (r.id === updated.id ? updated : r)),
     )
   }
 
   const deleteReceivable = (id: string) => {
-    setReceivables((prev) => prev.filter((r) => r.id !== id))
+    setAllReceivables((prev) => prev.filter((r) => r.id !== id))
   }
 
   const addPayable = (payable: Transaction) => {
-    setPayables((prev) => [...prev, payable])
+    const newItem = {
+      ...payable,
+      company_id: payable.company_id || selectedCompanyId || undefined,
+    }
+    setAllPayables((prev) => [...prev, newItem])
   }
 
   const updatePayable = (updated: Transaction) => {
-    setPayables((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+    setAllPayables((prev) =>
+      prev.map((p) => (p.id === updated.id ? updated : p)),
+    )
   }
 
   const deletePayable = (id: string) => {
-    setPayables((prev) => prev.filter((p) => p.id !== id))
+    setAllPayables((prev) => prev.filter((p) => p.id !== id))
   }
 
   const updateBankBalances = (newBalances: BankBalance[]) => {
-    const datesToUpdate = new Set(newBalances.map((b) => b.date))
+    // When saving balances, we are saving for the filtered view?
+    // If global filter is ON, we are saving balances for that company.
+    // The `newBalances` should probably have company_id attached.
 
-    setBankBalances((prev) => {
-      // Remove all balances for the dates being updated to avoid duplicates
-      // But preserve balances for other dates
-      const filtered = prev.filter((b) => !datesToUpdate.has(b.date))
-      return [...filtered, ...newBalances]
+    const balancesWithCompany = newBalances.map((b) => ({
+      ...b,
+      company_id: b.company_id || selectedCompanyId || undefined,
+    }))
+
+    const datesToUpdate = new Set(balancesWithCompany.map((b) => b.date))
+
+    setAllBankBalances((prev) => {
+      // Remove balances matching date AND company (if selected) or just date (if no filter?)
+      // To be safe, we only replace balances for the active view context
+      // But simplifying: replace by ID if possible, or filter logic
+
+      // Strategy: Remove all balances for these dates that match the current filter scope
+      // Then add the new ones.
+
+      const filtered = prev.filter((b) => {
+        const isDateMatch = datesToUpdate.has(b.date)
+        const isCompanyMatch = selectedCompanyId
+          ? b.company_id === selectedCompanyId
+          : true
+        // If it matches date AND context, remove it (we will replace it)
+        return !(isDateMatch && isCompanyMatch)
+      })
+
+      return [...filtered, ...balancesWithCompany]
     })
   }
 
   const resetBalanceHistory = () => {
-    setBankBalances([])
+    if (selectedCompanyId) {
+      setAllBankBalances((prev) =>
+        prev.filter((b) => b.company_id !== selectedCompanyId),
+      )
+    } else {
+      setAllBankBalances([])
+    }
   }
 
-  // Bank Management Actions
   const addBank = (bank: Bank) => {
-    setBanks((prev) => [...prev, bank])
+    const newItem = {
+      ...bank,
+      company_id: bank.company_id || selectedCompanyId || undefined,
+    }
+    setAllBanks((prev) => [...prev, newItem])
   }
 
   const updateBank = (updated: Bank) => {
-    setBanks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))
+    setAllBanks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))
   }
 
   const deleteBank = (id: string) => {
-    // Logical deletion (inactivation)
-    setBanks((prev) =>
+    setAllBanks((prev) =>
       prev.map((b) => (b.id === id ? { ...b, active: false } : b)),
     )
   }
@@ -347,11 +457,45 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     data: any[],
     filename: string = 'import.csv',
   ) => {
+    // Extract unique companies from import data if present
+    // Assuming data might have 'company' or 'empresa' field
+    const newCompanyNames = new Set<string>()
+
+    data.forEach((d) => {
+      if (d.company) newCompanyNames.add(d.company)
+      if (d.empresa) newCompanyNames.add(d.empresa)
+    })
+
+    // Create new companies if they don't exist
+    const updatedCompanies = [...companies]
+    let companiesChanged = false
+
+    newCompanyNames.forEach((name) => {
+      if (!updatedCompanies.find((c) => c.name === name)) {
+        updatedCompanies.push({
+          id: `comp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          name: name,
+        })
+        companiesChanged = true
+      }
+    })
+
+    if (companiesChanged) {
+      setCompanies(updatedCompanies)
+    }
+
+    // Process Import
     if (type === 'receivable') {
       const newReceivables = data.map((d, i) => {
         const principal = Number(d.principal_value) || Number(d.amount) || 0
         const fine = Number(d.fine) || 0
         const interest = Number(d.interest) || 0
+
+        // Find company ID if possible
+        const companyName = d.company || d.empresa
+        const companyId = companyName
+          ? updatedCompanies.find((c) => c.name === companyName)?.id
+          : selectedCompanyId
 
         return {
           ...mockReceivables[0],
@@ -360,10 +504,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           fine: fine,
           interest: interest,
           updated_value: principal + fine + interest,
+          company_id: companyId,
           ...d,
         }
       })
-      setReceivables((prev) => [...prev, ...newReceivables])
+      setAllReceivables((prev) => [...prev, ...newReceivables])
 
       setImportHistory((prev) => [
         {
@@ -383,6 +528,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         const fine = Number(d.fine) || 0
         const interest = Number(d.interest) || 0
 
+        // Find company ID if possible
+        const companyName = d.company || d.empresa
+        const companyId = companyName
+          ? updatedCompanies.find((c) => c.name === companyName)?.id
+          : selectedCompanyId
+
         return {
           ...mockTransactions[0],
           id: `IMP-PAY-${Date.now()}-${i}`,
@@ -391,10 +542,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           fine: fine,
           interest: interest,
           amount: principal + fine + interest,
+          company_id: companyId,
           ...d,
         }
       })
-      setPayables((prev) => [...prev, ...newPayables])
+      setAllPayables((prev) => [...prev, ...newPayables])
 
       setImportHistory((prev) => [
         {
@@ -422,6 +574,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   return (
     <CashFlowContext.Provider
       value={{
+        companies,
+        selectedCompanyId,
+        setSelectedCompanyId,
         receivables,
         payables,
         bankBalances,

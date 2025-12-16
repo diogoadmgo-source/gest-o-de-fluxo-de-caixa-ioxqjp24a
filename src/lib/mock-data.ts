@@ -8,8 +8,15 @@ import {
   Receivable,
   BankBalance,
   HistoricalBalance,
+  Company,
 } from './types'
 import { addDays, subDays, format, isWeekend } from 'date-fns'
+
+export const mockCompanies: Company[] = [
+  { id: 'c1', name: 'Hospcom Matriz' },
+  { id: 'c2', name: 'Hospcom Filial SP' },
+  { id: 'c3', name: 'Hospcom Filial RJ' },
+]
 
 export const generateDailyBalances = (days: number = 30): DailyBalance[] => {
   const data: DailyBalance[] = []
@@ -97,10 +104,13 @@ export const mockReceivables: Receivable[] = Array.from({ length: 20 }).map(
     const fine = Math.random() > 0.7 ? principal * 0.02 : 0
     const interest = Math.random() > 0.7 ? principal * 0.01 : 0
     const total = principal + fine + interest
+    const company =
+      mockCompanies[Math.floor(Math.random() * mockCompanies.length)]
 
     return {
       id: `REC-${i + 1}`,
-      company: 'Hospcom Matriz',
+      company_id: company.id,
+      company: company.name,
       issue_date: format(
         subDays(new Date(), Math.floor(Math.random() * 30)),
         'yyyy-MM-dd',
@@ -137,6 +147,7 @@ export const mockReceivables: Receivable[] = Array.from({ length: 20 }).map(
 export const mockBankBalances: BankBalance[] = [
   {
     id: '1',
+    company_id: 'c1',
     date: format(new Date(), 'yyyy-MM-dd'),
     bank_name: 'Banco Itaú',
     account_number: '1234-5',
@@ -145,6 +156,7 @@ export const mockBankBalances: BankBalance[] = [
   },
   {
     id: '2',
+    company_id: 'c2',
     date: format(new Date(), 'yyyy-MM-dd'),
     bank_name: 'Banco Santander',
     account_number: '9876-2',
@@ -153,6 +165,7 @@ export const mockBankBalances: BankBalance[] = [
   },
   {
     id: '3',
+    company_id: 'c3',
     date: format(new Date(), 'yyyy-MM-dd'),
     bank_name: 'Caixa Econômica',
     account_number: '4567-8',
@@ -200,6 +213,7 @@ export const mockAlerts: Alert[] = [
 export const mockTransactions: Transaction[] = [
   {
     id: '3',
+    company_id: 'c1',
     document_number: 'FAT-500',
     entity_name: 'AWS Services',
     issue_date: '2024-05-05',
@@ -214,6 +228,7 @@ export const mockTransactions: Transaction[] = [
   },
   {
     id: '4',
+    company_id: 'c2',
     document_number: 'FAT-501',
     entity_name: 'Office Supplies Inc',
     issue_date: '2024-05-01',

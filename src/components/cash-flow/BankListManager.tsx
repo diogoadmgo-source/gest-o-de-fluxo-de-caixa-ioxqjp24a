@@ -25,7 +25,14 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 export function BankListManager() {
-  const { banks, addBank, updateBank, deleteBank } = useCashFlowStore()
+  const {
+    banks,
+    addBank,
+    updateBank,
+    deleteBank,
+    companies,
+    selectedCompanyId,
+  } = useCashFlowStore()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
 
@@ -37,6 +44,7 @@ export function BankListManager() {
     account_number: '',
     account_digit: '',
     type: 'bank',
+    company_id: selectedCompanyId || undefined,
   })
 
   const resetForm = () => {
@@ -47,6 +55,7 @@ export function BankListManager() {
       account_number: '',
       account_digit: '',
       type: 'bank',
+      company_id: selectedCompanyId || undefined,
     })
     setEditingId(null)
     setIsAdding(false)
@@ -117,6 +126,31 @@ export function BankListManager() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Empresa</Label>
+              <Select
+                value={formData.company_id || 'none'}
+                onValueChange={(val) =>
+                  setFormData({
+                    ...formData,
+                    company_id: val === 'none' ? undefined : val,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a empresa..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem vínculo</SelectItem>
+                  {companies.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label>Tipo de Conta</Label>
               <Select
@@ -224,6 +258,7 @@ export function BankListManager() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Empresa</TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Instituição</TableHead>
@@ -234,65 +269,72 @@ export function BankListManager() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {banks.map((bank) => (
-              <TableRow
-                key={bank.id}
-                className={cn(!bank.active && 'opacity-50')}
-              >
-                <TableCell className="font-medium">{bank.name}</TableCell>
-                <TableCell>
-                  {bank.type === 'cash' ? (
-                    <Badge
-                      variant="outline"
-                      className="text-emerald-600 bg-emerald-50 border-emerald-200"
-                    >
-                      Caixa
+            {banks.map((bank) => {
+              const companyName =
+                companies.find((c) => c.id === bank.company_id)?.name || '-'
+              return (
+                <TableRow
+                  key={bank.id}
+                  className={cn(!bank.active && 'opacity-50')}
+                >
+                  <TableCell className="text-xs text-muted-foreground">
+                    {companyName}
+                  </TableCell>
+                  <TableCell className="font-medium">{bank.name}</TableCell>
+                  <TableCell>
+                    {bank.type === 'cash' ? (
+                      <Badge
+                        variant="outline"
+                        className="text-emerald-600 bg-emerald-50 border-emerald-200"
+                      >
+                        Caixa
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-blue-600 bg-blue-50 border-blue-200"
+                      >
+                        Banco
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>{bank.institution}</TableCell>
+                  <TableCell>{bank.agency || '-'}</TableCell>
+                  <TableCell>
+                    {bank.account_number}
+                    {bank.account_digit ? `-${bank.account_digit}` : ''}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={bank.active ? 'default' : 'secondary'}>
+                      {bank.active ? 'Ativo' : 'Inativo'}
                     </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="text-blue-600 bg-blue-50 border-blue-200"
-                    >
-                      Banco
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell>{bank.institution}</TableCell>
-                <TableCell>{bank.agency || '-'}</TableCell>
-                <TableCell>
-                  {bank.account_number}
-                  {bank.account_digit ? `-${bank.account_digit}` : ''}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={bank.active ? 'default' : 'secondary'}>
-                    {bank.active ? 'Ativo' : 'Inativo'}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => handleEdit(bank)}
-                      disabled={!bank.active}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    {bank.active && (
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive/90"
-                        onClick={() => handleDelete(bank.id)}
+                        className="h-8 w-8"
+                        onClick={() => handleEdit(bank)}
+                        disabled={!bank.active}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Edit2 className="h-4 w-4" />
                       </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                      {bank.active && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive/90"
+                          onClick={() => handleDelete(bank.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       </div>
