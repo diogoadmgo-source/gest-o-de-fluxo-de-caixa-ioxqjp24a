@@ -29,6 +29,7 @@ import {
   Eye,
   CheckCircle2,
   AlertCircle,
+  Briefcase,
 } from 'lucide-react'
 import {
   Dialog,
@@ -65,6 +66,9 @@ export default function Receivables() {
   const { receivables, updateReceivable, deleteReceivable, importData } =
     useCashFlowStore()
   const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'Aberto' | 'Liquidado'
+  >('all')
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [editingItem, setEditingItem] = useState<Receivable | null>(null)
@@ -74,15 +78,19 @@ export default function Receivables() {
   // Enhanced Filtering
   const filteredData = receivables.filter((t) => {
     const term = searchTerm.toLowerCase()
-    return (
+    const matchesTerm =
       t.customer.toLowerCase().includes(term) ||
       t.invoice_number.toLowerCase().includes(term) ||
       t.order_number.toLowerCase().includes(term) ||
       t.company.toLowerCase().includes(term)
-    )
+
+    const matchesStatus =
+      statusFilter === 'all' || t.title_status === statusFilter
+
+    return matchesTerm && matchesStatus
   })
 
-  // Calculations for Mini-Dashboard
+  // Calculations for Dashboard
   const openReceivables = receivables.filter((r) => r.title_status === 'Aberto')
   const liquidatedReceivables = receivables.filter(
     (r) => r.title_status === 'Liquidado',
@@ -101,6 +109,7 @@ export default function Receivables() {
 
   const openStats = sumValues(openReceivables)
   const liquidatedStats = sumValues(liquidatedReceivables)
+  const totalStats = sumValues(receivables)
 
   const handleImport = () => {
     setIsImporting(true)
@@ -202,19 +211,53 @@ export default function Receivables() {
       <FinancialStats
         stats={[
           {
+            label: 'Total Geral',
+            ...totalStats,
+            color: 'primary',
+            icon: Briefcase,
+            onClick: () => {
+              setStatusFilter('all')
+              toast.info('Exibindo todos os títulos.')
+            },
+          },
+          {
             label: 'Total em Aberto',
             ...openStats,
-            color: 'warning',
+            color: 'destructive',
             icon: AlertCircle,
+            onClick: () => {
+              setStatusFilter('Aberto')
+              toast.info('Filtrando por títulos em aberto.')
+            },
           },
           {
             label: 'Total Liquidado',
             ...liquidatedStats,
             color: 'success',
             icon: CheckCircle2,
+            onClick: () => {
+              setStatusFilter('Liquidado')
+              toast.info('Filtrando por títulos liquidados.')
+            },
           },
         ]}
       />
+
+      {statusFilter !== 'all' && (
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="px-3 py-1">
+            Filtro Ativo: {statusFilter}
+          </Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setStatusFilter('all')}
+            className="text-xs h-6"
+          >
+            Limpar Filtro
+          </Button>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -261,82 +304,90 @@ export default function Receivables() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredData.map((item) => (
-                  <TableRow key={item.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium text-xs">
-                      {item.company}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {item.invoice_number}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          item.title_status === 'Liquidado'
-                            ? 'default'
-                            : 'secondary'
-                        }
-                        className={
-                          item.title_status === 'Liquidado'
-                            ? 'bg-success hover:bg-success/80 text-[10px]'
-                            : 'text-[10px]'
-                        }
-                      >
-                        {item.title_status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell
-                      className="max-w-[200px] truncate text-xs"
-                      title={item.customer}
-                    >
-                      {item.customer}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {item.due_date
-                        ? format(parseISO(item.due_date), 'dd/MM/yyyy')
-                        : '-'}
-                    </TableCell>
-                    <TableCell className="text-right text-xs">
-                      {formatCurrency(item.principal_value)}
-                    </TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">
-                      {formatCurrency(item.fine)}
-                    </TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">
-                      {formatCurrency(item.interest)}
-                    </TableCell>
-                    <TableCell className="text-right font-bold text-xs">
-                      {formatCurrency(item.updated_value)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-6 w-6 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => setViewingItem(item)}
-                          >
-                            <Eye className="mr-2 h-4 w-4" /> Ver detalhes
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => setEditingItem(item)}
-                          >
-                            <Edit className="mr-2 h-4 w-4" /> Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => setDeletingId(item.id)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" /> Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                {filteredData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-8">
+                      Nenhum título encontrado.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredData.map((item) => (
+                    <TableRow key={item.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium text-xs">
+                        {item.company}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {item.invoice_number}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            item.title_status === 'Liquidado'
+                              ? 'default'
+                              : 'secondary'
+                          }
+                          className={
+                            item.title_status === 'Liquidado'
+                              ? 'bg-success hover:bg-success/80 text-[10px]'
+                              : 'text-[10px]'
+                          }
+                        >
+                          {item.title_status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell
+                        className="max-w-[200px] truncate text-xs"
+                        title={item.customer}
+                      >
+                        {item.customer}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {item.due_date
+                          ? format(parseISO(item.due_date), 'dd/MM/yyyy')
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="text-right text-xs">
+                        {formatCurrency(item.principal_value)}
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {formatCurrency(item.fine)}
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {formatCurrency(item.interest)}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-xs">
+                        {formatCurrency(item.updated_value)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-6 w-6 p-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => setViewingItem(item)}
+                            >
+                              <Eye className="mr-2 h-4 w-4" /> Ver detalhes
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setEditingItem(item)}
+                            >
+                              <Edit className="mr-2 h-4 w-4" /> Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => setDeletingId(item.id)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>

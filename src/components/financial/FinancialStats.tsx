@@ -1,11 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  ArrowUpCircle,
-  ArrowDownCircle,
-  AlertCircle,
-  CheckCircle2,
-  DollarSign,
-} from 'lucide-react'
+import { DollarSign } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface StatItem {
@@ -16,6 +10,7 @@ interface StatItem {
   total: number
   color: 'default' | 'success' | 'destructive' | 'warning' | 'primary'
   icon?: React.ElementType
+  onClick?: () => void
 }
 
 interface FinancialStatsProps {
@@ -27,11 +22,18 @@ export function FinancialStats({ stats }: FinancialStatsProps) {
     val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div
+      className={cn(
+        'grid gap-4',
+        stats.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2',
+      )}
+    >
       {stats.map((stat, index) => (
         <Card
           key={index}
-          className={cn('border-l-4', {
+          onClick={stat.onClick}
+          className={cn('border-l-4 transition-all', {
+            'cursor-pointer hover:shadow-md': !!stat.onClick,
             'border-l-success': stat.color === 'success',
             'border-l-destructive': stat.color === 'destructive',
             'border-l-warning': stat.color === 'warning',
@@ -54,7 +56,13 @@ export function FinancialStats({ stats }: FinancialStatsProps) {
             )}
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold mb-2">
+            <div
+              className={cn('text-2xl font-bold mb-2', {
+                'text-success': stat.color === 'success',
+                'text-destructive': stat.color === 'destructive',
+                'text-primary': stat.color === 'primary',
+              })}
+            >
               {formatCurrency(stat.total)}
             </div>
             <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground border-t pt-2">

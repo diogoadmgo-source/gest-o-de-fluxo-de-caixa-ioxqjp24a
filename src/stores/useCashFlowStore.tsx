@@ -10,7 +10,7 @@ import {
   Receivable,
   Transaction,
   BankBalance,
-  DailyBalance,
+  Bank,
 } from '@/lib/types'
 import {
   generateCashFlowData,
@@ -18,20 +18,14 @@ import {
   mockTransactions,
   mockBankBalances,
 } from '@/lib/mock-data'
-import {
-  addDays,
-  format,
-  isSameDay,
-  parseISO,
-  isAfter,
-  startOfDay,
-} from 'date-fns'
+import { isSameDay, parseISO } from 'date-fns'
 
 interface CashFlowContextType {
   receivables: Receivable[]
   payables: Transaction[]
   bankBalances: BankBalance[]
   cashFlowEntries: CashFlowEntry[]
+  banks: Bank[]
   addReceivable: (receivable: Receivable) => void
   updateReceivable: (receivable: Receivable) => void
   deleteReceivable: (id: string) => void
@@ -39,6 +33,9 @@ interface CashFlowContextType {
   updatePayable: (payable: Transaction) => void
   deletePayable: (id: string) => void
   updateBankBalances: (balances: BankBalance[]) => void
+  addBank: (bank: Bank) => void
+  updateBank: (bank: Bank) => void
+  deleteBank: (id: string) => void
   importData: (type: 'receivable' | 'payable', data: any[]) => void
   recalculateCashFlow: () => void
 }
@@ -46,6 +43,30 @@ interface CashFlowContextType {
 const CashFlowContext = createContext<CashFlowContextType | undefined>(
   undefined,
 )
+
+const initialBanks: Bank[] = [
+  {
+    id: '1',
+    name: 'Itaú Principal',
+    institution: 'Banco Itaú',
+    account_number: '1234-5',
+    active: true,
+  },
+  {
+    id: '2',
+    name: 'Santander Movimento',
+    institution: 'Banco Santander',
+    account_number: '9876-2',
+    active: true,
+  },
+  {
+    id: '3',
+    name: 'Caixa Reserva',
+    institution: 'Caixa Econômica',
+    account_number: '4567-8',
+    active: true,
+  },
+]
 
 export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const [receivables, setReceivables] = useState<Receivable[]>(mockReceivables)
@@ -55,6 +76,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const [bankBalances, setBankBalances] =
     useState<BankBalance[]>(mockBankBalances)
   const [cashFlowEntries, setCashFlowEntries] = useState<CashFlowEntry[]>([])
+  const [banks, setBanks] = useState<Bank[]>(initialBanks)
 
   // Initialize Cash Flow Data (90 days)
   useEffect(() => {
@@ -82,11 +104,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       // 1. Calculate Daily Totals from Receivables and Payables
       const dayReceivables = receivables
         .filter((r) => isSameDay(parseISO(r.due_date), entryDate))
-        .reduce((sum, r) => sum + r.updated_value, 0) // Updated Value used (Principal + Fine + Interest)
+        .reduce((sum, r) => sum + r.updated_value, 0)
 
       const dayPayables = payables
         .filter((p) => isSameDay(parseISO(p.due_date), entryDate))
-        .reduce((sum, p) => sum + p.amount, 0) // Amount is Updated Value
+        .reduce((sum, p) => sum + p.amount, 0)
 
       // 2. Check for Manual Balance Override (Integration of Balances)
       const dayBalances = bankBalances.filter((b) =>
@@ -165,9 +187,27 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     const datesToUpdate = new Set(newBalances.map((b) => b.date))
 
     setBankBalances((prev) => {
+      // Remove all balances for the dates being updated to avoid duplicates
+      // But preserve balances for other dates
       const filtered = prev.filter((b) => !datesToUpdate.has(b.date))
       return [...filtered, ...newBalances]
     })
+  }
+
+  // Bank Management Actions
+  const addBank = (bank: Bank) => {
+    setBanks((prev) => [...prev, bank])
+  }
+
+  const updateBank = (updated: Bank) => {
+    setBanks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))
+  }
+
+  const deleteBank = (id: string) => {
+    // Logical deletion (inactivation)
+    setBanks((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, active: false } : b)),
+    )
   }
 
   const importData = (type: 'receivable' | 'payable', data: any[]) => {
@@ -220,6 +260,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         payables,
         bankBalances,
         cashFlowEntries,
+        banks,
         addReceivable,
         updateReceivable,
         deleteReceivable,
@@ -227,6 +268,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         updatePayable,
         deletePayable,
         updateBankBalances,
+        addBank,
+        updateBank,
+        deleteBank,
         importData,
         recalculateCashFlow,
       }}

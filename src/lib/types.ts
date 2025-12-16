@@ -82,10 +82,19 @@ export interface CashFlowEntry {
   is_weekend?: boolean
 }
 
+export interface Bank {
+  id: string
+  name: string // Display Name (e.g. "Itaú Principal")
+  institution: string // Bank Name (e.g. "Banco Itaú")
+  account_number: string
+  active: boolean
+}
+
 export interface BankBalance {
   id: string
   date: string
-  bank_name: string
+  bank_name: string // This should ideally be bank_id, but keeping for compatibility
+  bank_id?: string // Optional link to Bank entity
   account_number: string
   balance: number
   status: 'draft' | 'saved' | 'locked'

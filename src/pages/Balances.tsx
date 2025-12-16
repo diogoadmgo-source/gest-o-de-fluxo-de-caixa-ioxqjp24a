@@ -7,24 +7,25 @@ import {
   CardDescription,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { BankBalanceManager } from '@/components/cash-flow/BankBalanceManager'
 import { HistoricalBalanceList } from '@/components/cash-flow/HistoricalBalanceList'
 import { Calendar } from '@/components/ui/calendar'
 import { ptBR } from 'date-fns/locale'
-import { format, isSameDay, parseISO } from 'date-fns'
+import { isSameDay, parseISO } from 'date-fns'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { mockHistoricalBalances } from '@/lib/mock-data'
 import { toast } from 'sonner'
 import { BankBalance } from '@/lib/types'
+import { Settings2 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { BankListManager } from '@/components/cash-flow/BankListManager'
 
 export default function Balances() {
   const { bankBalances, updateBankBalances } = useCashFlowStore()
@@ -56,6 +57,25 @@ export default function Balances() {
             de caixa.
           </p>
         </div>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline">
+              <Settings2 className="mr-2 h-4 w-4" />
+              Gerenciar Bancos
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Gerenciar Contas Bancárias</DialogTitle>
+              <DialogDescription>
+                Adicione, edite ou inative contas bancárias do sistema.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <BankListManager />
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

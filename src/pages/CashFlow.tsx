@@ -10,14 +10,21 @@ import {
   CardDescription,
 } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
+import {
+  format,
+  addDays,
+  isWithinInterval,
+  parseISO,
+  startOfDay,
+  endOfDay,
+} from 'date-fns'
 import {
   RefreshCcw,
   Download,
   TrendingUp,
   ArrowDown,
   ArrowUp,
-  DollarSign,
+  CalendarIcon,
 } from 'lucide-react'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import {
@@ -32,14 +39,29 @@ import {
   YAxis,
   CartesianGrid,
   ReferenceLine,
-  ResponsiveContainer,
 } from 'recharts'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Calendar } from '@/components/ui/calendar'
+import { cn } from '@/lib/utils'
 import { ptBR } from 'date-fns/locale'
 
 export default function CashFlow() {
   const { cashFlowEntries, recalculateCashFlow } = useCashFlowStore()
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [loading, setLoading] = useState(false)
+
+  // Default to today + 30 days
+  const [dateRange, setDateRange] = useState<{
+    from: Date
+    to: Date
+  }>({
+    from: new Date(),
+    to: addDays(new Date(), 30),
+  })
 
   const handleRefresh = () => {
     setLoading(true)
@@ -50,6 +72,16 @@ export default function CashFlow() {
     }, 800)
   }
 
+  // Filter Data based on Date Range
+  const filteredEntries = cashFlowEntries.filter((entry) => {
+    if (!dateRange.from || !dateRange.to) return true
+    const entryDate = parseISO(entry.date)
+    return isWithinInterval(entryDate, {
+      start: startOfDay(dateRange.from),
+      end: endOfDay(dateRange.to),
+    })
+  })
+
   const chartConfig = {
     balance: {
       label: 'Saldo Projetado',
@@ -57,28 +89,23 @@ export default function CashFlow() {
     },
   }
 
-  // Calculate Aggregates for Summary Cards
-  const totalReceivables = cashFlowEntries.reduce(
+  // Calculate Aggregates for Summary Cards (from filtered data or full data? Usually full period is useful for big stats, but let's stick to filtered for consistency)
+  const totalReceivables = filteredEntries.reduce(
     (acc, curr) => acc + curr.total_receivables,
     0,
   )
-  const totalPayables = cashFlowEntries.reduce(
+  const totalPayables = filteredEntries.reduce(
     (acc, curr) => acc + curr.total_payables,
     0,
   )
   const lastBalance =
-    cashFlowEntries[cashFlowEntries.length - 1]?.accumulated_balance || 0
+    filteredEntries[filteredEntries.length - 1]?.accumulated_balance || 0
 
-  // Prepare Data for Projection Chart (7, 15, 21, 30, 60, 90 days)
-  const projectionPoints = [7, 15, 21, 30, 60, 90]
-  const chartData = projectionPoints.map((days) => {
-    const entry =
-      cashFlowEntries[days - 1] || cashFlowEntries[cashFlowEntries.length - 1]
-    return {
-      day: `${days}d`,
-      balance: entry?.accumulated_balance || 0,
-    }
-  })
+  // Prepare Data for Projection Chart (from filtered data)
+  const chartData = filteredEntries.map((entry) => ({
+    day: format(parseISO(entry.date), 'dd/MM'),
+    balance: entry.accumulated_balance,
+  }))
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
@@ -102,7 +129,49 @@ export default function CashFlow() {
         </div>
       </div>
 
-      <CashFlowFilters />
+      <div className="flex flex-col md:flex-row gap-4 justify-between items-end">
+        <CashFlowFilters />
+
+        {/* Date Range Picker */}
+        <div className="flex gap-2 items-center">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant={'outline'}
+                className={cn(
+                  'w-[240px] justify-start text-left font-normal',
+                  !dateRange && 'text-muted-foreground',
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dateRange?.from ? (
+                  dateRange.to ? (
+                    <>
+                      {format(dateRange.from, 'dd/MM/yyyy')} -{' '}
+                      {format(dateRange.to, 'dd/MM/yyyy')}
+                    </>
+                  ) : (
+                    format(dateRange.from, 'dd/MM/yyyy')
+                  )
+                ) : (
+                  <span>Selecione o período</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                initialFocus
+                mode="range"
+                defaultMonth={dateRange?.from}
+                selected={dateRange}
+                onSelect={(range: any) => range && setDateRange(range)}
+                numberOfMonths={2}
+                locale={ptBR}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
 
       {/* Categorized Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -110,7 +179,7 @@ export default function CashFlow() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <ArrowUp className="h-4 w-4 text-success" />
-              Contas a Receber (90d)
+              Contas a Receber (Período)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -126,7 +195,7 @@ export default function CashFlow() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <ArrowDown className="h-4 w-4 text-destructive" />
-              Contas a Pagar (90d)
+              Contas a Pagar (Período)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -142,7 +211,7 @@ export default function CashFlow() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-primary" />
-              Projeção de Saldo (90d)
+              Saldo Projetado (Final)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -159,9 +228,9 @@ export default function CashFlow() {
       {/* Projection Chart */}
       <Card>
         <CardHeader>
-          <CardTitle>Projeção de Caixa (Curto a Longo Prazo)</CardTitle>
+          <CardTitle>Projeção de Caixa</CardTitle>
           <CardDescription>
-            Evolução do saldo acumulado para os próximos períodos.
+            Evolução do saldo acumulado no período selecionado.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -178,12 +247,24 @@ export default function CashFlow() {
                 />
                 <XAxis dataKey="day" tickLine={false} axisLine={false} />
                 <YAxis
-                  tickFormatter={(value) => `R$${(value / 1000).toFixed(0)}k`}
+                  tickFormatter={(value) =>
+                    value.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+                  }
                   tickLine={false}
                   axisLine={false}
                   fontSize={12}
                 />
-                <ChartTooltip content={<ChartTooltipContent />} />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value: any) =>
+                        Number(value).toLocaleString('pt-BR', {
+                          maximumFractionDigits: 0,
+                        })
+                      }
+                    />
+                  }
+                />
                 <ReferenceLine
                   y={0}
                   stroke="hsl(var(--muted-foreground))"
@@ -193,7 +274,7 @@ export default function CashFlow() {
                   dataKey="balance"
                   fill="hsl(var(--primary))"
                   radius={[4, 4, 0, 0]}
-                  barSize={60}
+                  barSize={40}
                 />
               </BarChart>
             </ChartContainer>
@@ -203,7 +284,7 @@ export default function CashFlow() {
 
       {/* Main Grid */}
       <CashFlowGrid
-        data={cashFlowEntries}
+        data={filteredEntries}
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
       />
