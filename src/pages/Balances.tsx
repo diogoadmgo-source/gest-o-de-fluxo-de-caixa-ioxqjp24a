@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { BankBalanceManager } from '@/components/cash-flow/BankBalanceManager'
@@ -36,14 +36,10 @@ export default function Balances() {
   const { bankBalances, updateBankBalances, resetBalanceHistory, banks } =
     useCashFlowStore()
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
-  const [currentBalances, setCurrentBalances] = useState<BankBalance[]>([])
 
-  useEffect(() => {
-    // Filter balances for the selected date
-    const filtered = bankBalances.filter((b) =>
-      isSameDay(parseISO(b.date), selectedDate),
-    )
-    setCurrentBalances(filtered)
+  // Memoize currentBalances to ensure it updates immediately when bankBalances changes in the store
+  const currentBalances = useMemo(() => {
+    return bankBalances.filter((b) => isSameDay(parseISO(b.date), selectedDate))
   }, [selectedDate, bankBalances])
 
   // Derive history from bankBalances state

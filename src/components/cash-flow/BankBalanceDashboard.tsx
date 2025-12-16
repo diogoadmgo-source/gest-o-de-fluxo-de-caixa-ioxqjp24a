@@ -48,8 +48,9 @@ export function BankBalanceDashboard({
       {activeBanks.map((bank) => {
         const bankBalance = balances.find(
           (b) =>
-            b.bank_name === bank.name &&
-            b.account_number === bank.account_number,
+            b.bank_id === bank.id ||
+            (b.bank_name === bank.name &&
+              b.account_number === bank.account_number),
         )
         const currentAmount = bankBalance ? bankBalance.balance : 0
         const hasBalance = !!bankBalance

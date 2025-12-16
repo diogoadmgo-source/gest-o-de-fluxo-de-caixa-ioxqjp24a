@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Card,
   CardContent,
@@ -52,6 +52,13 @@ export function BankBalanceManager({
   const [selectedBankId, setSelectedBankId] = useState('')
   const [amount, setAmount] = useState('')
 
+  // Sync state with props when initialBalances changes (e.g. date change or store update)
+  useEffect(() => {
+    setBalances(initialBalances)
+    // Also reset form when date changes to avoid confusion
+    resetForm()
+  }, [initialBalances])
+
   const totalBalance = balances.reduce((acc, curr) => acc + curr.balance, 0)
   const dateStr = format(selectedDate, 'yyyy-MM-dd')
 
@@ -62,12 +69,18 @@ export function BankBalanceManager({
   }
 
   const handleEdit = (balance: BankBalance) => {
-    // Find the bank ID based on name/account if possible, or just set name for display
-    const bank = banks.find(
-      (b) =>
-        b.name === balance.bank_name &&
-        b.account_number === balance.account_number,
-    )
+    // Try to find by ID first if available (though type might not have it strictly linked, we use bank_name/account logic)
+    // Ideally we should store bank_id in BankBalance
+    let bank = banks.find((b) => b.id === balance.bank_id)
+
+    if (!bank) {
+      bank = banks.find(
+        (b) =>
+          b.name === balance.bank_name &&
+          b.account_number === balance.account_number,
+      )
+    }
+
     if (bank) setSelectedBankId(bank.id)
     setAmount(balance.balance.toString())
     setEditingId(balance.id)
@@ -96,6 +109,7 @@ export function BankBalanceManager({
             ? {
                 ...b,
                 bank_name: bank.name,
+                bank_id: bank.id,
                 account_number: bank.account_number,
                 balance: val,
               }
@@ -104,17 +118,42 @@ export function BankBalanceManager({
       )
       toast.success('Saldo atualizado na lista.')
     } else {
-      // Create new
-      const newEntry: BankBalance = {
-        id: Math.random().toString(36).substr(2, 9),
-        date: dateStr,
-        bank_name: bank.name,
-        account_number: bank.account_number,
-        balance: val,
-        status: 'draft',
+      // Check if bank already exists in the list to avoid duplicates
+      const existingIndex = balances.findIndex(
+        (b) =>
+          b.bank_id === bank.id ||
+          (b.bank_name === bank.name &&
+            b.account_number === bank.account_number),
+      )
+
+      if (existingIndex >= 0) {
+        // Update existing instead of creating duplicate
+        setBalances((prev) => {
+          const newArr = [...prev]
+          newArr[existingIndex] = {
+            ...newArr[existingIndex],
+            balance: val,
+            bank_name: bank.name,
+            bank_id: bank.id,
+            account_number: bank.account_number,
+          }
+          return newArr
+        })
+        toast.success('Saldo do banco atualizado.')
+      } else {
+        // Create new
+        const newEntry: BankBalance = {
+          id: Math.random().toString(36).substr(2, 9),
+          date: dateStr,
+          bank_name: bank.name,
+          bank_id: bank.id,
+          account_number: bank.account_number,
+          balance: val,
+          status: 'draft',
+        }
+        setBalances((prev) => [...prev, newEntry])
+        toast.success('Saldo adicionado à lista.')
       }
-      setBalances((prev) => [...prev, newEntry])
-      toast.success('Saldo adicionado à lista.')
     }
 
     resetForm()
@@ -125,7 +164,13 @@ export function BankBalanceManager({
   }
 
   const handleSaveAll = () => {
-    onSave(balances)
+    // Ensure all balances have the correct date (in case they were carried over somehow, though useEffect prevents this)
+    const normalizedBalances = balances.map((b) => ({
+      ...b,
+      date: dateStr,
+      status: 'saved' as const,
+    }))
+    onSave(normalizedBalances)
   }
 
   return (
