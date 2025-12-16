@@ -45,7 +45,7 @@ const getPageTitle = (pathname: string) => {
     case '/ajustes':
       return 'Ajustes Manuais'
     default:
-      return 'HospFlow'
+      return 'HospCash'
   }
 }
 

@@ -10,7 +10,6 @@ import {
   Settings,
   Search,
   Menu,
-  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -39,12 +38,14 @@ export function Sidebar() {
 
   const NavContent = () => (
     <div className="flex flex-col h-full py-4">
-      <div className="px-6 mb-8 flex items-center gap-2">
-        <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl">
-          H
-        </div>
+      <div className="px-6 mb-8 mt-2 flex items-center gap-3">
+        <img
+          src="https://raw.githubusercontent.com/temos-ai/skip-assets/refs/heads/main/12247/e7a9b6c0-cd6a-4933-bf9c-297c554f6645.jpeg"
+          alt="Hospcom Logo"
+          className="h-10 w-auto object-contain"
+        />
         <span className="font-bold text-xl tracking-tight text-primary">
-          HospFlow
+          HospCash
         </span>
       </div>
       <nav className="flex-1 space-y-1 px-3">
