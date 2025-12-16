@@ -11,6 +11,7 @@ import {
   Transaction,
   BankBalance,
   Bank,
+  ImportHistoryEntry,
 } from '@/lib/types'
 import {
   generateCashFlowData,
@@ -26,6 +27,7 @@ interface CashFlowContextType {
   bankBalances: BankBalance[]
   cashFlowEntries: CashFlowEntry[]
   banks: Bank[]
+  importHistory: ImportHistoryEntry[]
   addReceivable: (receivable: Receivable) => void
   updateReceivable: (receivable: Receivable) => void
   deleteReceivable: (id: string) => void
@@ -33,10 +35,16 @@ interface CashFlowContextType {
   updatePayable: (payable: Transaction) => void
   deletePayable: (id: string) => void
   updateBankBalances: (balances: BankBalance[]) => void
+  resetBalanceHistory: () => void
   addBank: (bank: Bank) => void
   updateBank: (bank: Bank) => void
   deleteBank: (id: string) => void
-  importData: (type: 'receivable' | 'payable', data: any[]) => void
+  importData: (
+    type: 'receivable' | 'payable',
+    data: any[],
+    filename?: string,
+  ) => void
+  clearImportHistory: () => void
   recalculateCashFlow: () => void
 }
 
@@ -77,6 +85,17 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     useState<BankBalance[]>(mockBankBalances)
   const [cashFlowEntries, setCashFlowEntries] = useState<CashFlowEntry[]>([])
   const [banks, setBanks] = useState<Bank[]>(initialBanks)
+  const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>([
+    {
+      id: '1',
+      date: new Date().toISOString(),
+      filename: 'importacao_inicial.csv',
+      type: 'receivable',
+      status: 'success',
+      records_count: 20,
+      user_name: 'Sistema',
+    },
+  ])
 
   // Initialize Cash Flow Data (90 days)
   useEffect(() => {
@@ -103,11 +122,20 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       // 1. Calculate Daily Totals from Receivables and Payables
       const dayReceivables = receivables
-        .filter((r) => isSameDay(parseISO(r.due_date), entryDate))
+        .filter(
+          (r) =>
+            isSameDay(parseISO(r.due_date), entryDate) &&
+            r.title_status === 'Aberto',
+        )
         .reduce((sum, r) => sum + r.updated_value, 0)
 
       const dayPayables = payables
-        .filter((p) => isSameDay(parseISO(p.due_date), entryDate))
+        .filter(
+          (p) =>
+            isSameDay(parseISO(p.due_date), entryDate) &&
+            p.status !== 'paid' &&
+            p.status !== 'cancelled',
+        )
         .reduce((sum, p) => sum + p.amount, 0)
 
       // 2. Check for Manual Balance Override (Integration of Balances)
@@ -194,6 +222,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     })
   }
 
+  const resetBalanceHistory = () => {
+    setBankBalances([])
+  }
+
   // Bank Management Actions
   const addBank = (bank: Bank) => {
     setBanks((prev) => [...prev, bank])
@@ -210,7 +242,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     )
   }
 
-  const importData = (type: 'receivable' | 'payable', data: any[]) => {
+  const importData = (
+    type: 'receivable' | 'payable',
+    data: any[],
+    filename: string = 'import.csv',
+  ) => {
     if (type === 'receivable') {
       const newReceivables = data.map((d, i) => {
         const principal = Number(d.principal_value) || Number(d.amount) || 0
@@ -228,6 +264,19 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         }
       })
       setReceivables((prev) => [...prev, ...newReceivables])
+
+      setImportHistory((prev) => [
+        {
+          id: Date.now().toString(),
+          date: new Date().toISOString(),
+          filename,
+          type: 'receivable',
+          status: 'success',
+          records_count: newReceivables.length,
+          user_name: 'Usuário Atual',
+        },
+        ...prev,
+      ])
     } else {
       const newPayables = data.map((d, i) => {
         const principal = Number(d.principal_value) || Number(d.amount) || 0
@@ -246,7 +295,24 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         }
       })
       setPayables((prev) => [...prev, ...newPayables])
+
+      setImportHistory((prev) => [
+        {
+          id: Date.now().toString(),
+          date: new Date().toISOString(),
+          filename,
+          type: 'payable',
+          status: 'success',
+          records_count: newPayables.length,
+          user_name: 'Usuário Atual',
+        },
+        ...prev,
+      ])
     }
+  }
+
+  const clearImportHistory = () => {
+    setImportHistory([])
   }
 
   const recalculateCashFlow = () => {
@@ -261,6 +327,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         bankBalances,
         cashFlowEntries,
         banks,
+        importHistory,
         addReceivable,
         updateReceivable,
         deleteReceivable,
@@ -268,10 +335,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         updatePayable,
         deletePayable,
         updateBankBalances,
+        resetBalanceHistory,
         addBank,
         updateBank,
         deleteBank,
         importData,
+        clearImportHistory,
         recalculateCashFlow,
       }}
     >

@@ -9,14 +9,25 @@ import { Download, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { DailyBalance } from '@/lib/types'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export default function Dashboard() {
   const { cashFlowEntries, recalculateCashFlow } = useCashFlowStore()
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<DailyBalance[]>([])
+  const [timeframe, setTimeframe] = useState('30')
 
   useEffect(() => {
     // Map cash flow entries to daily balance format expected by dashboard components
+    const days = parseInt(timeframe) || 30
+
+    // Ensure we have enough data (generating more if needed would be better but simple slicing is ok for now as long as we have 90 generated)
     const mappedData = cashFlowEntries
       .map((entry) => ({
         date: entry.date,
@@ -26,9 +37,9 @@ export default function Dashboard() {
         total_outflows: entry.total_payables,
         net_flow: entry.daily_balance,
       }))
-      .slice(0, 37) // Just first 37 days for display
+      .slice(0, days) // Slice based on selected timeframe
     setData(mappedData)
-  }, [cashFlowEntries])
+  }, [cashFlowEntries, timeframe])
 
   const handleRefresh = () => {
     setLoading(true)
@@ -53,21 +64,34 @@ export default function Dashboard() {
             Acompanhe os principais indicadores financeiros da sua empresa.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <div className="w-[180px]">
+            <Select value={timeframe} onValueChange={setTimeframe}>
+              <SelectTrigger>
+                <SelectValue placeholder="Período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">7 dias</SelectItem>
+                <SelectItem value="15">15 dias</SelectItem>
+                <SelectItem value="21">21 dias</SelectItem>
+                <SelectItem value="30">30 dias</SelectItem>
+                <SelectItem value="60">60 dias</SelectItem>
+                <SelectItem value="90">90 dias</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Button
             variant="outline"
-            size="sm"
+            size="icon"
             onClick={handleRefresh}
             disabled={loading}
           >
             <RefreshCcw
-              className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+              className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
             />
-            Atualizar
           </Button>
-          <Button size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Exportar
+          <Button size="icon">
+            <Download className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -80,23 +104,19 @@ export default function Dashboard() {
           trendData={trendData}
         />
         <MetricCard
-          title="Entradas (7d)"
-          value={data
-            .slice(0, 7)
-            .reduce((acc, curr) => acc + curr.total_inflows, 0)}
+          title="Entradas (Período)"
+          value={data.reduce((acc, curr) => acc + curr.total_inflows, 0)}
           previousValue={12000}
           trendData={trendData}
         />
         <MetricCard
-          title="Saídas (7d)"
-          value={data
-            .slice(0, 7)
-            .reduce((acc, curr) => acc + curr.total_outflows, 0)}
+          title="Saídas (Período)"
+          value={data.reduce((acc, curr) => acc + curr.total_outflows, 0)}
           previousValue={10000}
           trendData={trendData}
         />
         <MetricCard
-          title="Saldo Projetado (30d)"
+          title="Saldo Projetado (Final)"
           value={data[data.length - 1]?.closing_balance || 0}
           previousValue={currentBalance}
           trendData={data.slice(-7).map((d) => ({ value: d.closing_balance }))}
@@ -104,7 +124,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <ProjectionChart data={data} />
+        <ProjectionChart data={data} timeframe={parseInt(timeframe)} />
         <AlertList alerts={mockAlerts} />
       </div>
 

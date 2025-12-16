@@ -135,3 +135,13 @@ export interface Log {
   result: 'success' | 'failure'
   details?: string
 }
+
+export interface ImportHistoryEntry {
+  id: string
+  date: string
+  filename: string
+  type: 'receivable' | 'payable' | 'bank_statement'
+  status: 'success' | 'error'
+  records_count: number
+  user_name: string
+}

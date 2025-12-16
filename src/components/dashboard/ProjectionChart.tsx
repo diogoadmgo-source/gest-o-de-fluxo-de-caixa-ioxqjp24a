@@ -11,12 +11,12 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart'
 import {
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   ReferenceLine,
+  BarChart,
+  Bar,
 } from 'recharts'
 import { DailyBalance } from '@/lib/types'
 import { format, parseISO } from 'date-fns'
@@ -24,6 +24,7 @@ import { ptBR } from 'date-fns/locale'
 
 interface ProjectionChartProps {
   data: DailyBalance[]
+  timeframe?: number
 }
 
 const chartConfig = {
@@ -33,11 +34,14 @@ const chartConfig = {
   },
 }
 
-export function ProjectionChart({ data }: ProjectionChartProps) {
+export function ProjectionChart({
+  data,
+  timeframe = 30,
+}: ProjectionChartProps) {
   return (
     <Card className="col-span-1 md:col-span-2">
       <CardHeader>
-        <CardTitle>Projeção de Fluxo de Caixa (30 dias)</CardTitle>
+        <CardTitle>Projeção de Fluxo de Caixa ({timeframe} dias)</CardTitle>
         <CardDescription>
           Acompanhamento e previsão do saldo diário
         </CardDescription>
@@ -45,7 +49,7 @@ export function ProjectionChart({ data }: ProjectionChartProps) {
       <CardContent>
         <div className="h-[300px] w-full">
           <ChartContainer config={chartConfig}>
-            <AreaChart
+            <BarChart
               data={data}
               margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
             >
@@ -54,12 +58,12 @@ export function ProjectionChart({ data }: ProjectionChartProps) {
                   <stop
                     offset="5%"
                     stopColor="hsl(var(--primary))"
-                    stopOpacity={0.3}
+                    stopOpacity={0.8}
                   />
                   <stop
                     offset="95%"
                     stopColor="hsl(var(--primary))"
-                    stopOpacity={0}
+                    stopOpacity={0.1}
                   />
                 </linearGradient>
               </defs>
@@ -92,15 +96,12 @@ export function ProjectionChart({ data }: ProjectionChartProps) {
                 stroke="hsl(var(--destructive))"
                 strokeDasharray="3 3"
               />
-              <Area
-                type="monotone"
+              <Bar
                 dataKey="closing_balance"
-                stroke="hsl(var(--primary))"
-                strokeWidth={2}
-                fillOpacity={1}
                 fill="url(#colorBalance)"
+                radius={[4, 4, 0, 0]}
               />
-            </AreaChart>
+            </BarChart>
           </ChartContainer>
         </div>
       </CardContent>

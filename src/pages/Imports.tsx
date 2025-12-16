@@ -14,6 +14,7 @@ import {
   Play,
   CheckCircle2,
   AlertCircle,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -27,10 +28,11 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
+import { Badge } from '@/components/ui/badge'
 
 export default function Imports() {
-  const { importData } = useCashFlowStore()
+  const { importData, importHistory, clearImportHistory } = useCashFlowStore()
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importType, setImportType] = useState('receivable')
@@ -63,7 +65,6 @@ export default function Imports() {
   }
 
   const validateAndSetFile = (file: File) => {
-    // Basic validation
     if (
       !file.name.endsWith('.csv') &&
       !file.name.endsWith('.xlsx') &&
@@ -78,8 +79,19 @@ export default function Imports() {
       return
     }
 
+    // Structure validation simulation based on filename for demo purposes
+    // In a real app we would parse the file header here
+    if (file.name.includes('invalid')) {
+      toast.error(
+        `Estrutura inválida para ${importType}. Colunas obrigatórias ausentes.`,
+      )
+      return
+    }
+
+    // Simulate validation error if user tries to upload "wrong" type based on some logic (mocked)
+    // Here we just accept it as valid for now if it passes extension check
     setSelectedFile(file)
-    toast.success(`Arquivo "${file.name}" anexado com sucesso.`)
+    toast.success(`Arquivo "${file.name}" validado com sucesso.`)
   }
 
   const removeFile = () => {
@@ -96,31 +108,45 @@ export default function Imports() {
   const handleImport = () => {
     if (!selectedFile) return
 
+    // Final Validation Simulation
+    if (importType === 'receivable' && selectedFile.name.includes('pagar')) {
+      toast.error(
+        'Erro de Validação: Arquivo de contas a pagar selecionado para importação de recebíveis.',
+      )
+      return
+    }
+    if (importType === 'payable' && selectedFile.name.includes('receber')) {
+      toast.error(
+        'Erro de Validação: Arquivo de contas a receber selecionado para importação de pagáveis.',
+      )
+      return
+    }
+
     setIsProcessing(true)
     setProgress(0)
 
-    // Simulating file processing and validation
     const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval)
 
-          // Trigger the import in the store
           const mockData = [
             {
-              description: 'Importado',
+              description: 'Importado via Planilha',
               amount: 1500,
               due_date: format(new Date(), 'yyyy-MM-dd'),
+              principal_value: 1500,
             },
             {
-              description: 'Importado 2',
+              description: 'Importado via Planilha 2',
               amount: 2500,
               due_date: format(new Date(), 'yyyy-MM-dd'),
+              principal_value: 2500,
             },
           ]
 
           if (importType === 'receivable' || importType === 'payable') {
-            importData(importType as any, mockData)
+            importData(importType as any, mockData, selectedFile.name)
           }
 
           setIsProcessing(false)
@@ -130,7 +156,7 @@ export default function Imports() {
           setSelectedFile(null)
           return 100
         }
-        return prev + 10
+        return prev + 20
       })
     }, 200)
   }
@@ -170,12 +196,15 @@ export default function Imports() {
                     </SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                  <p className="font-semibold mb-1">Estrutura Obrigatória:</p>
                   {importType === 'receivable' &&
-                    'Campos obrigatórios: Documento, Cliente, Vencimento, Valor.'}
+                    'Colunas: Documento, Cliente, Vencimento, Valor Principal, Multa, Juros.'}
                   {importType === 'payable' &&
-                    'Campos obrigatórios: Documento, Fornecedor, Vencimento, Valor, Categoria.'}
-                </p>
+                    'Colunas: Documento, Fornecedor, Vencimento, Valor, Categoria, Multa, Juros.'}
+                  {importType === 'bank_statement' &&
+                    'Formato OFX padrão ou CSV com: Data, Histórico, Documento, Valor.'}
+                </div>
               </div>
 
               {!selectedFile ? (
@@ -249,7 +278,7 @@ export default function Imports() {
                       </Button>
                       <Button onClick={handleImport}>
                         <Play className="mr-2 h-4 w-4" />
-                        Validar e Importar
+                        Processar Importação
                       </Button>
                     </div>
                   )}
@@ -260,42 +289,64 @@ export default function Imports() {
         </div>
 
         <div className="lg:col-span-1 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Histórico Recente</CardTitle>
-              <CardDescription>Status das últimas importações</CardDescription>
+          <Card className="h-full flex flex-col">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div className="space-y-1">
+                <CardTitle>Histórico</CardTitle>
+                <CardDescription>Logs de importação</CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={clearImportHistory}
+                title="Limpar Histórico"
+              >
+                <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+              </Button>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 p-3 border rounded-lg"
-                  >
-                    {i === 3 ? (
-                      <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
-                    ) : (
-                      <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
-                    )}
-                    <div className="flex-1 space-y-1">
-                      <p className="text-sm font-medium">
-                        {i === 1
-                          ? 'contas_receber_mai.csv'
-                          : i === 2
-                            ? 'extrato_itau_abr.ofx'
-                            : 'pagamentos_jun.xlsx'}
-                      </p>
-                      <div className="flex justify-between items-center text-xs text-muted-foreground">
-                        <span>
-                          {i === 1 ? 'Hoje' : i === 2 ? 'Ontem' : '20/05/2024'}
-                        </span>
-                        <span>
-                          {i === 3 ? 'Erro de Validação' : 'Concluído'}
-                        </span>
+            <CardContent className="flex-1 overflow-hidden">
+              <div className="space-y-4 overflow-y-auto max-h-[500px] pr-2">
+                {importHistory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Nenhum histórico disponível.
+                  </p>
+                ) : (
+                  importHistory.map((log) => (
+                    <div
+                      key={log.id}
+                      className="flex items-start gap-3 p-3 border rounded-lg"
+                    >
+                      {log.status === 'error' ? (
+                        <AlertCircle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="h-5 w-5 text-success mt-0.5 shrink-0" />
+                      )}
+                      <div className="flex-1 space-y-1 min-w-0">
+                        <p
+                          className="text-sm font-medium truncate"
+                          title={log.filename}
+                        >
+                          {log.filename}
+                        </p>
+                        <div className="flex justify-between items-center text-xs text-muted-foreground">
+                          <span>
+                            {format(parseISO(log.date), 'dd/MM HH:mm')}
+                          </span>
+                          <Badge
+                            variant={
+                              log.status === 'success'
+                                ? 'outline'
+                                : 'destructive'
+                            }
+                            className="text-[10px] h-5 px-1.5"
+                          >
+                            {log.records_count} reg.
+                          </Badge>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>

@@ -109,7 +109,14 @@ export default function Receivables() {
 
   const openStats = sumValues(openReceivables)
   const liquidatedStats = sumValues(liquidatedReceivables)
-  const totalStats = sumValues(receivables)
+
+  // Total Geral = Aberto + Liquidado (as requested)
+  const totalStats = {
+    principal: openStats.principal + liquidatedStats.principal,
+    fine: openStats.fine + liquidatedStats.fine,
+    interest: openStats.interest + liquidatedStats.interest,
+    total: openStats.total + liquidatedStats.total,
+  }
 
   const handleImport = () => {
     setIsImporting(true)
@@ -221,9 +228,9 @@ export default function Receivables() {
             },
           },
           {
-            label: 'Total em Aberto',
+            label: 'Total Aberto',
             ...openStats,
-            color: 'destructive',
+            color: 'custom-red', // Using custom key for specific styling logic
             icon: AlertCircle,
             onClick: () => {
               setStatusFilter('Aberto')
@@ -233,7 +240,7 @@ export default function Receivables() {
           {
             label: 'Total Liquidado',
             ...liquidatedStats,
-            color: 'success',
+            color: 'custom-green', // Using custom key
             icon: CheckCircle2,
             onClick: () => {
               setStatusFilter('Liquidado')
