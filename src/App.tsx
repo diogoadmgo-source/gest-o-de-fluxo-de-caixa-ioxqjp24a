@@ -1,14 +1,18 @@
-/* Main App Component - Handles routing (using react-router-dom), query client and other providers - use this file to add all routes */
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import Index from './pages/Index'
-import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
-
-// ONLY IMPORT AND RENDER WORKING PAGES, NEVER ADD PLACEHOLDER COMPONENTS OR PAGES IN THIS FILE
-// AVOID REMOVING ANY CONTEXT PROVIDERS FROM THIS FILE (e.g. TooltipProvider, Toaster, Sonner)
+import Dashboard from './pages/Dashboard'
+import NotFound from './pages/NotFound'
+import Receivables from './pages/Receivables'
+import Payables from './pages/Payables'
+import Imports from './pages/Imports'
+import Reports from './pages/Reports'
+import PeriodClosing from './pages/PeriodClosing'
+import ManualAdjustments from './pages/ManualAdjustments'
+import Settings from './pages/Settings'
+import Audit from './pages/Audit'
 
 const App = () => (
   <BrowserRouter
@@ -19,8 +23,15 @@ const App = () => (
       <Sonner />
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/recebiveis" element={<Receivables />} />
+          <Route path="/pagaveis" element={<Payables />} />
+          <Route path="/importacoes" element={<Imports />} />
+          <Route path="/relatorios" element={<Reports />} />
+          <Route path="/fechamento" element={<PeriodClosing />} />
+          <Route path="/ajustes" element={<ManualAdjustments />} />
+          <Route path="/configuracoes" element={<Settings />} />
+          <Route path="/auditoria" element={<Audit />} />
         </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>
