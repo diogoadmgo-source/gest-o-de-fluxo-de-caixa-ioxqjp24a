@@ -12,6 +12,7 @@ import {
   Menu,
   Wallet,
   Landmark,
+  Users,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,8 +23,9 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useState } from 'react'
+import { useAuth } from '@/hooks/use-auth'
 
-const menuItems = [
+const baseMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
   { icon: Wallet, label: 'Fluxo de Caixa', path: '/fluxo-de-caixa' },
   { icon: Landmark, label: 'Saldos', path: '/saldos' },
@@ -39,6 +41,24 @@ const menuItems = [
 export function Sidebar() {
   const location = useLocation()
   const [open, setOpen] = useState(false)
+  const { userProfile } = useAuth()
+
+  // Add Users menu for admins
+  const menuItems = [...baseMenuItems]
+  if (userProfile?.profile === 'Administrator') {
+    // Insert Users management before Audit or inside Settings group
+    // For now, let's add it as a top level item
+    const settingsIndex = menuItems.findIndex(
+      (i) => i.path === '/configuracoes',
+    )
+    if (settingsIndex !== -1) {
+      menuItems.splice(settingsIndex + 1, 0, {
+        icon: Users,
+        label: 'Usuários',
+        path: '/configuracoes/usuarios',
+      })
+    }
+  }
 
   const NavContent = () => (
     <div className="flex flex-col h-full py-4">

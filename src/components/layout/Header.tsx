@@ -23,8 +23,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useLocation } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 import useCashFlowStore from '@/stores/useCashFlowStore'
+import { useAuth } from '@/hooks/use-auth'
 
 const getPageTitle = (pathname: string) => {
   switch (pathname) {
@@ -46,6 +47,8 @@ const getPageTitle = (pathname: string) => {
       return 'Fechamento de Período'
     case '/configuracoes':
       return 'Configurações'
+    case '/configuracoes/usuarios':
+      return 'Gestão de Usuários'
     case '/auditoria':
       return 'Auditoria'
     case '/ajustes':
@@ -60,6 +63,7 @@ export function Header() {
   const title = getPageTitle(location.pathname)
   const { companies, selectedCompanyId, setSelectedCompanyId } =
     useCashFlowStore()
+  const { userProfile, signOut } = useAuth()
 
   return (
     <header className="h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 fixed top-0 right-0 left-0 md:left-64 z-20 px-6 flex items-center justify-between transition-all duration-300">
@@ -107,11 +111,15 @@ export function Header() {
               className="pl-2 pr-1 gap-2 rounded-full hover:bg-secondary"
             >
               <Avatar className="h-8 w-8">
-                <AvatarImage src="https://img.usecurling.com/ppl/thumbnail?gender=male" />
-                <AvatarFallback>JD</AvatarFallback>
+                <AvatarImage
+                  src={`https://img.usecurling.com/ppl/thumbnail?gender=male&seed=${userProfile?.id || '1'}`}
+                />
+                <AvatarFallback>
+                  {userProfile?.name?.charAt(0) || 'U'}
+                </AvatarFallback>
               </Avatar>
               <span className="hidden md:inline-block text-sm font-medium">
-                João Silva
+                {userProfile?.name || 'Usuário'}
               </span>
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </Button>
@@ -119,16 +127,23 @@ export function Header() {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <User className="mr-2 h-4 w-4" />
-              <span>Meu Perfil</span>
+            <DropdownMenuItem asChild>
+              <Link to="/configuracoes">
+                <User className="mr-2 h-4 w-4" />
+                <span>Meu Perfil</span>
+              </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <SettingsIcon className="mr-2 h-4 w-4" />
-              <span>Ajustes Manuais</span>
+            <DropdownMenuItem asChild>
+              <Link to="/ajustes">
+                <SettingsIcon className="mr-2 h-4 w-4" />
+                <span>Ajustes Manuais</span>
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => signOut()}
+            >
               <LogOut className="mr-2 h-4 w-4" />
               <span>Sair</span>
             </DropdownMenuItem>

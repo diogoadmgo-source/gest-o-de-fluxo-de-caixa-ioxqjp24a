@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { useAuth } from '@/hooks/use-auth'
 import {
   Card,
   CardContent,
@@ -10,8 +12,49 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase/client'
+import { Users as UsersIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 export default function Settings() {
+  const { userProfile, updatePassword, refreshProfile } = useAuth()
+  const [name, setName] = useState(userProfile?.name || '')
+  const [newPassword, setNewPassword] = useState('')
+  const [isUpdating, setIsUpdating] = useState(false)
+
+  const handleUpdateProfile = async () => {
+    setIsUpdating(true)
+    try {
+      if (name !== userProfile?.name) {
+        const { error } = await supabase
+          .from('user_profiles')
+          .update({ name })
+          .eq('id', userProfile?.id)
+
+        if (error) throw error
+        await refreshProfile()
+        toast.success('Perfil atualizado com sucesso.')
+      }
+
+      if (newPassword) {
+        if (newPassword.length < 6) {
+          toast.error('A senha deve ter pelo menos 6 caracteres.')
+        } else {
+          const { error } = await updatePassword(newPassword)
+          if (error) throw error
+          toast.success('Senha atualizada.')
+          setNewPassword('')
+        }
+      }
+    } catch (error) {
+      toast.error('Erro ao atualizar perfil.')
+      console.error(error)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
@@ -29,27 +72,80 @@ export default function Settings() {
         </TabsList>
 
         <TabsContent value="profile">
-          <Card>
-            <CardHeader>
-              <CardTitle>Informações Pessoais</CardTitle>
-              <CardDescription>Atualize seus dados cadastrais.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 max-w-lg">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Nome Completo</Label>
-                <Input id="name" defaultValue="João Silva" />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" defaultValue="joao.silva@hospcom.com.br" />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="role">Cargo</Label>
-                <Input id="role" defaultValue="Gerente Financeiro" disabled />
-              </div>
-              <Button>Salvar Alterações</Button>
-            </CardContent>
-          </Card>
+          <div className="grid gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Informações Pessoais</CardTitle>
+                <CardDescription>
+                  Atualize seus dados cadastrais.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 max-w-lg">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Nome Completo</Label>
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" value={userProfile?.email} disabled />
+                  <p className="text-xs text-muted-foreground">
+                    O email não pode ser alterado por aqui.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="role">Perfil</Label>
+                  <Input
+                    id="role"
+                    value={
+                      userProfile?.profile === 'Administrator'
+                        ? 'Administrador'
+                        : 'Usuário'
+                    }
+                    disabled
+                  />
+                </div>
+
+                <div className="pt-4">
+                  <Label htmlFor="new-pass">Alterar Senha</Label>
+                  <Input
+                    id="new-pass"
+                    type="password"
+                    placeholder="Nova senha (deixe em branco para manter)"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="mt-2"
+                  />
+                </div>
+
+                <Button onClick={handleUpdateProfile} disabled={isUpdating}>
+                  {isUpdating ? 'Salvando...' : 'Salvar Alterações'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {userProfile?.profile === 'Administrator' && (
+              <Card className="border-primary/20 bg-primary/5">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <UsersIcon className="h-5 w-5" />
+                    Gestão de Usuários
+                  </CardTitle>
+                  <CardDescription>
+                    Acesse o painel administrativo de usuários.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button asChild>
+                    <Link to="/configuracoes/usuarios">Gerenciar Usuários</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="security">
@@ -57,7 +153,7 @@ export default function Settings() {
             <CardHeader>
               <CardTitle>Segurança da Conta</CardTitle>
               <CardDescription>
-                Gerencie senha e autenticação de dois fatores.
+                Gerencie autenticação e sessões.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6 max-w-lg">
@@ -68,9 +164,8 @@ export default function Settings() {
                     Aumente a segurança da sua conta.
                   </p>
                 </div>
-                <Switch />
+                <Switch disabled />
               </div>
-              <Button variant="outline">Alterar Senha</Button>
             </CardContent>
           </Card>
         </TabsContent>

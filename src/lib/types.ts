@@ -137,6 +137,17 @@ export interface User {
   avatar_url?: string
 }
 
+export interface UserProfile {
+  id: string
+  name: string
+  email: string
+  profile: 'Administrator' | 'User'
+  status: 'Pending' | 'Active' | 'Inactive' | 'Blocked'
+  last_access?: string
+  company_id?: string
+  created_at: string
+}
+
 export interface Log {
   id: string
   timestamp: string
@@ -146,6 +157,17 @@ export interface Log {
   entity_affected: string
   result: 'success' | 'failure'
   details?: string
+}
+
+export interface AuditLog {
+  id: string
+  action: string
+  entity: string
+  entity_id?: string
+  details?: any
+  user_id: string
+  ip_address?: string
+  created_at: string
 }
 
 export interface ImportHistoryEntry {
