@@ -13,6 +13,7 @@ import PeriodClosing from './pages/PeriodClosing'
 import ManualAdjustments from './pages/ManualAdjustments'
 import Settings from './pages/Settings'
 import Audit from './pages/Audit'
+import CashFlow from './pages/CashFlow'
 
 const App = () => (
   <BrowserRouter
@@ -24,6 +25,7 @@ const App = () => (
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/fluxo-de-caixa" element={<CashFlow />} />
           <Route path="/recebiveis" element={<Receivables />} />
           <Route path="/pagaveis" element={<Payables />} />
           <Route path="/importacoes" element={<Imports />} />

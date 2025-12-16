@@ -37,6 +37,21 @@ export interface DailyBalance {
   net_flow: number
 }
 
+export interface CashFlowEntry {
+  date: string
+  opening_balance: number
+  receivables: number
+  payables: number
+  imports: number
+  other_expenses: number
+  daily_balance: number
+  accumulated_balance: number
+  notes?: string
+  has_alert?: boolean
+  alert_message?: string
+  is_projected?: boolean
+}
+
 export interface Alert {
   id: string
   type: 'funding' | 'receivable_overdue' | 'payable_overdue'

@@ -28,6 +28,8 @@ const getPageTitle = (pathname: string) => {
   switch (pathname) {
     case '/':
       return 'Dashboard'
+    case '/fluxo-de-caixa':
+      return 'Fluxo de Caixa'
     case '/recebiveis':
       return 'Contas a Receber'
     case '/pagaveis':

@@ -1,4 +1,11 @@
-import { Transaction, KPI, DailyBalance, Alert, Log } from './types'
+import {
+  Transaction,
+  KPI,
+  DailyBalance,
+  Alert,
+  Log,
+  CashFlowEntry,
+} from './types'
 import { addDays, subDays, format } from 'date-fns'
 
 export const generateDailyBalances = (days: number = 30): DailyBalance[] => {
@@ -38,6 +45,46 @@ export const generateDailyBalances = (days: number = 30): DailyBalance[] => {
       net_flow: parseFloat(net.toFixed(2)),
     })
   }
+  return data
+}
+
+export const generateCashFlowData = (days: number = 30): CashFlowEntry[] => {
+  const data: CashFlowEntry[] = []
+  let accumulatedBalance = 50000
+
+  // Start from today - 5 days
+  const startDate = subDays(new Date(), 5)
+
+  for (let i = 0; i < days + 5; i++) {
+    const date = addDays(startDate, i)
+    const receivables = Math.random() * 15000 + 5000
+    const payables = Math.random() * 12000 + 4000
+    const imports = Math.random() > 0.7 ? Math.random() * 5000 : 0
+    const other_expenses = Math.random() * 1000
+
+    const opening_balance = accumulatedBalance
+    const daily_balance = receivables - payables - imports - other_expenses
+    accumulatedBalance = opening_balance + daily_balance
+
+    const has_alert = accumulatedBalance < 0
+    const alert_message = has_alert ? 'Saldo negativo projetado' : undefined
+
+    data.push({
+      date: format(date, 'yyyy-MM-dd'),
+      opening_balance: parseFloat(opening_balance.toFixed(2)),
+      receivables: parseFloat(receivables.toFixed(2)),
+      payables: parseFloat(payables.toFixed(2)),
+      imports: parseFloat(imports.toFixed(2)),
+      other_expenses: parseFloat(other_expenses.toFixed(2)),
+      daily_balance: parseFloat(daily_balance.toFixed(2)),
+      accumulated_balance: parseFloat(accumulatedBalance.toFixed(2)),
+      notes: Math.random() > 0.8 ? 'Revisar lançamentos' : undefined,
+      has_alert,
+      alert_message,
+      is_projected: i >= 5,
+    })
+  }
+
   return data
 }
 

@@ -10,6 +10,7 @@ import {
   Settings,
   Search,
   Menu,
+  Wallet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,6 +24,7 @@ import { useState } from 'react'
 
 const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+  { icon: Wallet, label: 'Fluxo de Caixa', path: '/fluxo-de-caixa' },
   { icon: ArrowDownToLine, label: 'Contas a Receber', path: '/recebiveis' },
   { icon: ArrowUpFromLine, label: 'Contas a Pagar', path: '/pagaveis' },
   { icon: Upload, label: 'Importações', path: '/importacoes' },
