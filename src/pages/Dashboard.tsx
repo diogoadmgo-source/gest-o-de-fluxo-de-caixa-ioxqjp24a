@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { isSameDay, parseISO } from 'date-fns'
 
 export default function Dashboard() {
   const { cashFlowEntries, recalculateCashFlow } = useCashFlowStore()
@@ -26,9 +27,18 @@ export default function Dashboard() {
   useEffect(() => {
     // Map cash flow entries to daily balance format expected by dashboard components
     const days = parseInt(timeframe) || 30
+    const today = new Date()
 
-    // Ensure we have enough data (generating more if needed would be better but simple slicing is ok for now as long as we have 90 generated)
+    // Find the index for today to start the view from today
+    const todayIndex = cashFlowEntries.findIndex((entry) =>
+      isSameDay(parseISO(entry.date), today),
+    )
+
+    // Fallback to 0 if today is not found (should be covered by mock data generation)
+    const startIndex = todayIndex >= 0 ? todayIndex : 0
+
     const mappedData = cashFlowEntries
+      .slice(startIndex, startIndex + days) // Slice starting from today
       .map((entry) => ({
         date: entry.date,
         closing_balance: entry.accumulated_balance,
@@ -37,7 +47,7 @@ export default function Dashboard() {
         total_outflows: entry.total_payables,
         net_flow: entry.daily_balance,
       }))
-      .slice(0, days) // Slice based on selected timeframe
+
     setData(mappedData)
   }, [cashFlowEntries, timeframe])
 
@@ -51,8 +61,11 @@ export default function Dashboard() {
     }, 1000)
   }
 
+  // The first item in data corresponds to Today (because of slicing above)
   const currentBalance = data[0]?.closing_balance || 0
-  const prevBalance = 48000 // Mock previous
+
+  // Mock previous balance for now, could be derived from cashFlowEntries[todayIndex - 1] if needed
+  const prevBalance = 48000
   const trendData = data.slice(0, 7).map((d) => ({ value: d.closing_balance }))
 
   return (

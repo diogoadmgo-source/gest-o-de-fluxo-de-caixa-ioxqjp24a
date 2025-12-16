@@ -169,23 +169,27 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       const hasManualBalance = dayBalances.length > 0
 
       // 3. Determine Opening Balance
+      // Opening balance is the accumulated balance from the previous day
+      // For the first entry, we use the entry's initial opening balance logic
       let openingBalance = 0
       if (index === 0) {
-        openingBalance = hasManualBalance
-          ? manualBalanceSum
-          : entry.opening_balance
+        openingBalance = entry.opening_balance
       } else {
-        openingBalance = hasManualBalance
-          ? manualBalanceSum
-          : currentAccumulated
+        openingBalance = currentAccumulated
       }
 
-      // 4. Calculate Daily Balance
+      // 4. Calculate Daily Balance (Net Flow)
       const dailyBalance =
         dayReceivables - dayPayables - entry.imports - entry.other_expenses
 
-      // 5. Calculate Accumulated
-      const accumulatedBalance = openingBalance + dailyBalance
+      // 5. Calculate Accumulated Balance
+      // If a manual balance exists, it overrides the calculated closing balance
+      let accumulatedBalance = openingBalance + dailyBalance
+
+      if (hasManualBalance) {
+        accumulatedBalance = manualBalanceSum
+      }
+
       currentAccumulated = accumulatedBalance
 
       return {
