@@ -26,12 +26,14 @@ import {
 
 interface CashFlowGridProps {
   data: CashFlowEntry[]
-  onEditInitialBalance: (date: string) => void
+  onSelectDate: (date: Date) => void
+  selectedDate: Date
 }
 
 export function CashFlowGrid({
   data,
-  onEditInitialBalance,
+  onSelectDate,
+  selectedDate,
 }: CashFlowGridProps) {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -41,132 +43,168 @@ export function CashFlowGrid({
   }
 
   return (
-    <div className="rounded-md border bg-card">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-muted/50">
-            <TableHead className="w-[120px]">Data</TableHead>
-            <TableHead className="text-right text-muted-foreground">
-              Saldo Inicial
-            </TableHead>
-            <TableHead className="text-right text-success">
-              Recebimentos
-            </TableHead>
-            <TableHead className="text-right text-destructive">
-              Pagamentos
-            </TableHead>
-            <TableHead className="text-right text-orange-500">
-              Importações
-            </TableHead>
-            <TableHead className="text-right text-muted-foreground">
-              Outras Desp.
-            </TableHead>
-            <TableHead className="text-right font-bold">Saldo do Dia</TableHead>
-            <TableHead className="text-right font-bold bg-muted/20">
-              Saldo Acumulado
-            </TableHead>
-            <TableHead className="w-[50px]"></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.map((entry) => (
-            <TableRow
-              key={entry.date}
-              className={cn(entry.is_projected && 'bg-muted/10')}
-            >
-              <TableCell className="font-medium">
-                <div className="flex flex-col">
-                  <span>{format(parseISO(entry.date), 'dd/MM/yyyy')}</span>
-                  <span className="text-xs text-muted-foreground capitalize">
-                    {format(parseISO(entry.date), 'EEEE', { locale: ptBR })}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="text-right text-muted-foreground">
-                <div className="flex items-center justify-end gap-2 group">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => onEditInitialBalance(entry.date)}
-                    title="Ajustar Saldo Inicial"
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                  {formatCurrency(entry.opening_balance)}
-                </div>
-              </TableCell>
-              <TableCell className="text-right text-success">
-                {entry.receivables > 0
-                  ? `+ ${formatCurrency(entry.receivables)}`
-                  : '-'}
-              </TableCell>
-              <TableCell className="text-right text-destructive">
-                {entry.payables > 0
-                  ? `- ${formatCurrency(entry.payables)}`
-                  : '-'}
-              </TableCell>
-              <TableCell className="text-right text-orange-500">
-                {entry.imports > 0 ? `- ${formatCurrency(entry.imports)}` : '-'}
-              </TableCell>
-              <TableCell className="text-right text-muted-foreground">
-                {entry.other_expenses > 0
-                  ? `- ${formatCurrency(entry.other_expenses)}`
-                  : '-'}
-              </TableCell>
-              <TableCell className="text-right font-bold">
-                <div
-                  className={cn(
-                    'flex items-center justify-end gap-1',
-                    entry.daily_balance >= 0
-                      ? 'text-success'
-                      : 'text-destructive',
-                  )}
-                >
-                  {entry.daily_balance >= 0 ? (
-                    <ArrowUpRight className="h-3 w-3" />
-                  ) : (
-                    <ArrowDownRight className="h-3 w-3" />
-                  )}
-                  {formatCurrency(entry.daily_balance)}
-                </div>
-              </TableCell>
-              <TableCell
-                className={cn(
-                  'text-right font-bold bg-muted/20',
-                  entry.accumulated_balance < 0
-                    ? 'text-destructive'
-                    : 'text-primary',
-                )}
-              >
-                <div className="flex items-center justify-end gap-2">
-                  {formatCurrency(entry.accumulated_balance)}
-                  {entry.has_alert && (
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <AlertTriangle className="h-4 w-4 text-destructive animate-pulse" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{entry.alert_message}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                {entry.notes && (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] whitespace-nowrap"
-                  >
-                    {entry.notes}
-                  </Badge>
-                )}
-              </TableCell>
+    <div className="rounded-md border bg-card shadow-sm overflow-hidden">
+      <div className="p-4 border-b bg-muted/20">
+        <h3 className="font-semibold text-lg">Fluxo de Caixa Diário</h3>
+        <p className="text-sm text-muted-foreground">
+          Visão detalhada das movimentações e saldos projetados.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50 hover:bg-muted/50">
+              <TableHead className="w-[120px] sticky left-0 bg-background z-10 font-bold">
+                Data
+              </TableHead>
+              <TableHead className="text-right text-muted-foreground font-semibold min-w-[120px]">
+                Saldo Inicial
+              </TableHead>
+              <TableHead className="text-right text-success font-semibold min-w-[120px]">
+                Total a Receber
+              </TableHead>
+              <TableHead className="text-right text-destructive font-semibold min-w-[120px]">
+                Total a Pagar
+              </TableHead>
+              <TableHead className="text-right text-orange-500 font-semibold min-w-[120px]">
+                Importações
+              </TableHead>
+              <TableHead className="text-right text-muted-foreground font-semibold min-w-[120px]">
+                Outras Desp.
+              </TableHead>
+              <TableHead className="text-right font-bold min-w-[120px] bg-secondary/20">
+                Saldo do Dia
+              </TableHead>
+              <TableHead className="text-right font-bold bg-primary/5 min-w-[140px]">
+                Saldo Acumulado
+              </TableHead>
+              <TableHead className="min-w-[150px]">Observações</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {data.map((entry) => {
+              const currentDate = parseISO(entry.date)
+              const isSelected =
+                format(currentDate, 'yyyy-MM-dd') ===
+                format(selectedDate, 'yyyy-MM-dd')
+
+              return (
+                <TableRow
+                  key={entry.date}
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    entry.is_weekend
+                      ? 'bg-muted/30 hover:bg-muted/50'
+                      : 'hover:bg-muted/50',
+                    isSelected &&
+                      'bg-primary/10 hover:bg-primary/15 border-l-2 border-l-primary',
+                  )}
+                  onClick={() => onSelectDate(currentDate)}
+                >
+                  <TableCell className="font-medium sticky left-0 bg-background z-10 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
+                    <div className="flex flex-col">
+                      <span
+                        className={cn(isSelected && 'text-primary font-bold')}
+                      >
+                        {format(currentDate, 'dd/MM/yyyy')}
+                      </span>
+                      <span className="text-xs text-muted-foreground capitalize">
+                        {format(currentDate, 'EEEE', { locale: ptBR })}
+                      </span>
+                      {entry.is_weekend && (
+                        <span className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                          Final de Semana
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    <div className="flex items-center justify-end gap-2 group">
+                      {formatCurrency(entry.opening_balance)}
+                      {isSelected && !entry.is_weekend && (
+                        <Edit2 className="h-3 w-3 text-muted-foreground opacity-50" />
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right text-success">
+                    {entry.total_receivables > 0
+                      ? `+ ${formatCurrency(entry.total_receivables)}`
+                      : '-'}
+                  </TableCell>
+                  <TableCell className="text-right text-destructive">
+                    {entry.total_payables > 0
+                      ? `- ${formatCurrency(entry.total_payables)}`
+                      : '-'}
+                  </TableCell>
+                  <TableCell className="text-right text-orange-500">
+                    {entry.imports > 0
+                      ? `- ${formatCurrency(entry.imports)}`
+                      : '-'}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {entry.other_expenses > 0
+                      ? `- ${formatCurrency(entry.other_expenses)}`
+                      : '-'}
+                  </TableCell>
+                  <TableCell className="text-right font-bold bg-secondary/10">
+                    <div
+                      className={cn(
+                        'flex items-center justify-end gap-1',
+                        entry.daily_balance >= 0
+                          ? 'text-success'
+                          : 'text-destructive',
+                      )}
+                    >
+                      {entry.daily_balance >= 0 ? (
+                        <ArrowUpRight className="h-3 w-3" />
+                      ) : (
+                        <ArrowDownRight className="h-3 w-3" />
+                      )}
+                      {formatCurrency(entry.daily_balance)}
+                    </div>
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      'text-right font-bold bg-primary/5',
+                      entry.accumulated_balance < 0
+                        ? 'text-destructive'
+                        : 'text-primary',
+                    )}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      {formatCurrency(entry.accumulated_balance)}
+                      {entry.has_alert && (
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <AlertTriangle className="h-4 w-4 text-destructive animate-pulse" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{entry.alert_message}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {entry.notes ? (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] whitespace-nowrap"
+                      >
+                        {entry.notes}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic opacity-50">
+                        -
+                      </span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }

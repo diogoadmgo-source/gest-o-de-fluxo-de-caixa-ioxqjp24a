@@ -41,11 +41,13 @@ export function Sidebar() {
   const NavContent = () => (
     <div className="flex flex-col h-full py-4">
       <div className="px-6 mb-8 mt-2 flex items-center gap-3">
-        <img
-          src="https://raw.githubusercontent.com/temos-ai/skip-assets/refs/heads/main/12247/e7a9b6c0-cd6a-4933-bf9c-297c554f6645.jpeg"
-          alt="Hospcom Logo"
-          className="h-10 w-auto object-contain"
-        />
+        <div className="h-10 w-10 flex items-center justify-center bg-white rounded-md shadow-sm border p-1">
+          <img
+            src="https://raw.githubusercontent.com/temos-ai/skip-assets/refs/heads/main/12247/e7a9b6c0-cd6a-4933-bf9c-297c554f6645.jpeg"
+            alt="Hospcom"
+            className="h-full w-full object-contain"
+          />
+        </div>
         <span className="font-bold text-xl tracking-tight text-primary">
           HospCash
         </span>

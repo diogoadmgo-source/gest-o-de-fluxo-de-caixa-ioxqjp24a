@@ -5,8 +5,11 @@ import {
   Alert,
   Log,
   CashFlowEntry,
+  Receivable,
+  BankBalance,
+  HistoricalBalance,
 } from './types'
-import { addDays, subDays, format } from 'date-fns'
+import { addDays, subDays, format, isWeekend } from 'date-fns'
 
 export const generateDailyBalances = (days: number = 30): DailyBalance[] => {
   const data: DailyBalance[] = []
@@ -51,19 +54,18 @@ export const generateDailyBalances = (days: number = 30): DailyBalance[] => {
 export const generateCashFlowData = (days: number = 30): CashFlowEntry[] => {
   const data: CashFlowEntry[] = []
   let accumulatedBalance = 50000
-
-  // Start from today - 5 days
   const startDate = subDays(new Date(), 5)
 
   for (let i = 0; i < days + 5; i++) {
     const date = addDays(startDate, i)
-    const receivables = Math.random() * 15000 + 5000
-    const payables = Math.random() * 12000 + 4000
+    const total_receivables = Math.random() * 15000 + 5000
+    const total_payables = Math.random() * 12000 + 4000
     const imports = Math.random() > 0.7 ? Math.random() * 5000 : 0
     const other_expenses = Math.random() * 1000
 
     const opening_balance = accumulatedBalance
-    const daily_balance = receivables - payables - imports - other_expenses
+    const daily_balance =
+      total_receivables - total_payables - imports - other_expenses
     accumulatedBalance = opening_balance + daily_balance
 
     const has_alert = accumulatedBalance < 0
@@ -72,8 +74,8 @@ export const generateCashFlowData = (days: number = 30): CashFlowEntry[] => {
     data.push({
       date: format(date, 'yyyy-MM-dd'),
       opening_balance: parseFloat(opening_balance.toFixed(2)),
-      receivables: parseFloat(receivables.toFixed(2)),
-      payables: parseFloat(payables.toFixed(2)),
+      total_receivables: parseFloat(total_receivables.toFixed(2)),
+      total_payables: parseFloat(total_payables.toFixed(2)),
       imports: parseFloat(imports.toFixed(2)),
       other_expenses: parseFloat(other_expenses.toFixed(2)),
       daily_balance: parseFloat(daily_balance.toFixed(2)),
@@ -82,11 +84,85 @@ export const generateCashFlowData = (days: number = 30): CashFlowEntry[] => {
       has_alert,
       alert_message,
       is_projected: i >= 5,
+      is_weekend: isWeekend(date),
     })
   }
 
   return data
 }
+
+export const mockReceivables: Receivable[] = Array.from({ length: 20 }).map(
+  (_, i) => ({
+    id: `REC-${i + 1}`,
+    company: 'Hospcom Matriz',
+    issue_date: format(
+      subDays(new Date(), Math.floor(Math.random() * 30)),
+      'yyyy-MM-dd',
+    ),
+    order_number: `PED-${1000 + i}`,
+    invoice_number: `NF-${5000 + i}`,
+    title_status: Math.random() > 0.2 ? 'Aberto' : 'Liquidado',
+    code: `CLI-${100 + i}`,
+    customer: `Cliente Exemplo ${i + 1} Ltda`,
+    customer_doc: '12.345.678/0001-90',
+    state: 'SP',
+    regional: 'Sudeste',
+    salesperson: 'João Vendedor',
+    installment: '1/3',
+    due_date: format(
+      addDays(new Date(), Math.floor(Math.random() * 30) - 10),
+      'yyyy-MM-dd',
+    ),
+    days_overdue: 0,
+    principal_value: Math.random() * 5000 + 1000,
+    fine: 0,
+    interest: 0,
+    updated_value: Math.random() * 5000 + 1000,
+    utilization: 0,
+    is_negative: false,
+    payment_prediction: format(
+      addDays(new Date(), Math.floor(Math.random() * 30)),
+      'yyyy-MM-dd',
+    ),
+  }),
+)
+
+export const mockBankBalances: BankBalance[] = [
+  {
+    id: '1',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    bank_name: 'Banco Itaú',
+    account_number: '1234-5',
+    balance: 45000.0,
+    status: 'draft',
+  },
+  {
+    id: '2',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    bank_name: 'Banco Santander',
+    account_number: '9876-2',
+    balance: 12500.5,
+    status: 'draft',
+  },
+  {
+    id: '3',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    bank_name: 'Caixa Econômica',
+    account_number: '4567-8',
+    balance: 5000.0,
+    status: 'draft',
+  },
+]
+
+export const mockHistoricalBalances: HistoricalBalance[] = Array.from({
+  length: 10,
+}).map((_, i) => ({
+  id: `HIST-${i}`,
+  date: format(subDays(new Date(), i + 1), 'yyyy-MM-dd'),
+  consolidated_balance: Math.random() * 50000 + 20000,
+  user_name: 'João Silva',
+  timestamp: format(subDays(new Date(), i + 1), 'yyyy-MM-dd HH:mm'),
+}))
 
 export const mockKPIs: KPI = {
   pmr: 25,
@@ -112,41 +188,9 @@ export const mockAlerts: Alert[] = [
     date: format(new Date(), 'yyyy-MM-dd'),
     amount: 12500,
   },
-  {
-    id: '3',
-    type: 'payable_overdue',
-    severity: 'low',
-    message: '2 contas a pagar vencendo hoje',
-    date: format(new Date(), 'yyyy-MM-dd'),
-    amount: 3200,
-  },
 ]
 
 export const mockTransactions: Transaction[] = [
-  {
-    id: '1',
-    document_number: 'NF-1001',
-    entity_name: 'Tech Solutions Ltda',
-    issue_date: '2024-05-01',
-    due_date: format(subDays(new Date(), 5), 'yyyy-MM-dd'),
-    amount: 15000,
-    net_amount: 14500,
-    category: 'Serviços',
-    status: 'overdue',
-    type: 'receivable',
-  },
-  {
-    id: '2',
-    document_number: 'NF-1002',
-    entity_name: 'Global Corp',
-    issue_date: '2024-05-10',
-    due_date: format(addDays(new Date(), 2), 'yyyy-MM-dd'),
-    amount: 8500,
-    net_amount: 8200,
-    category: 'Produtos',
-    status: 'pending',
-    type: 'receivable',
-  },
   {
     id: '3',
     document_number: 'FAT-500',
@@ -169,18 +213,6 @@ export const mockTransactions: Transaction[] = [
     status: 'overdue',
     type: 'payable',
   },
-  {
-    id: '5',
-    document_number: 'NF-1003',
-    entity_name: 'Consultoria XYZ',
-    issue_date: '2024-05-15',
-    due_date: format(addDays(new Date(), 10), 'yyyy-MM-dd'),
-    amount: 5000,
-    net_amount: 4800,
-    category: 'Consultoria',
-    status: 'pending',
-    type: 'receivable',
-  },
 ]
 
 export const mockLogs: Log[] = [
@@ -202,14 +234,5 @@ export const mockLogs: Log[] = [
     entity_affected: 'Receivables',
     result: 'success',
     details: 'Created NF-1004',
-  },
-  {
-    id: '3',
-    timestamp: '2024-05-20 11:05:00',
-    user_id: 'u2',
-    user_name: 'Carlos Santos',
-    action: 'Export Report',
-    entity_affected: 'Reports',
-    result: 'success',
   },
 ]

@@ -1,27 +1,26 @@
 import { useState, useEffect } from 'react'
-import { generateCashFlowData } from '@/lib/mock-data'
-import { CashFlowEntry } from '@/lib/types'
-import { CashFlowGrid } from '@/components/cash-flow/CashFlowGrid'
-import { InitialBalanceDialog } from '@/components/cash-flow/InitialBalanceDialog'
-import { Button } from '@/components/ui/button'
-import { CalendarIcon, Download, SlidersHorizontal } from 'lucide-react'
-import { toast } from 'sonner'
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card'
-import { format, parseISO, isAfter, isSameDay } from 'date-fns'
+  generateCashFlowData,
+  mockBankBalances,
+  mockHistoricalBalances,
+} from '@/lib/mock-data'
+import { CashFlowEntry, BankBalance } from '@/lib/types'
+import { CashFlowGrid } from '@/components/cash-flow/CashFlowGrid'
+import { CashFlowFilters } from '@/components/cash-flow/CashFlowFilters'
+import { BankBalanceManager } from '@/components/cash-flow/BankBalanceManager'
+import { HistoricalBalanceList } from '@/components/cash-flow/HistoricalBalanceList'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { toast } from 'sonner'
+import { format } from 'date-fns'
+import { RefreshCcw, AlertTriangle } from 'lucide-react'
 
 export default function CashFlow() {
   const [data, setData] = useState<CashFlowEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [isBalanceDialogOpen, setIsBalanceDialogOpen] = useState(false)
-  const [selectedDateForBalance, setSelectedDateForBalance] = useState<
-    Date | undefined
-  >(undefined)
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [bankBalances, setBankBalances] =
+    useState<BankBalance[]>(mockBankBalances)
 
   useEffect(() => {
     // Simulate API load
@@ -31,52 +30,52 @@ export default function CashFlow() {
     }, 800)
   }, [])
 
-  const handleUpdateInitialBalance = (date: Date, amount: number) => {
-    const dateStr = format(date, 'yyyy-MM-dd')
-
-    // Find index of the date
-    const index = data.findIndex((entry) =>
-      isSameDay(parseISO(entry.date), date),
-    )
-
-    if (index === -1) {
-      toast.error('Data fora do período de visualização.')
-      return
-    }
-
-    const updatedData = [...data]
-
-    // Update the opening balance for the target date
-    updatedData[index].opening_balance = amount
-
-    // Recalculate accumulated balance for this date
-    updatedData[index].accumulated_balance =
-      amount + updatedData[index].daily_balance
-
-    // Propagate the change to all subsequent days
-    for (let i = index + 1; i < updatedData.length; i++) {
-      updatedData[i].opening_balance = updatedData[i - 1].accumulated_balance
-      updatedData[i].accumulated_balance =
-        updatedData[i].opening_balance + updatedData[i].daily_balance
-
-      // Update alerts
-      updatedData[i].has_alert = updatedData[i].accumulated_balance < 0
-      updatedData[i].alert_message = updatedData[i].has_alert
-        ? 'Saldo negativo projetado'
-        : undefined
-    }
-
-    setData(updatedData)
-    toast.success('Saldo inicial atualizado e fluxo recalculado com sucesso.')
+  const handleRefresh = () => {
+    setLoading(true)
+    setTimeout(() => {
+      setData(generateCashFlowData(30))
+      setLoading(false)
+      toast.success('Fluxo recalculado com sucesso!')
+    }, 800)
   }
 
-  const openBalanceDialog = (dateStr?: string) => {
-    if (dateStr) {
-      setSelectedDateForBalance(parseISO(dateStr))
-    } else {
-      setSelectedDateForBalance(new Date())
+  const handleSaveBankBalances = (newBalances: BankBalance[]) => {
+    // In a real app, you would send this to the API
+    setBankBalances(newBalances)
+
+    // Recalculate the opening balance of the current day in the grid
+    const totalBankBalance = newBalances.reduce(
+      (acc, curr) => acc + curr.balance,
+      0,
+    )
+
+    // Update grid data logic (simplified for frontend)
+    const updatedData = [...data]
+    const dateStr = format(selectedDate, 'yyyy-MM-dd')
+    const index = updatedData.findIndex((d) => d.date === dateStr)
+
+    if (index !== -1) {
+      updatedData[index].opening_balance = totalBankBalance
+      // Recalculate subsequent days...
+      // This logic is complex and usually done in backend, simulating simplified update:
+      let accumulated =
+        updatedData[index].opening_balance + updatedData[index].daily_balance
+      updatedData[index].accumulated_balance = accumulated
+
+      for (let i = index + 1; i < updatedData.length; i++) {
+        updatedData[i].opening_balance = accumulated
+        updatedData[i].daily_balance =
+          updatedData[i].total_receivables -
+          updatedData[i].total_payables -
+          updatedData[i].imports -
+          updatedData[i].other_expenses
+        accumulated =
+          updatedData[i].opening_balance + updatedData[i].daily_balance
+        updatedData[i].accumulated_balance = accumulated
+      }
+
+      setData(updatedData)
     }
-    setIsBalanceDialogOpen(true)
   }
 
   if (loading) {
@@ -87,108 +86,111 @@ export default function CashFlow() {
     )
   }
 
-  const criticalCount = data.filter((d) => d.has_alert).length
-  const minBalance = Math.min(...data.map((d) => d.accumulated_balance))
-  const lowestDay = data.find((d) => d.accumulated_balance === minBalance)
+  // Calculate totals for the bottom block
+  const totalAvailable = bankBalances.reduce(
+    (acc, curr) => acc + curr.balance,
+    0,
+  )
+  const totalInvestment = 150000 // Mock value
+  const totalGlobal = totalAvailable + totalInvestment
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in pb-10">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">
-            Gestão de Fluxo de Caixa
+            Gestão de Saldo Diário
           </h2>
           <p className="text-muted-foreground">
-            Painel diário de movimentações financeiras e projeções.
+            Acompanhamento diário, conciliação e projeção de caixa.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => openBalanceDialog()}>
-            <SlidersHorizontal className="mr-2 h-4 w-4" />
-            Ajustar Saldo
+          <Button variant="outline" onClick={handleRefresh}>
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            Reprocessar Período
           </Button>
           <Button variant="default">
-            <Download className="mr-2 h-4 w-4" />
-            Exportar Relatório
+            <AlertTriangle className="mr-2 h-4 w-4" />
+            Ajuste Manual
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Saldo Mínimo Projetado
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl font-bold ${minBalance < 0 ? 'text-destructive' : 'text-primary'}`}
-            >
-              {minBalance.toLocaleString('pt-BR', {
-                style: 'currency',
-                currency: 'BRL',
-              })}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Previsão para{' '}
-              {lowestDay ? format(parseISO(lowestDay.date), 'dd/MM/yyyy') : '-'}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Dias com Alerta de Caixa
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl font-bold ${criticalCount > 0 ? 'text-destructive' : 'text-success'}`}
-            >
-              {criticalCount} dias
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {criticalCount > 0
-                ? 'Necessita atenção imediata'
-                : 'Fluxo estável no período'}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Recebimentos Previstos (30d)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-success">
-              {data
-                .reduce((acc, curr) => acc + curr.receivables, 0)
-                .toLocaleString('pt-BR', {
-                  style: 'currency',
-                  currency: 'BRL',
-                })}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Média diária:{' '}
-              {(
-                data.reduce((acc, curr) => acc + curr.receivables, 0) /
-                data.length
-              ).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            </p>
-          </CardContent>
-        </Card>
+      <CashFlowFilters />
+
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        {/* Left Sidebar: Historical */}
+        <div className="xl:col-span-1">
+          <HistoricalBalanceList
+            history={mockHistoricalBalances}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+          />
+        </div>
+
+        {/* Main Content */}
+        <div className="xl:col-span-3 space-y-6">
+          {/* Bank Balance Manager (Central Block) */}
+          <div className="min-h-[300px]">
+            <BankBalanceManager
+              selectedDate={selectedDate}
+              initialBalances={bankBalances}
+              onSave={handleSaveBankBalances}
+            />
+          </div>
+
+          {/* Consolidated Display (Bottom Block) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="bg-success/5 border-success/20">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Saldo Disponível (Operacional)
+                </span>
+                <span className="text-2xl font-bold text-success">
+                  {totalAvailable.toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })}
+                </span>
+              </CardContent>
+            </Card>
+            <Card className="bg-blue-500/5 border-blue-500/20">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Saldo de Investimentos
+                </span>
+                <span className="text-2xl font-bold text-blue-600">
+                  {totalInvestment.toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })}
+                </span>
+              </CardContent>
+            </Card>
+            <Card className="bg-primary/5 border-primary/20">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Saldo Global Consolidado
+                </span>
+                <span className="text-2xl font-bold text-primary">
+                  {totalGlobal.toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })}
+                </span>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Main Grid */}
+          <CashFlowGrid
+            data={data}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+          />
+        </div>
       </div>
-
-      <CashFlowGrid data={data} onEditInitialBalance={openBalanceDialog} />
-
-      <InitialBalanceDialog
-        open={isBalanceDialogOpen}
-        onOpenChange={setIsBalanceDialogOpen}
-        onSave={handleUpdateInitialBalance}
-        defaultDate={selectedDateForBalance}
-      />
     </div>
   )
 }

@@ -17,32 +17,56 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { mockTransactions } from '@/lib/mock-data'
-import { Plus, Search, Filter, MoreHorizontal } from 'lucide-react'
+import { mockReceivables } from '@/lib/mock-data'
+import {
+  Plus,
+  Search,
+  Filter,
+  MoreHorizontal,
+  Upload,
+  FileSpreadsheet,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
 } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { toast } from 'sonner'
+import { format, parseISO } from 'date-fns'
 
 export default function Receivables() {
   const [searchTerm, setSearchTerm] = useState('')
-  const receivables = mockTransactions.filter((t) => t.type === 'receivable')
+  const [data, setData] = useState(mockReceivables)
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
 
-  const filteredData = receivables.filter(
+  const filteredData = data.filter(
     (t) =>
-      t.entity_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.document_number.toLowerCase().includes(searchTerm.toLowerCase()),
+      t.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.order_number.toLowerCase().includes(searchTerm.toLowerCase()),
   )
+
+  const handleImport = () => {
+    setIsImporting(true)
+    // Simulation of import process with overwrite logic
+    setTimeout(() => {
+      setIsImporting(false)
+      setIsImportDialogOpen(false)
+      toast.success(
+        'Importação concluída com sucesso! 20 registros atualizados.',
+      )
+    }, 2000)
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -52,45 +76,58 @@ export default function Receivables() {
             Contas a Receber
           </h2>
           <p className="text-muted-foreground">
-            Gerencie seus recebimentos e faturas.
+            Gestão detalhada de títulos e importação de dados.
           </p>
         </div>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Novo Recebimento
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Adicionar Recebimento</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="customer" className="text-right">
-                  Cliente
-                </Label>
-                <Input id="customer" className="col-span-3" />
+        <div className="flex gap-2">
+          <Dialog
+            open={isImportDialogOpen}
+            onOpenChange={setIsImportDialogOpen}
+          >
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Upload className="mr-2 h-4 w-4" />
+                Importar Títulos
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Importar Contas a Receber</DialogTitle>
+                <DialogDescription>
+                  Faça upload de arquivo CSV ou XML seguindo o layout padrão.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="border-2 border-dashed rounded-lg p-10 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-muted/50 transition-colors">
+                  <FileSpreadsheet className="h-10 w-10 text-muted-foreground mb-4" />
+                  <p className="text-sm font-medium">
+                    Arraste seu arquivo aqui ou clique para selecionar
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Colunas obrigatórias: Empresa, Data de Emissão, Nr do
+                    Pedido, NF, Status, Código, Cliente, CNPJ/CPF, UF, Regional,
+                    Vendedor, Parcela, Vencimento, Valores.
+                  </p>
+                </div>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="amount" className="text-right">
-                  Valor
-                </Label>
-                <Input id="amount" type="number" className="col-span-3" />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsImportDialogOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={handleImport} disabled={isImporting}>
+                  {isImporting ? 'Processando...' : 'Importar Arquivo'}
+                </Button>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="date" className="text-right">
-                  Vencimento
-                </Label>
-                <Input id="date" type="date" className="col-span-3" />
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <Button type="submit">Salvar</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Manual
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -99,15 +136,15 @@ export default function Receivables() {
             <div>
               <CardTitle>Listagem de Títulos</CardTitle>
               <CardDescription>
-                Visualize e gerencie todos os títulos a receber.
+                Visualização consolidada de recebíveis.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar cliente ou documento..."
-                  className="pl-9 w-[250px]"
+                  placeholder="Buscar cliente, NF ou pedido..."
+                  className="pl-9 w-[300px]"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -119,75 +156,106 @@ export default function Receivables() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Documento</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Vencimento</TableHead>
-                <TableHead>Valor Bruto</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredData.map((item) => (
-                <TableRow key={item.id} className="hover:bg-muted/50">
-                  <TableCell className="font-medium">
-                    {item.document_number}
-                  </TableCell>
-                  <TableCell>{item.entity_name}</TableCell>
-                  <TableCell>
-                    {new Date(item.due_date).toLocaleDateString('pt-BR')}
-                  </TableCell>
-                  <TableCell>
-                    {item.amount.toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL',
-                    })}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        item.status === 'received'
-                          ? 'default'
-                          : item.status === 'overdue'
-                            ? 'destructive'
-                            : 'secondary'
-                      }
-                      className={
-                        item.status === 'received'
-                          ? 'bg-success hover:bg-success/80'
-                          : ''
-                      }
-                    >
-                      {item.status === 'received'
-                        ? 'Recebido'
-                        : item.status === 'overdue'
-                          ? 'Vencido'
-                          : 'Pendente'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Ver detalhes</DropdownMenuItem>
-                        <DropdownMenuItem>Editar</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead>Emissão</TableHead>
+                  <TableHead>Nr Pedido</TableHead>
+                  <TableHead>NF</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Parcela</TableHead>
+                  <TableHead>Vencimento</TableHead>
+                  <TableHead className="text-right">Vlr Principal</TableHead>
+                  <TableHead className="text-right">Multa/Juros</TableHead>
+                  <TableHead className="text-right font-bold">Total</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredData.map((item) => (
+                  <TableRow key={item.id} className="hover:bg-muted/50">
+                    <TableCell className="font-medium text-xs">
+                      {item.company}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {format(parseISO(item.issue_date), 'dd/MM/yyyy')}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {item.order_number}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {item.invoice_number}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          item.title_status === 'Liquidado'
+                            ? 'default'
+                            : 'secondary'
+                        }
+                        className={
+                          item.title_status === 'Liquidado'
+                            ? 'bg-success hover:bg-success/80 text-[10px]'
+                            : 'text-[10px]'
+                        }
+                      >
+                        {item.title_status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell
+                      className="max-w-[200px] truncate text-xs"
+                      title={item.customer}
+                    >
+                      {item.customer}
+                    </TableCell>
+                    <TableCell className="text-xs text-center">
+                      {item.installment}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {format(parseISO(item.due_date), 'dd/MM/yyyy')}
+                    </TableCell>
+                    <TableCell className="text-right text-xs">
+                      {item.principal_value.toLocaleString('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      })}
+                    </TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">
+                      {(item.fine + item.interest).toLocaleString('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      })}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-xs">
+                      {item.updated_value.toLocaleString('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      })}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-6 w-6 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem>Ver detalhes</DropdownMenuItem>
+                          <DropdownMenuItem>Editar</DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive">
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

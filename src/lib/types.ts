@@ -21,6 +21,32 @@ export interface Transaction {
   notes?: string
 }
 
+// New specific type for Accounts Receivable matching the requirements
+export interface Receivable {
+  id: string
+  company: string // Empresa
+  issue_date: string // Data de Emissão
+  order_number: string // Nr do Pedido
+  invoice_number: string // NF
+  title_status: string // Status do Título
+  code: string // Código
+  customer: string // Cliente
+  customer_doc: string // CNPJ/CPF
+  state: string // UF
+  regional: string // Regional
+  salesperson: string // Vendedor
+  installment: string // Parcela
+  due_date: string // Dt. Vencimento
+  days_overdue: number // Dias
+  principal_value: number // Vlr Principal
+  fine: number // Multa
+  interest: number // Juros
+  updated_value: number // Vlr Atualizado
+  utilization: number // Utilização
+  is_negative: boolean // Negativado
+  payment_prediction: string // Previsão de Pgto.
+}
+
 export interface KPI {
   pmr: number
   pmp: number
@@ -40,16 +66,34 @@ export interface DailyBalance {
 export interface CashFlowEntry {
   date: string
   opening_balance: number
-  receivables: number
-  payables: number
-  imports: number
-  other_expenses: number
-  daily_balance: number
-  accumulated_balance: number
+  total_receivables: number // Total a Receber
+  total_payables: number // Total a Pagar
+  imports: number // Importações
+  other_expenses: number // Outras Despesas
+  daily_balance: number // Saldo do Dia
+  accumulated_balance: number // Saldo Acumulado
   notes?: string
   has_alert?: boolean
   alert_message?: string
   is_projected?: boolean
+  is_weekend?: boolean
+}
+
+export interface BankBalance {
+  id: string
+  date: string
+  bank_name: string
+  account_number: string
+  balance: number
+  status: 'draft' | 'saved' | 'locked'
+}
+
+export interface HistoricalBalance {
+  id: string
+  date: string
+  consolidated_balance: number
+  user_name: string
+  timestamp: string
 }
 
 export interface Alert {
