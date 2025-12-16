@@ -6,7 +6,7 @@ import {
   ArrowUpFromLine,
   Upload,
   BarChart3,
-  CalendarLock,
+  CalendarCheck,
   Settings,
   Search,
   Menu,
@@ -28,7 +28,7 @@ const menuItems = [
   { icon: ArrowUpFromLine, label: 'Contas a Pagar', path: '/pagaveis' },
   { icon: Upload, label: 'Importações', path: '/importacoes' },
   { icon: BarChart3, label: 'Relatórios', path: '/relatorios' },
-  { icon: CalendarLock, label: 'Fechamento', path: '/fechamento' },
+  { icon: CalendarCheck, label: 'Fechamento', path: '/fechamento' },
   { icon: Settings, label: 'Configurações', path: '/configuracoes' },
   { icon: Search, label: 'Auditoria', path: '/auditoria' },
 ]
