@@ -89,7 +89,6 @@ export default function CashFlow() {
     },
   }
 
-  // Calculate Aggregates for Summary Cards (from filtered data or full data? Usually full period is useful for big stats, but let's stick to filtered for consistency)
   const totalReceivables = filteredEntries.reduce(
     (acc, curr) => acc + curr.total_receivables,
     0,
@@ -101,11 +100,17 @@ export default function CashFlow() {
   const lastBalance =
     filteredEntries[filteredEntries.length - 1]?.accumulated_balance || 0
 
-  // Prepare Data for Projection Chart (from filtered data)
   const chartData = filteredEntries.map((entry) => ({
     day: format(parseISO(entry.date), 'dd/MM'),
     balance: entry.accumulated_balance,
   }))
+
+  const setRangeDays = (days: number) => {
+    setDateRange({
+      from: new Date(),
+      to: addDays(new Date(), days),
+    })
+  }
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
@@ -132,44 +137,60 @@ export default function CashFlow() {
       <div className="flex flex-col md:flex-row gap-4 justify-between items-end">
         <CashFlowFilters />
 
-        {/* Date Range Picker */}
-        <div className="flex gap-2 items-center">
-          <Popover>
-            <PopoverTrigger asChild>
+        {/* Date Range Picker & Quick Select */}
+        <div className="flex flex-col md:flex-row gap-2 items-end md:items-center">
+          <div className="flex gap-1 bg-muted p-1 rounded-md">
+            {[7, 15, 21, 30, 60, 90].map((days) => (
               <Button
-                variant={'outline'}
-                className={cn(
-                  'w-[240px] justify-start text-left font-normal',
-                  !dateRange && 'text-muted-foreground',
-                )}
+                key={days}
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={() => setRangeDays(days)}
               >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {dateRange?.from ? (
-                  dateRange.to ? (
-                    <>
-                      {format(dateRange.from, 'dd/MM/yyyy')} -{' '}
-                      {format(dateRange.to, 'dd/MM/yyyy')}
-                    </>
-                  ) : (
-                    format(dateRange.from, 'dd/MM/yyyy')
-                  )
-                ) : (
-                  <span>Selecione o período</span>
-                )}
+                {days}d
               </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                initialFocus
-                mode="range"
-                defaultMonth={dateRange?.from}
-                selected={dateRange}
-                onSelect={(range: any) => range && setDateRange(range)}
-                numberOfMonths={2}
-                locale={ptBR}
-              />
-            </PopoverContent>
-          </Popover>
+            ))}
+          </div>
+
+          <div className="flex gap-2 items-center">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={'outline'}
+                  className={cn(
+                    'w-[240px] justify-start text-left font-normal',
+                    !dateRange && 'text-muted-foreground',
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateRange?.from ? (
+                    dateRange.to ? (
+                      <>
+                        {format(dateRange.from, 'dd/MM/yyyy')} -{' '}
+                        {format(dateRange.to, 'dd/MM/yyyy')}
+                      </>
+                    ) : (
+                      format(dateRange.from, 'dd/MM/yyyy')
+                    )
+                  ) : (
+                    <span>Selecione o período</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  initialFocus
+                  mode="range"
+                  defaultMonth={dateRange?.from}
+                  selected={dateRange}
+                  onSelect={(range: any) => range && setDateRange(range)}
+                  numberOfMonths={2}
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
       </div>
 

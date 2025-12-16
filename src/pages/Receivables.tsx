@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Card,
   CardContent,
@@ -76,19 +76,21 @@ export default function Receivables() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Enhanced Filtering
-  const filteredData = receivables.filter((t) => {
-    const term = searchTerm.toLowerCase()
-    const matchesTerm =
-      t.customer.toLowerCase().includes(term) ||
-      t.invoice_number.toLowerCase().includes(term) ||
-      t.order_number.toLowerCase().includes(term) ||
-      t.company.toLowerCase().includes(term)
+  const filteredData = useMemo(() => {
+    return receivables.filter((t) => {
+      const term = searchTerm.toLowerCase()
+      const matchesTerm =
+        t.customer.toLowerCase().includes(term) ||
+        t.invoice_number.toLowerCase().includes(term) ||
+        t.order_number.toLowerCase().includes(term) ||
+        t.company.toLowerCase().includes(term)
 
-    const matchesStatus =
-      statusFilter === 'all' || t.title_status === statusFilter
+      const matchesStatus =
+        statusFilter === 'all' || t.title_status === statusFilter
 
-    return matchesTerm && matchesStatus
-  })
+      return matchesTerm && matchesStatus
+    })
+  }, [receivables, searchTerm, statusFilter])
 
   // Calculations for Dashboard
   const openReceivables = receivables.filter((r) => r.title_status === 'Aberto')
@@ -110,7 +112,7 @@ export default function Receivables() {
   const openStats = sumValues(openReceivables)
   const liquidatedStats = sumValues(liquidatedReceivables)
 
-  // Total Geral = Aberto + Liquidado (as requested)
+  // Total Geral = Aberto + Liquidado
   const totalStats = {
     principal: openStats.principal + liquidatedStats.principal,
     fine: openStats.fine + liquidatedStats.fine,
@@ -123,13 +125,14 @@ export default function Receivables() {
     setTimeout(() => {
       importData('receivable', [
         {
-          customer: 'Cliente Importado',
-          principal_value: 5000,
-          fine: 0,
-          interest: 0,
+          customer: 'Cliente Importação Massiva S.A.',
+          principal_value: 77619892.49,
+          fine: 572966.24,
+          interest: 10032067.8,
           due_date: format(new Date(), 'yyyy-MM-dd'),
-          invoice_number: 'IMP-001',
+          invoice_number: 'IMP-2024-X',
           title_status: 'Aberto',
+          company: 'Matriz Principal',
         },
       ])
 

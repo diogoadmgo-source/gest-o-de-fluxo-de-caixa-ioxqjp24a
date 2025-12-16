@@ -1,15 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { BankBalanceManager } from '@/components/cash-flow/BankBalanceManager'
 import { HistoricalBalanceList } from '@/components/cash-flow/HistoricalBalanceList'
 import { Calendar } from '@/components/ui/calendar'
 import { ptBR } from 'date-fns/locale'
-import { isSameDay, parseISO } from 'date-fns'
+import { isSameDay, parseISO, format } from 'date-fns'
 import useCashFlowStore from '@/stores/useCashFlowStore'
-import { mockHistoricalBalances } from '@/lib/mock-data'
 import { toast } from 'sonner'
-import { BankBalance } from '@/lib/types'
+import { BankBalance, HistoricalBalance } from '@/lib/types'
 import { Settings2, Trash2 } from 'lucide-react'
 import {
   Dialog,
@@ -45,6 +44,26 @@ export default function Balances() {
     )
     setCurrentBalances(filtered)
   }, [selectedDate, bankBalances])
+
+  // Derive history from bankBalances state
+  const historyData: HistoricalBalance[] = useMemo(() => {
+    const groupedByDate: { [date: string]: number } = {}
+
+    bankBalances.forEach((b) => {
+      if (!groupedByDate[b.date]) {
+        groupedByDate[b.date] = 0
+      }
+      groupedByDate[b.date] += b.balance
+    })
+
+    return Object.entries(groupedByDate).map(([date, balance], index) => ({
+      id: `HIST-${date}-${index}`,
+      date: date,
+      consolidated_balance: balance,
+      user_name: 'Usuário Atual',
+      timestamp: date, // Simplified timestamp
+    }))
+  }, [bankBalances])
 
   const handleSaveBalances = (newBalances: BankBalance[]) => {
     updateBankBalances(newBalances)
@@ -106,7 +125,7 @@ export default function Balances() {
                 Gerenciar Bancos
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
+            <DialogContent className="sm:max-w-[700px]">
               <DialogHeader>
                 <DialogTitle>Gerenciar Contas Bancárias</DialogTitle>
                 <DialogDescription>
@@ -139,7 +158,7 @@ export default function Balances() {
           </Card>
 
           <HistoricalBalanceList
-            history={mockHistoricalBalances}
+            history={historyData}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
           />

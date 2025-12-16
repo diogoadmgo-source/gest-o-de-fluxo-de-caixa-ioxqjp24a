@@ -86,7 +86,9 @@ export interface Bank {
   id: string
   name: string // Display Name (e.g. "Itaú Principal")
   institution: string // Bank Name (e.g. "Banco Itaú")
+  agency?: string // New
   account_number: string
+  account_digit?: string // New
   active: boolean
 }
 

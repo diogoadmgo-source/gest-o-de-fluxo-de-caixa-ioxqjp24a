@@ -26,11 +26,19 @@ export function BankListManager() {
   const [formData, setFormData] = useState<Partial<Bank>>({
     name: '',
     institution: '',
+    agency: '',
     account_number: '',
+    account_digit: '',
   })
 
   const resetForm = () => {
-    setFormData({ name: '', institution: '', account_number: '' })
+    setFormData({
+      name: '',
+      institution: '',
+      agency: '',
+      account_number: '',
+      account_digit: '',
+    })
     setEditingId(null)
     setIsAdding(false)
   }
@@ -42,8 +50,15 @@ export function BankListManager() {
   }
 
   const handleSave = () => {
-    if (!formData.name || !formData.institution || !formData.account_number) {
-      toast.error('Preencha todos os campos obrigatórios.')
+    if (
+      !formData.name ||
+      !formData.institution ||
+      !formData.account_number ||
+      !formData.agency
+    ) {
+      toast.error(
+        'Preencha os campos obrigatórios (Nome, Instituição, Agência, Conta).',
+      )
       return
     }
 
@@ -102,14 +117,39 @@ export function BankListManager() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Número da Conta</Label>
+              <Label>Agência</Label>
               <Input
-                value={formData.account_number}
+                value={formData.agency}
                 onChange={(e) =>
-                  setFormData({ ...formData, account_number: e.target.value })
+                  setFormData({ ...formData, agency: e.target.value })
                 }
-                placeholder="Ex: 1234-5"
+                placeholder="0000"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Conta / Dígito</Label>
+              <div className="flex gap-2">
+                <Input
+                  className="flex-1"
+                  value={formData.account_number}
+                  onChange={(e) =>
+                    setFormData({ ...formData, account_number: e.target.value })
+                  }
+                  placeholder="Ex: 12345"
+                />
+                <Input
+                  className="w-16 text-center"
+                  value={formData.account_digit}
+                  maxLength={1}
+                  onChange={(e) => {
+                    const val = e.target.value
+                      .replace(/[^0-9]/g, '')
+                      .slice(0, 1)
+                    setFormData({ ...formData, account_digit: val })
+                  }}
+                  placeholder="X"
+                />
+              </div>
             </div>
           </div>
           <div className="flex justify-end gap-2">
@@ -129,6 +169,7 @@ export function BankListManager() {
             <TableRow>
               <TableHead>Nome</TableHead>
               <TableHead>Instituição</TableHead>
+              <TableHead>Agência</TableHead>
               <TableHead>Conta</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Ações</TableHead>
@@ -142,7 +183,11 @@ export function BankListManager() {
               >
                 <TableCell className="font-medium">{bank.name}</TableCell>
                 <TableCell>{bank.institution}</TableCell>
-                <TableCell>{bank.account_number}</TableCell>
+                <TableCell>{bank.agency || '-'}</TableCell>
+                <TableCell>
+                  {bank.account_number}
+                  {bank.account_digit ? `-${bank.account_digit}` : ''}
+                </TableCell>
                 <TableCell>
                   <Badge variant={bank.active ? 'default' : 'secondary'}>
                     {bank.active ? 'Ativo' : 'Inativo'}
