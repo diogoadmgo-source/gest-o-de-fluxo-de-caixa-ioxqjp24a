@@ -46,8 +46,8 @@ interface CashFlowContextType {
   updateBankBalances: (balances: BankBalance[]) => void
   resetBalanceHistory: () => void
 
-  addBank: (bank: Bank) => void
-  updateBank: (bank: Bank) => void
+  addBank: (bank: Bank) => Promise<{ error?: any }>
+  updateBank: (bank: Bank) => Promise<void>
   deleteBank: (id: string) => void
 
   addAdjustment: (adjustment: FinancialAdjustment) => Promise<void>
@@ -56,7 +56,7 @@ interface CashFlowContextType {
     type: 'receivable' | 'payable',
     data: any[],
     filename?: string,
-  ) => Promise<void>
+  ) => Promise<{ success: boolean; message: string }>
   clearImportHistory: () => void
   recalculateCashFlow: () => void
   loading: boolean
@@ -132,6 +132,32 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .from('financial_adjustments')
         .select('*')
       if (adjustmentsData) setAdjustments(adjustmentsData as any)
+
+      // Fetch Import Logs (Recent)
+      if (user) {
+        const { data: logsData } = await supabase
+          .from('import_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(10)
+
+        if (logsData) {
+          setImportHistory(
+            logsData.map((log) => ({
+              id: log.id,
+              date: log.created_at,
+              filename: log.filename,
+              type: 'receivable', // Default fallback, log needs type column in future improvement
+              status: log.status === 'success' ? 'success' : 'error',
+              records_count: log.total_records,
+              user_name: userProfile?.name || 'Usuário',
+              success_count: log.success_count,
+              error_count: log.error_count,
+              error_details: log.error_details,
+            })),
+          )
+        }
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
       toast.error('Erro ao carregar dados.')
@@ -261,7 +287,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         dayPayables -
         entry.imports -
         entry.other_expenses +
-        adjustmentsCredit -
+        adjustments_credit -
         adjustmentsDebit
 
       let accumulatedBalance = openingBalance + dailyBalance
@@ -417,10 +443,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       .single()
 
     if (error) {
-      toast.error('Erro ao adicionar banco')
-      return
+      return { error }
     }
+
     setBanks((prev) => [...prev, newBank as any])
+    return { error: null }
   }
 
   const updateBank = async (updated: Bank) => {
@@ -473,6 +500,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     filename: string = 'import.csv',
   ) => {
     setLoading(true)
+    let successCount = 0
+    let errorCount = 0
+    const errors: any[] = []
+
     try {
       // 1. Identify Unique Companies
       const uniqueCompanies = new Set<string>(
@@ -498,9 +529,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
             .single()
 
           if (createError) {
-            throw new Error(
-              `Falha crítica ao criar empresa "${compName}": ${createError.message}. Importação abortada.`,
-            )
+            errorCount++
+            errors.push({
+              row: 'N/A',
+              error: `Falha crítica ao criar empresa "${compName}": ${createError.message}`,
+            })
+            continue
           }
 
           if (newComp) {
@@ -520,76 +554,117 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // 3. Map & Validate Data
-      const records = data.map((d: any) => {
-        const companyName = d.company || d.empresa
-        const companyId = companyName
-          ? companyMap.get(companyName) || selectedCompanyId
-          : selectedCompanyId
+      const records = []
 
-        // Strict Integrity Check: If we have a company name but no ID resolved, we must fail
-        if (companyName && !companyId) {
-          throw new Error(
-            `Erro de integridade: Empresa "${companyName}" não foi resolvida corretamente.`,
-          )
-        }
+      for (let i = 0; i < data.length; i++) {
+        const d = data[i]
+        try {
+          const companyName = d.company || d.empresa
+          const companyId = companyName
+            ? companyMap.get(companyName) || selectedCompanyId
+            : selectedCompanyId
 
-        if (type === 'receivable') {
-          return {
-            company_id: companyId,
-            customer: d.customer || d.cliente || 'Consumidor',
-            invoice_number: d.invoice_number || d.nf || d.documento,
-            issue_date: d.issue_date || d.emissao || new Date().toISOString(),
-            due_date: d.due_date || d.vencimento || new Date().toISOString(),
-            principal_value: parseFloat(d.principal_value || d.valor || 0),
-            fine: parseFloat(d.fine || d.multa || 0),
-            interest: parseFloat(d.interest || d.juros || 0),
-            updated_value: parseFloat(d.updated_value || d.total || 0),
-            title_status: d.title_status || 'Aberto',
-            description: d.description || `Importado de ${filename}`,
+          // Strict Integrity Check: If we have a company name but no ID resolved, we must fail
+          if (companyName && !companyId) {
+            throw new Error(
+              `Erro de integridade: Empresa "${companyName}" não foi resolvida corretamente.`,
+            )
           }
-        } else {
-          return {
-            company_id: companyId,
-            entity_name: d.entity_name || d.fornecedor,
-            document_number: d.document_number || d.documento,
-            issue_date: d.issue_date || d.emissao || new Date().toISOString(),
-            due_date: d.due_date || d.vencimento || new Date().toISOString(),
-            amount: parseFloat(d.amount || d.valor || 0),
-            status: d.status || 'pending',
-            type: 'payable',
-            category: d.category || 'Geral',
-            description: d.description || `Importado de ${filename}`,
+
+          if (type === 'receivable') {
+            records.push({
+              company_id: companyId,
+              customer: d.customer || d.cliente || 'Consumidor',
+              invoice_number: d.invoice_number || d.nf || d.documento,
+              issue_date: d.issue_date || d.emissao || new Date().toISOString(),
+              due_date: d.due_date || d.vencimento || new Date().toISOString(),
+              principal_value: parseFloat(d.principal_value || d.valor || 0),
+              fine: parseFloat(d.fine || d.multa || 0),
+              interest: parseFloat(d.interest || d.juros || 0),
+              updated_value: parseFloat(d.updated_value || d.total || 0),
+              title_status: d.title_status || 'Aberto',
+              description: d.description || `Importado de ${filename}`,
+            })
+          } else {
+            records.push({
+              company_id: companyId,
+              entity_name: d.entity_name || d.fornecedor,
+              document_number: d.document_number || d.documento,
+              issue_date: d.issue_date || d.emissao || new Date().toISOString(),
+              due_date: d.due_date || d.vencimento || new Date().toISOString(),
+              amount: parseFloat(d.amount || d.valor || 0),
+              status: d.status || 'pending',
+              type: 'payable',
+              category: d.category || 'Geral',
+              description: d.description || `Importado de ${filename}`,
+            })
           }
+        } catch (err: any) {
+          errorCount++
+          errors.push({ row: i + 1, error: err.message })
         }
-      })
+      }
 
       // 4. Save Financial Records
-      const table = type === 'receivable' ? 'receivables' : 'transactions'
-      const { error } = await supabase.from(table).insert(records)
+      if (records.length > 0) {
+        const table = type === 'receivable' ? 'receivables' : 'transactions'
+        const { error } = await supabase.from(table).insert(records)
 
-      if (error) throw error
+        if (error) {
+          throw error
+        }
+        successCount = records.length
+      }
 
-      // 5. Refresh Data
+      // 5. Persist Log
+      if (user) {
+        await supabase.from('import_logs').insert({
+          user_id: user.id,
+          filename: filename,
+          status: errorCount === 0 ? 'success' : 'failure',
+          total_records: data.length,
+          success_count: successCount,
+          error_count: errorCount,
+          error_details: errors.length > 0 ? errors : null,
+        })
+      }
+
+      // 6. Refresh Data
       await fetchData()
 
-      // 6. Log History
-      setImportHistory((prev) => [
-        {
-          id: Date.now().toString(),
-          date: new Date().toISOString(),
-          filename,
-          type,
-          status: 'success',
-          records_count: records.length,
-          user_name: userProfile?.name || 'Usuário',
-        },
-        ...prev,
-      ])
+      // Force recalculation
+      recalculateCashFlow()
 
-      toast.success('Importação e gestão de empresas concluídas com sucesso!')
+      if (errorCount > 0) {
+        return {
+          success: false,
+          message: `Importação concluída com erros. ${successCount} sucessos, ${errorCount} falhas.`,
+        }
+      }
+
+      return {
+        success: true,
+        message: `Importação de ${successCount} registros realizada com sucesso!`,
+      }
     } catch (error: any) {
       console.error('Import error:', error)
-      toast.error('Erro crítico na importação: ' + error.message)
+      // Log critical failure
+      if (user) {
+        await supabase.from('import_logs').insert({
+          user_id: user.id,
+          filename: filename,
+          status: 'failure',
+          total_records: data.length,
+          success_count: successCount,
+          error_count: errorCount + (data.length - successCount - errorCount),
+          error_details: [{ error: `Critical Failure: ${error.message}` }],
+        })
+      }
+
+      return {
+        success: false,
+        message: `Falha crítica na importação: ${error.message}`,
+      }
     } finally {
       setLoading(false)
     }

@@ -39,6 +39,7 @@ export function BankListManager() {
   // Form State
   const [formData, setFormData] = useState<Partial<Bank>>({
     name: '',
+    code: '',
     institution: '',
     agency: '',
     account_number: '',
@@ -50,6 +51,7 @@ export function BankListManager() {
   const resetForm = () => {
     setFormData({
       name: '',
+      code: '',
       institution: '',
       agency: '',
       account_number: '',
@@ -67,31 +69,56 @@ export function BankListManager() {
     setIsAdding(false)
   }
 
-  const handleSave = () => {
-    if (
-      !formData.name ||
-      !formData.institution ||
-      !formData.account_number ||
-      !formData.agency
-    ) {
-      toast.error(
-        'Preencha os campos obrigatórios (Nome, Instituição, Agência, Conta).',
-      )
+  const handleSave = async () => {
+    // Validation
+    if (!formData.name?.trim()) {
+      toast.error('O Nome de Exibição é obrigatório.')
+      return
+    }
+    if (!formData.code?.trim()) {
+      toast.error('O Código é obrigatório.')
+      return
+    }
+    if (!formData.type) {
+      toast.error('O Tipo de Conta é obrigatório.')
       return
     }
 
+    if (formData.type === 'bank') {
+      if (!formData.institution) {
+        toast.error(
+          'Instituição bancária é obrigatória para contas do tipo Banco.',
+        )
+        return
+      }
+      if (!formData.account_number) {
+        toast.error('Número da conta é obrigatório.')
+        return
+      }
+    }
+
     if (editingId) {
-      updateBank({ ...formData, id: editingId } as Bank)
+      await updateBank({ ...formData, id: editingId } as Bank)
       toast.success('Conta atualizada com sucesso!')
+      resetForm()
     } else {
-      addBank({
+      const { error } = await addBank({
         ...formData,
-        id: Math.random().toString(36).substr(2, 9),
+        id: Math.random().toString(36).substr(2, 9), // Temp ID until fetch updates from DB, ideally addBank returns real data
         active: true,
       } as Bank)
-      toast.success('Nova conta cadastrada com sucesso!')
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.error('Já existe uma conta com este código para esta empresa.')
+        } else {
+          toast.error('Erro ao cadastrar banco: ' + error.message)
+        }
+      } else {
+        toast.success('Nova conta cadastrada com sucesso!')
+        resetForm()
+      }
     }
-    resetForm()
   }
 
   const handleDelete = (id: string) => {
@@ -171,6 +198,34 @@ export function BankListManager() {
 
             <div className="space-y-2">
               <Label>
+                Nome de Exibição (Apelido){' '}
+                <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                placeholder="Ex: Itaú Principal"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>
+                Código (Identificador Único){' '}
+                <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={formData.code}
+                onChange={(e) =>
+                  setFormData({ ...formData, code: e.target.value })
+                }
+                placeholder="Ex: 341, CX-01"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>
                 {formData.type === 'cash'
                   ? 'Local / Descrição'
                   : 'Instituição (Ex: Banco Itaú)'}
@@ -185,17 +240,6 @@ export function BankListManager() {
                     ? 'Ex: Cofre Loja 1'
                     : 'Ex: Banco Itaú'
                 }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Nome de Exibição (Apelido)</Label>
-              <Input
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder="Ex: Itaú Principal"
               />
             </div>
 
@@ -258,7 +302,7 @@ export function BankListManager() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Empresa</TableHead>
+              <TableHead>Cód</TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Instituição</TableHead>
@@ -270,15 +314,13 @@ export function BankListManager() {
           </TableHeader>
           <TableBody>
             {banks.map((bank) => {
-              const companyName =
-                companies.find((c) => c.id === bank.company_id)?.name || '-'
               return (
                 <TableRow
                   key={bank.id}
                   className={cn(!bank.active && 'opacity-50')}
                 >
-                  <TableCell className="text-xs text-muted-foreground">
-                    {companyName}
+                  <TableCell className="text-xs font-mono font-medium">
+                    {bank.code}
                   </TableCell>
                   <TableCell className="font-medium">{bank.name}</TableCell>
                   <TableCell>

@@ -129,6 +129,57 @@ export type Database = {
         }
         Relationships: []
       }
+      financial_adjustments: {
+        Row: {
+          amount: number
+          company_id: string | null
+          created_at: string
+          date: string
+          id: string
+          reason: string | null
+          status: string | null
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          amount?: number
+          company_id?: string | null
+          created_at?: string
+          date: string
+          id?: string
+          reason?: string | null
+          status?: string | null
+          type: string
+          user_id?: string | null
+        }
+        Update: {
+          amount?: number
+          company_id?: string | null
+          created_at?: string
+          date?: string
+          id?: string
+          reason?: string | null
+          status?: string | null
+          type?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'financial_adjustments_company_id_fkey'
+            columns: ['company_id']
+            isOneToOne: false
+            referencedRelation: 'companies'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'financial_adjustments_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       receivables: {
         Row: {
           company_id: string | null

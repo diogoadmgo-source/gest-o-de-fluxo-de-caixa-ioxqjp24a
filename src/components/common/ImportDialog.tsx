@@ -7,12 +7,20 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Upload, FileSpreadsheet, X, Play } from 'lucide-react'
+import {
+  Upload,
+  FileSpreadsheet,
+  X,
+  Play,
+  AlertCircle,
+  CheckCircle,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { format } from 'date-fns'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 interface ImportDialogProps {
   open: boolean
@@ -32,6 +40,10 @@ export function ImportDialog({
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [result, setResult] = useState<{
+    success: boolean
+    message: string
+  } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -74,11 +86,14 @@ export function ImportDialog({
     }
 
     setSelectedFile(file)
+    setResult(null)
     toast.success(`Arquivo "${file.name}" validado com sucesso.`)
   }
 
   const removeFile = () => {
     setSelectedFile(null)
+    setResult(null)
+    setProgress(0)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -92,17 +107,16 @@ export function ImportDialog({
     if (!selectedFile) return
     setIsProcessing(true)
     setProgress(10)
+    setResult(null)
 
     try {
       // Simulate file parsing (In real app, use papa-parse or xlsx library)
-      // We generate data as if it came from the file to satisfy the constraint of "only frontend" but using Supabase
 
-      // Simulate progress
       const interval = setInterval(() => {
-        setProgress((prev) => (prev < 90 ? prev + 10 : prev))
-      }, 200)
+        setProgress((prev) => (prev < 90 ? prev + 15 : prev))
+      }, 300)
 
-      // Mock parsed data
+      // Mock parsed data - In reality this would come from the file content
       const parsedData = Array.from({ length: 5 }).map((_, i) => ({
         description: `Importado ${type} ${i + 1} - ${selectedFile.name}`,
         amount: Math.random() * 5000 + 1000,
@@ -118,23 +132,27 @@ export function ImportDialog({
         category: 'Importação',
       }))
 
-      // Call store to save to Supabase
       if (type === 'receivable' || type === 'payable') {
-        await importData(type, parsedData, selectedFile.name)
+        const res = await importData(type, parsedData, selectedFile.name)
+        setResult(res)
+
+        if (res.success) {
+          toast.success(res.message)
+        } else {
+          toast.warning(res.message)
+        }
       }
 
       clearInterval(interval)
       setProgress(100)
-
-      // Delay closing to show 100%
-      setTimeout(() => {
-        setIsProcessing(false)
-        setSelectedFile(null)
-        onOpenChange(false)
-      }, 500)
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
+      setResult({
+        success: false,
+        message: 'Erro desconhecido ao processar arquivo.',
+      })
       toast.error('Erro ao processar arquivo.')
+    } finally {
       setIsProcessing(false)
     }
   }
@@ -178,37 +196,59 @@ export function ImportDialog({
               </p>
             </div>
           ) : (
-            <div className="border rounded-lg p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/10 text-primary rounded">
-                    <FileSpreadsheet className="h-6 w-6" />
+            <div className="space-y-4">
+              <div className="border rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary/10 text-primary rounded">
+                      <FileSpreadsheet className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{selectedFile.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {(selectedFile.size / 1024).toFixed(2)} KB
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium">{selectedFile.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {(selectedFile.size / 1024).toFixed(2)} KB
-                    </p>
-                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={removeFile}
+                    disabled={isProcessing}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={removeFile}
-                  disabled={isProcessing}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+
+                {isProcessing && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Processando registros...</span>
+                      <span>{progress}%</span>
+                    </div>
+                    <Progress value={progress} className="h-2" />
+                  </div>
+                )}
               </div>
 
-              {isProcessing && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Processando registros...</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <Progress value={progress} className="h-2" />
-                </div>
+              {result && (
+                <Alert
+                  variant={result.success ? 'default' : 'destructive'}
+                  className={cn(
+                    result.success &&
+                      'border-success bg-success/10 text-success',
+                  )}
+                >
+                  {result.success ? (
+                    <CheckCircle className="h-4 w-4" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4" />
+                  )}
+                  <AlertTitle>
+                    {result.success ? 'Sucesso' : 'Atenção'}
+                  </AlertTitle>
+                  <AlertDescription>{result.message}</AlertDescription>
+                </Alert>
               )}
             </div>
           )}
@@ -219,11 +259,13 @@ export function ImportDialog({
             onClick={() => onOpenChange(false)}
             disabled={isProcessing}
           >
-            Cancelar
+            Fechar
           </Button>
           <Button
             onClick={handleImport}
-            disabled={!selectedFile || isProcessing}
+            disabled={
+              !selectedFile || isProcessing || (!!result && result.success)
+            }
           >
             {isProcessing ? 'Processando...' : 'Importar Arquivo'}
             {!isProcessing && <Play className="ml-2 h-4 w-4" />}

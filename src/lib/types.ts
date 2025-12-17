@@ -108,10 +108,11 @@ export interface Bank {
   id: string
   company_id?: string // Global Filter
   name: string // Display Name (e.g. "Itaú Principal")
+  code: string // Bank Code (e.g. "341") - Mandatory
   institution: string // Bank Name (e.g. "Banco Itaú")
-  agency?: string // New
+  agency?: string
   account_number: string
-  account_digit?: string // New
+  account_digit?: string
   active: boolean
   type: 'bank' | 'cash'
 }
@@ -194,4 +195,7 @@ export interface ImportHistoryEntry {
   status: 'success' | 'error'
   records_count: number
   user_name: string
+  success_count?: number
+  error_count?: number
+  error_details?: any
 }
