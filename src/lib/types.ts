@@ -31,7 +31,7 @@ export interface Transaction {
   notes?: string
 }
 
-// New specific type for Accounts Receivable matching the requirements
+// Updated Receivable type with new fields from User Story
 export interface Receivable {
   id: string
   company_id?: string // Global Filter
@@ -40,22 +40,27 @@ export interface Receivable {
   order_number: string // Nr do Pedido
   invoice_number: string // NF
   title_status: string // Status do Título
-  code: string // Código
+  code?: string // Código (Mapped to customer_code)
+  customer_code?: string // Database field
   customer: string // Cliente
   customer_doc: string // CNPJ/CPF
-  state: string // UF
-  regional: string // Regional
-  salesperson: string // Vendedor
-  installment: string // Parcela
+  state?: string // UF (Mapped to uf)
+  uf?: string // Database field
+  regional?: string // Regional
+  salesperson?: string // Vendedor (Mapped to seller)
+  seller?: string // Database field
+  installment?: string // Parcela
   due_date: string // Dt. Vencimento
-  days_overdue: number // Dias
+  days_overdue?: number // Dias
   principal_value: number // Vlr Principal
   fine: number // Multa
   interest: number // Juros
   updated_value: number // Vlr Atualizado
-  utilization: number // Utilização
-  is_negative: boolean // Negativado
+  utilization?: string // Utilização (Changed to string/text per requirement)
+  is_negative?: boolean // Negativado (Legacy boolean)
+  negativado?: string // Negativado (Database field text)
   payment_prediction: string // Previsão de Pgto.
+  description?: string
 }
 
 export interface FinancialAdjustment {

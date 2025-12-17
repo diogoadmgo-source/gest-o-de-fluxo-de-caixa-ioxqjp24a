@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Card,
   CardContent,
@@ -85,7 +85,8 @@ export default function Receivables() {
       const matchesTerm =
         (t.customer || '').toLowerCase().includes(term) ||
         (t.invoice_number || '').toLowerCase().includes(term) ||
-        (t.order_number || '').toLowerCase().includes(term)
+        (t.order_number || '').toLowerCase().includes(term) ||
+        (t.customer_code || '').toLowerCase().includes(term)
 
       // Filter logic: Only show matches
       const matchesStatus =
@@ -268,10 +269,10 @@ export default function Receivables() {
                   <TableHead>NF</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Cliente</TableHead>
+                  <TableHead>UF</TableHead>
                   <TableHead>Vencimento</TableHead>
                   <TableHead className="text-right">Principal</TableHead>
-                  <TableHead className="text-right">Multa</TableHead>
-                  <TableHead className="text-right">Juros</TableHead>
+                  <TableHead className="text-right">Multa/Juros</TableHead>
                   <TableHead className="text-right font-bold">
                     Atualizado
                   </TableHead>
@@ -312,6 +313,14 @@ export default function Receivables() {
                         title={item.customer}
                       >
                         {item.customer}
+                        {item.customer_code && (
+                          <span className="block text-[10px] text-muted-foreground">
+                            {item.customer_code}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {item.uf || '-'}
                       </TableCell>
                       <TableCell className="text-xs">
                         {item.due_date
@@ -322,10 +331,9 @@ export default function Receivables() {
                         {formatCurrency(item.principal_value)}
                       </TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground">
-                        {formatCurrency(item.fine)}
-                      </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground">
-                        {formatCurrency(item.interest)}
+                        {formatCurrency(
+                          (item.fine || 0) + (item.interest || 0),
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-bold text-xs">
                         {formatCurrency(
@@ -401,8 +409,14 @@ export default function Receivables() {
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span className="font-semibold">Cliente:</span>
                 <span>{viewingItem.customer}</span>
+                <span className="font-semibold">Código:</span>
+                <span>{viewingItem.customer_code || '-'}</span>
                 <span className="font-semibold">NF:</span>
                 <span>{viewingItem.invoice_number}</span>
+                <span className="font-semibold">Pedido:</span>
+                <span>{viewingItem.order_number || '-'}</span>
+                <span className="font-semibold">UF:</span>
+                <span>{viewingItem.uf || '-'}</span>
                 <span className="font-semibold">Valor Principal:</span>
                 <span>{formatCurrency(viewingItem.principal_value)}</span>
                 <span className="font-semibold">Valor Atualizado:</span>
@@ -413,6 +427,10 @@ export default function Receivables() {
                 </span>
                 <span className="font-semibold">Status:</span>
                 <span>{viewingItem.title_status}</span>
+                <span className="font-semibold">Parcela:</span>
+                <span>{viewingItem.installment || '-'}</span>
+                <span className="font-semibold">Vendedor:</span>
+                <span>{viewingItem.seller || '-'}</span>
               </div>
             </div>
           )}

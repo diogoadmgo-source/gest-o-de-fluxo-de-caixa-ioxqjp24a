@@ -17,9 +17,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
-import { cn } from '@/lib/utils'
+import { cn, parseCSV } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
-import { format, addDays } from 'date-fns'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 interface ImportDialogProps {
@@ -71,12 +70,8 @@ export function ImportDialog({
   }
 
   const validateAndSetFile = (file: File) => {
-    if (
-      !file.name.endsWith('.csv') &&
-      !file.name.endsWith('.xlsx') &&
-      !file.name.endsWith('.ofx')
-    ) {
-      toast.error('Formato de arquivo não suportado. Use CSV, Excel ou OFX.')
+    if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
+      toast.error('Por favor, utilize arquivos CSV para importação.')
       return
     }
 
@@ -110,27 +105,11 @@ export function ImportDialog({
     setResult(null)
 
     try {
-      // Simulate file parsing (In real app, use papa-parse or xlsx library)
+      const text = await selectedFile.text()
+      setProgress(30)
 
-      const interval = setInterval(() => {
-        setProgress((prev) => (prev < 90 ? prev + 15 : prev))
-      }, 300)
-
-      // Mock parsed data with variable dates for realism
-      const parsedData = Array.from({ length: 5 }).map((_, i) => ({
-        description: `Importado ${type} ${i + 1} - ${selectedFile.name}`,
-        amount: Math.random() * 5000 + 1000,
-        principal_value: Math.random() * 5000 + 1000,
-        fine: 0,
-        interest: 0,
-        due_date: format(addDays(new Date(), i * 3), 'yyyy-MM-dd'),
-        invoice_number: `IMP-${Date.now()}-${i}`,
-        entity_name: `Fornecedor Importado ${i + 1}`,
-        customer: `Cliente Importado ${i + 1}`,
-        title_status: 'Aberto',
-        status: 'pending',
-        category: 'Importação',
-      }))
+      const parsedData = parseCSV(text)
+      setProgress(50)
 
       if (type === 'receivable' || type === 'payable') {
         const res = await importData(type, parsedData, selectedFile.name)
@@ -143,13 +122,12 @@ export function ImportDialog({
         }
       }
 
-      clearInterval(interval)
       setProgress(100)
     } catch (error: any) {
       console.error(error)
       setResult({
         success: false,
-        message: 'Erro desconhecido ao processar arquivo.',
+        message: 'Erro ao ler arquivo: ' + error.message,
       })
       toast.error('Erro ao processar arquivo.')
     } finally {
@@ -163,7 +141,7 @@ export function ImportDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            Faça upload de arquivo CSV, Excel ou OFX seguindo o layout padrão.
+            Faça upload de arquivo CSV seguindo o layout padrão.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
@@ -184,15 +162,15 @@ export function ImportDialog({
                 type="file"
                 ref={fileInputRef}
                 className="hidden"
-                accept=".csv,.xlsx,.ofx"
+                accept=".csv,.txt"
                 onChange={handleFileSelect}
               />
               <Upload className="h-10 w-10 text-muted-foreground mb-4" />
               <p className="text-sm font-medium">
-                Arraste seu arquivo aqui ou clique para selecionar
+                Arraste seu arquivo CSV aqui ou clique para selecionar
               </p>
               <p className="text-xs text-muted-foreground mt-2">
-                Suporta CSV, Excel e OFX
+                Suporta apenas arquivos CSV
               </p>
             </div>
           ) : (
@@ -247,7 +225,9 @@ export function ImportDialog({
                   <AlertTitle>
                     {result.success ? 'Sucesso' : 'Atenção'}
                   </AlertTitle>
-                  <AlertDescription>{result.message}</AlertDescription>
+                  <AlertDescription className="max-h-24 overflow-y-auto text-xs mt-1">
+                    {result.message}
+                  </AlertDescription>
                 </Alert>
               )}
             </div>

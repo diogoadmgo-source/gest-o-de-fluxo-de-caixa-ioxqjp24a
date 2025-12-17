@@ -20,6 +20,7 @@ import { isSameDay, parseISO } from 'date-fns'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { importContasAReceberFromSheetRows } from '@/services/importer'
 
 interface CashFlowContextType {
   companies: Company[]
@@ -287,7 +288,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         dayPayables -
         entry.imports -
         entry.other_expenses +
-        adjustmentsCredit -
+        adjustments_credit -
         adjustmentsDebit
 
       let accumulatedBalance = openingBalance + dailyBalance
@@ -502,150 +503,28 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true)
     let successCount = 0
     let errorCount = 0
-    const errors: any[] = []
+    let importResults: any = { success: false, errors: [], total: 0 }
 
     try {
-      // 1. Identify Unique Companies
-      const uniqueCompanies = new Set<string>(
-        data.map((d: any) => d.company || d.empresa).filter(Boolean),
-      )
+      if (!user) throw new Error('Usuário não autenticado.')
 
-      // 2. Prioritized Company Validation & Creation
-      const companyMap = new Map<string, string>() // Name -> ID
-      const { data: currentCompanies } = await supabase
-        .from('companies')
-        .select('*')
-      if (currentCompanies) {
-        currentCompanies.forEach((c) => companyMap.set(c.name, c.id))
-      }
+      if (type === 'receivable') {
+        // Use the new Importer Service
+        importResults = await importContasAReceberFromSheetRows(data, user.id)
 
-      for (const compName of uniqueCompanies) {
-        if (!companyMap.has(compName)) {
-          // Create new company with origin 'Importação'
-          const { data: newComp, error: createError } = await supabase
-            .from('companies')
-            .insert({ name: compName, origin: 'Importação' })
-            .select()
-            .single()
+        successCount = importResults.success
+        errorCount = importResults.errors.length
 
-          if (createError) {
-            errorCount++
-            errors.push({
-              row: 'N/A',
-              error: `Falha crítica ao criar empresa "${compName}": ${createError.message}`,
-            })
-            continue
-          }
-
-          if (newComp) {
-            companyMap.set(newComp.name, newComp.id)
-            setCompanies((prev) => [...prev, newComp])
-
-            // Link user to this new company to ensure they can see it
-            if (user) {
-              await supabase
-                .from('user_companies')
-                .insert({
-                  user_id: user.id,
-                  company_id: newComp.id,
-                })
-                .catch((err) =>
-                  console.error('Failed to link user to company', err),
-                )
-            }
-
-            // Audit Log for Company Creation
-            await supabase.from('audit_logs').insert({
-              action: 'Create Company (Import)',
-              entity: 'Companies',
-              entity_id: newComp.id,
-              user_id: user?.id,
-              details: { name: compName, origin: 'Importação' },
-            })
-          }
+        // Refresh Data needed
+        if (successCount > 0) {
+          await refreshProfile() // Update company links
+          await fetchData() // Fetch new receivables and companies
         }
-      }
-
-      // Refresh User Profile to get new company associations
-      if (user) {
-        await refreshProfile()
-      }
-
-      // 3. Map & Validate Data
-      const records = []
-
-      for (let i = 0; i < data.length; i++) {
-        const d = data[i]
-        try {
-          const companyName = d.company || d.empresa
-          const companyId = companyName
-            ? companyMap.get(companyName) || selectedCompanyId
-            : selectedCompanyId
-
-          // Strict Integrity Check: If we have a company name but no ID resolved, we must fail
-          if (companyName && !companyId) {
-            throw new Error(
-              `Erro de integridade: Empresa "${companyName}" não foi resolvida corretamente.`,
-            )
-          }
-
-          if (type === 'receivable') {
-            records.push({
-              company_id: companyId,
-              customer: d.customer || d.cliente || 'Consumidor',
-              invoice_number: d.invoice_number || d.nf || d.documento,
-              issue_date: d.issue_date || d.emissao || new Date().toISOString(),
-              due_date: d.due_date || d.vencimento || new Date().toISOString(),
-              principal_value: parseFloat(d.principal_value || d.valor || 0),
-              fine: parseFloat(d.fine || d.multa || 0),
-              interest: parseFloat(d.interest || d.juros || 0),
-              updated_value: parseFloat(d.updated_value || d.total || 0),
-              title_status: d.title_status || 'Aberto',
-              description: d.description || `Importado de ${filename}`,
-            })
-          } else {
-            records.push({
-              company_id: companyId,
-              entity_name: d.entity_name || d.fornecedor,
-              document_number: d.document_number || d.documento,
-              issue_date: d.issue_date || d.emissao || new Date().toISOString(),
-              due_date: d.due_date || d.vencimento || new Date().toISOString(),
-              amount: parseFloat(d.amount || d.valor || 0),
-              status: d.status || 'pending',
-              type: 'payable',
-              category: d.category || 'Geral',
-              description: d.description || `Importado de ${filename}`,
-            })
-          }
-        } catch (err: any) {
-          errorCount++
-          errors.push({ row: i + 1, error: err.message })
-        }
-      }
-
-      // 4. Save Financial Records
-      if (records.length > 0) {
-        const table = type === 'receivable' ? 'receivables' : 'transactions'
-        // Use select() to return inserted data for immediate UI update
-        const { data: insertedRecords, error } = await supabase
-          .from(table)
-          .insert(records)
-          .select()
-
-        if (error) {
-          throw error
-        }
-
-        // Optimistically update local state so UI reflects data immediately
-        if (insertedRecords) {
-          if (type === 'receivable') {
-            setReceivables((prev) => [...prev, ...(insertedRecords as any)])
-          } else {
-            setPayables((prev) => [...prev, ...(insertedRecords as any)])
-          }
-        }
-
-        successCount = records.length
+      } else {
+        // Fallback for Payable (Not implemented in this story, keeping legacy partial logic)
+        throw new Error(
+          'Importação de Contas a Pagar não implementada neste fluxo.',
+        )
       }
 
       // 5. Persist Log
@@ -653,25 +532,29 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         await supabase.from('import_logs').insert({
           user_id: user.id,
           filename: filename,
-          status: errorCount === 0 ? 'success' : 'failure',
+          status: errorCount === 0 && successCount > 0 ? 'success' : 'failure',
           total_records: data.length,
           success_count: successCount,
           error_count: errorCount,
-          error_details: errors.length > 0 ? errors : null,
+          error_details:
+            importResults.errors.length > 0 ? importResults.errors : null,
         })
       }
 
-      // 6. Refresh Data
-      // We still call fetchData to ensure eventual consistency and update other stores like history
-      await fetchData()
-
-      // NOTE: We don't need to call recalculateCashFlow() explicitly because updating state
-      // (either manually or via fetchData) will trigger the useEffect that calls performRecalculation.
-
       if (errorCount > 0) {
+        // Join first 3 errors for the toast message
+        const errorMsg = importResults.errors.slice(0, 3).join('; ')
         return {
           success: false,
-          message: `Importação concluída com erros. ${successCount} sucessos, ${errorCount} falhas.`,
+          message: `Importação concluída com erros (${errorCount} falhas). ${errorMsg}${importResults.errors.length > 3 ? '...' : ''}`,
+        }
+      }
+
+      if (importResults.message) {
+        // Special case for empty file
+        return {
+          success: false,
+          message: importResults.message,
         }
       }
 
@@ -689,7 +572,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           status: 'failure',
           total_records: data.length,
           success_count: successCount,
-          error_count: errorCount + (data.length - successCount - errorCount),
+          error_count: data.length,
           error_details: [{ error: `Critical Failure: ${error.message}` }],
         })
       }
