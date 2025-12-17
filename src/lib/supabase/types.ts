@@ -84,19 +84,43 @@ export type Database = {
       }
       banks: {
         Row: {
+          account_digit: string | null
+          account_number: string | null
+          active: boolean | null
+          agency: string | null
+          code: string | null
           company_id: string | null
           created_at: string | null
           id: string
+          institution: string | null
+          name: string | null
+          type: string | null
         }
         Insert: {
+          account_digit?: string | null
+          account_number?: string | null
+          active?: boolean | null
+          agency?: string | null
+          code?: string | null
           company_id?: string | null
           created_at?: string | null
           id?: string
+          institution?: string | null
+          name?: string | null
+          type?: string | null
         }
         Update: {
+          account_digit?: string | null
+          account_number?: string | null
+          active?: boolean | null
+          agency?: string | null
+          code?: string | null
           company_id?: string | null
           created_at?: string | null
           id?: string
+          institution?: string | null
+          name?: string | null
+          type?: string | null
         }
         Relationships: [
           {
@@ -173,6 +197,50 @@ export type Database = {
           },
           {
             foreignKeyName: 'financial_adjustments_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      import_logs: {
+        Row: {
+          created_at: string
+          error_count: number | null
+          error_details: Json | null
+          filename: string
+          id: string
+          status: string
+          success_count: number | null
+          total_records: number | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_count?: number | null
+          error_details?: Json | null
+          filename: string
+          id?: string
+          status: string
+          success_count?: number | null
+          total_records?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_count?: number | null
+          error_details?: Json | null
+          filename?: string
+          id?: string
+          status?: string
+          success_count?: number | null
+          total_records?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'import_logs_user_id_fkey'
             columns: ['user_id']
             isOneToOne: false
             referencedRelation: 'user_profiles'
