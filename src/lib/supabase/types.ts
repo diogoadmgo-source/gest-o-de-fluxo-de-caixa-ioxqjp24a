@@ -15,6 +15,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          details: Json | null
+          entity: string
+          entity_id: string | null
+          id: string
+          ip_address: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          details?: Json | null
+          entity: string
+          entity_id?: string | null
+          id?: string
+          ip_address?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          details?: Json | null
+          entity?: string
+          entity_id?: string | null
+          id?: string
+          ip_address?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'audit_logs_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       bank_balances: {
         Row: {
           company_id: string | null
@@ -137,6 +178,50 @@ export type Database = {
           },
         ]
       }
+      user_profiles: {
+        Row: {
+          company_id: string | null
+          created_at: string | null
+          email: string
+          id: string
+          last_access: string | null
+          name: string
+          profile: Database['public']['Enums']['user_role']
+          status: Database['public']['Enums']['user_status']
+          updated_at: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string | null
+          email: string
+          id: string
+          last_access?: string | null
+          name: string
+          profile?: Database['public']['Enums']['user_role']
+          status?: Database['public']['Enums']['user_status']
+          updated_at?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          last_access?: string | null
+          name?: string
+          profile?: Database['public']['Enums']['user_role']
+          status?: Database['public']['Enums']['user_status']
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'user_profiles_company_id_fkey'
+            columns: ['company_id']
+            isOneToOne: false
+            referencedRelation: 'companies'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -145,7 +230,8 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      user_role: 'Administrator' | 'User'
+      user_status: 'Pending' | 'Active' | 'Inactive' | 'Blocked'
     }
     CompositeTypes: {
       [_ in never]: never
@@ -272,6 +358,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      user_role: ['Administrator', 'User'],
+      user_status: ['Pending', 'Active', 'Inactive', 'Blocked'],
+    },
   },
 } as const

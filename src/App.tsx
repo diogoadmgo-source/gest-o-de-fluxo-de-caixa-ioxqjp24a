@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -9,7 +9,6 @@ import Dashboard from './pages/Dashboard'
 import NotFound from './pages/NotFound'
 import Receivables from './pages/Receivables'
 import Payables from './pages/Payables'
-import Imports from './pages/Imports'
 import Reports from './pages/Reports'
 import PeriodClosing from './pages/PeriodClosing'
 import ManualAdjustments from './pages/ManualAdjustments'
@@ -42,7 +41,7 @@ const App = () => (
               <Route path="/saldos" element={<Balances />} />
               <Route path="/recebiveis" element={<Receivables />} />
               <Route path="/pagaveis" element={<Payables />} />
-              <Route path="/importacoes" element={<Imports />} />
+              {/* Importacoes removed */}
               <Route path="/relatorios" element={<Reports />} />
               <Route path="/fechamento" element={<PeriodClosing />} />
               <Route path="/ajustes" element={<ManualAdjustments />} />

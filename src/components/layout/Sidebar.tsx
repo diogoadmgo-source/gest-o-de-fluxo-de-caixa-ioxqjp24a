@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   ArrowDownToLine,
   ArrowUpFromLine,
-  Upload,
   BarChart3,
   CalendarCheck,
   Settings,
@@ -31,7 +30,7 @@ const baseMenuItems = [
   { icon: Landmark, label: 'Saldos', path: '/saldos' },
   { icon: ArrowDownToLine, label: 'Contas a Receber', path: '/recebiveis' },
   { icon: ArrowUpFromLine, label: 'Contas a Pagar', path: '/pagaveis' },
-  { icon: Upload, label: 'Importações', path: '/importacoes' },
+  // Importações removed
   { icon: BarChart3, label: 'Relatórios', path: '/relatorios' },
   { icon: CalendarCheck, label: 'Fechamento', path: '/fechamento' },
   { icon: Settings, label: 'Configurações', path: '/configuracoes' },
@@ -46,8 +45,6 @@ export function Sidebar() {
   // Add Users menu for admins
   const menuItems = [...baseMenuItems]
   if (userProfile?.profile === 'Administrator') {
-    // Insert Users management before Audit or inside Settings group
-    // For now, let's add it as a top level item
     const settingsIndex = menuItems.findIndex(
       (i) => i.path === '/configuracoes',
     )

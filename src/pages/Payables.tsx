@@ -27,6 +27,7 @@ import {
   Eye,
   AlertCircle,
   CheckCircle2,
+  Upload,
 } from 'lucide-react'
 import {
   Dialog,
@@ -56,10 +57,12 @@ import { Transaction } from '@/lib/types'
 import { PayableForm } from '@/components/financial/PayableForm'
 import { FinancialStats } from '@/components/financial/FinancialStats'
 import { format, parseISO } from 'date-fns'
+import { ImportDialog } from '@/components/common/ImportDialog'
 
 export default function Payables() {
   const { payables, updatePayable, deletePayable } = useCashFlowStore()
   const [searchTerm, setSearchTerm] = useState('')
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<Transaction | null>(null)
   const [viewingItem, setViewingItem] = useState<Transaction | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -70,7 +73,6 @@ export default function Payables() {
       t.document_number.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  // Calculations for Mini-Dashboard
   const pendingPayables = payables.filter(
     (p) => p.status === 'pending' || p.status === 'overdue',
   )
@@ -116,13 +118,27 @@ export default function Payables() {
             Controle seus pagamentos e despesas.
           </p>
         </div>
-        <Button
-          variant="destructive"
-          onClick={() => setEditingItem({} as Transaction)}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Pagamento
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsImportDialogOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            Importar Contas
+          </Button>
+
+          <ImportDialog
+            open={isImportDialogOpen}
+            onOpenChange={setIsImportDialogOpen}
+            type="payable"
+            title="Importar Contas a Pagar"
+          />
+
+          <Button
+            variant="destructive"
+            onClick={() => setEditingItem({} as Transaction)}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Pagamento
+          </Button>
+        </div>
       </div>
 
       <FinancialStats
@@ -256,7 +272,6 @@ export default function Payables() {
         </CardContent>
       </Card>
 
-      {/* Edit Dialog */}
       <Dialog
         open={!!editingItem}
         onOpenChange={(open) => !open && setEditingItem(null)}
@@ -277,7 +292,6 @@ export default function Payables() {
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog */}
       <Dialog
         open={!!viewingItem}
         onOpenChange={(open) => !open && setViewingItem(null)}
@@ -315,7 +329,6 @@ export default function Payables() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Alert */}
       <AlertDialog
         open={!!deletingId}
         onOpenChange={(open) => !open && setDeletingId(null)}

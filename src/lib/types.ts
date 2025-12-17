@@ -144,7 +144,8 @@ export interface UserProfile {
   profile: 'Administrator' | 'User'
   status: 'Pending' | 'Active' | 'Inactive' | 'Blocked'
   last_access?: string
-  company_id?: string
+  company_id?: string // Deprecated in favor of user_companies, but kept for legacy
+  is_2fa_enabled: boolean
   created_at: string
 }
 

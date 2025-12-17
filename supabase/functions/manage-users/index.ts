@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
 
     const { action, ...payload } = await req.json()
 
-    // Verify the caller is an admin (optional, can be enforced via RLS/RPCS but here we trust the token if valid)
+    // Verify the caller is an admin
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       throw new Error('No authorization header')
@@ -39,7 +39,6 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Check if requester is admin
     const { data: profile } = await supabaseClient
       .from('user_profiles')
       .select('profile')
@@ -57,32 +56,42 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'invite': {
-        const { email, name, profile, company_id } = payload
+        const { email, name, profile, company_ids, status } = payload
         const { data, error } =
           await supabaseClient.auth.admin.inviteUserByEmail(email, {
             data: {
               name,
               profile,
-              company_id,
-              status: 'Pending',
+              status: status || 'Pending',
+              is_2fa_enabled: false,
             },
             redirectTo: payload.redirectTo,
           })
         if (error) throw error
+
+        // Handle companies association
+        if (company_ids && Array.isArray(company_ids) && data.user) {
+          const companiesInsert = company_ids.map((cid: string) => ({
+            user_id: data.user!.id,
+            company_id: cid,
+          }))
+          const { error: companiesError } = await supabaseClient
+            .from('user_companies')
+            .insert(companiesInsert)
+          if (companiesError) throw companiesError
+        }
+
         result = data
         break
       }
 
       case 'update_status': {
         const { id, status } = payload
-
-        // If blocking/deactivating, we ban the user in auth
         if (status === 'Inactive' || status === 'Blocked') {
           const { error } = await supabaseClient.auth.admin.updateUserById(id, {
-            ban_duration: '876600h', // 100 years basically
+            ban_duration: '876600h',
           })
           if (error) throw error
-          // Invalidate sessions
           await supabaseClient.auth.admin.signOut(id)
         } else if (status === 'Active') {
           const { error } = await supabaseClient.auth.admin.updateUserById(id, {
@@ -105,7 +114,6 @@ Deno.serve(async (req) => {
 
       case 'reset_password': {
         const { id, email, redirectTo } = payload
-        // Trigger password reset email
         const { data, error } = await supabaseClient.auth.resetPasswordForEmail(
           email,
           {
@@ -113,29 +121,59 @@ Deno.serve(async (req) => {
           },
         )
         if (error) throw error
-
-        // Invalidate current sessions
         await supabaseClient.auth.admin.signOut(id)
-
         result = { success: true, message: 'Reset email sent' }
         break
       }
 
       case 'update_profile': {
-        const { id, name, profile: newProfile } = payload
+        const {
+          id,
+          name,
+          profile: newProfile,
+          email,
+          is_2fa_enabled,
+          company_ids,
+        } = payload
+
+        // Update Auth User (Email)
+        if (email) {
+          const { error: emailError } =
+            await supabaseClient.auth.admin.updateUserById(id, {
+              email: email,
+              email_confirm: true,
+              user_metadata: { name, profile: newProfile, is_2fa_enabled },
+            })
+          if (emailError) throw emailError
+        }
+
+        // Update User Profile Table
         const { data, error } = await supabaseClient
           .from('user_profiles')
-          .update({ name, profile: newProfile })
+          .update({ name, profile: newProfile, email, is_2fa_enabled })
           .eq('id', id)
           .select()
           .single()
 
         if (error) throw error
 
-        // Sync metadata
-        await supabaseClient.auth.admin.updateUserById(id, {
-          user_metadata: { name, profile: newProfile },
-        })
+        // Update Company Associations
+        if (company_ids && Array.isArray(company_ids)) {
+          // Delete existing
+          await supabaseClient.from('user_companies').delete().eq('user_id', id)
+
+          // Insert new
+          if (company_ids.length > 0) {
+            const companiesInsert = company_ids.map((cid: string) => ({
+              user_id: id,
+              company_id: cid,
+            }))
+            const { error: companiesError } = await supabaseClient
+              .from('user_companies')
+              .insert(companiesInsert)
+            if (companiesError) throw companiesError
+          }
+        }
 
         result = data
         break

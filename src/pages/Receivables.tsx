@@ -23,7 +23,6 @@ import {
   Filter,
   MoreHorizontal,
   Upload,
-  FileSpreadsheet,
   Trash2,
   Edit,
   Eye,
@@ -36,8 +35,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogDescription,
 } from '@/components/ui/dialog'
 import {
   AlertDialog,
@@ -61,21 +58,19 @@ import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Receivable } from '@/lib/types'
 import { FinancialStats } from '@/components/financial/FinancialStats'
 import { ReceivableForm } from '@/components/financial/ReceivableForm'
+import { ImportDialog } from '@/components/common/ImportDialog'
 
 export default function Receivables() {
-  const { receivables, updateReceivable, deleteReceivable, importData } =
-    useCashFlowStore()
+  const { receivables, updateReceivable, deleteReceivable } = useCashFlowStore()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'Aberto' | 'Liquidado'
   >('all')
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
-  const [isImporting, setIsImporting] = useState(false)
   const [editingItem, setEditingItem] = useState<Receivable | null>(null)
   const [viewingItem, setViewingItem] = useState<Receivable | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  // Enhanced Filtering
   const filteredData = useMemo(() => {
     return receivables.filter((t) => {
       const term = searchTerm.toLowerCase()
@@ -92,7 +87,6 @@ export default function Receivables() {
     })
   }, [receivables, searchTerm, statusFilter])
 
-  // Calculations for Dashboard
   const openReceivables = receivables.filter((r) => r.title_status === 'Aberto')
   const liquidatedReceivables = receivables.filter(
     (r) => r.title_status === 'Liquidado',
@@ -112,36 +106,11 @@ export default function Receivables() {
   const openStats = sumValues(openReceivables)
   const liquidatedStats = sumValues(liquidatedReceivables)
 
-  // Total Geral = Aberto + Liquidado
   const totalStats = {
     principal: openStats.principal + liquidatedStats.principal,
     fine: openStats.fine + liquidatedStats.fine,
     interest: openStats.interest + liquidatedStats.interest,
     total: openStats.total + liquidatedStats.total,
-  }
-
-  const handleImport = () => {
-    setIsImporting(true)
-    setTimeout(() => {
-      importData('receivable', [
-        {
-          customer: 'Cliente Importação Massiva S.A.',
-          principal_value: 77619892.49,
-          fine: 572966.24,
-          interest: 10032067.8,
-          due_date: format(new Date(), 'yyyy-MM-dd'),
-          invoice_number: 'IMP-2024-X',
-          title_status: 'Aberto',
-          company: 'Matriz Principal',
-        },
-      ])
-
-      setIsImporting(false)
-      setIsImportDialogOpen(false)
-      toast.success(
-        'Importação concluída! Registros atualizados e fluxo recalculado.',
-      )
-    }, 2000)
   }
 
   const handleDelete = () => {
@@ -173,44 +142,18 @@ export default function Receivables() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Dialog
+          <Button variant="outline" onClick={() => setIsImportDialogOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            Importar Títulos
+          </Button>
+
+          <ImportDialog
             open={isImportDialogOpen}
             onOpenChange={setIsImportDialogOpen}
-          >
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Upload className="mr-2 h-4 w-4" />
-                Importar Títulos
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Importar Contas a Receber</DialogTitle>
-                <DialogDescription>
-                  Faça upload de arquivo CSV ou XML seguindo o layout padrão.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="border-2 border-dashed rounded-lg p-10 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-muted/50 transition-colors">
-                  <FileSpreadsheet className="h-10 w-10 text-muted-foreground mb-4" />
-                  <p className="text-sm font-medium">
-                    Arraste seu arquivo aqui ou clique para selecionar
-                  </p>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsImportDialogOpen(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button onClick={handleImport} disabled={isImporting}>
-                  {isImporting ? 'Processando...' : 'Importar Arquivo'}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+            type="receivable"
+            title="Importar Contas a Receber"
+          />
+
           <Button onClick={() => setEditingItem({} as Receivable)}>
             <Plus className="mr-2 h-4 w-4" />
             Novo Manual
@@ -233,7 +176,7 @@ export default function Receivables() {
           {
             label: 'Total Aberto',
             ...openStats,
-            color: 'custom-red', // Using custom key for specific styling logic
+            color: 'custom-red',
             icon: AlertCircle,
             onClick: () => {
               setStatusFilter('Aberto')
@@ -243,7 +186,7 @@ export default function Receivables() {
           {
             label: 'Total Liquidado',
             ...liquidatedStats,
-            color: 'custom-green', // Using custom key
+            color: 'custom-green',
             icon: CheckCircle2,
             onClick: () => {
               setStatusFilter('Liquidado')
@@ -404,7 +347,6 @@ export default function Receivables() {
         </CardContent>
       </Card>
 
-      {/* Edit Dialog */}
       <Dialog
         open={!!editingItem}
         onOpenChange={(open) => !open && setEditingItem(null)}
@@ -425,7 +367,6 @@ export default function Receivables() {
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog */}
       <Dialog
         open={!!viewingItem}
         onOpenChange={(open) => !open && setViewingItem(null)}
@@ -455,7 +396,6 @@ export default function Receivables() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Alert */}
       <AlertDialog
         open={!!deletingId}
         onOpenChange={(open) => !open && setDeletingId(null)}

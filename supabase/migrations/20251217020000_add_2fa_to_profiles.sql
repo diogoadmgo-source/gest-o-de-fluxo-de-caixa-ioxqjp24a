@@ -1,0 +1,1 @@
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN NOT NULL DEFAULT FALSE;

@@ -4,9 +4,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
-} from '@/components/ui/card'
-import {
   Table,
   TableBody,
   TableCell,
@@ -14,6 +11,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+// Note: imports fixed from original file to use Card components correctly from ui/card
+import {
+  Card as CardComponent,
+  CardContent as CardContentComponent,
+  CardHeader as CardHeaderComponent,
+  CardTitle as CardTitleComponent,
+} from '@/components/ui/card'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -40,25 +45,26 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Search,
   MoreHorizontal,
   UserPlus,
-  Filter,
   ShieldAlert,
   Archive,
   RotateCcw,
-  Lock,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
-import { UserProfile } from '@/lib/types'
+import { UserProfile, Company } from '@/lib/types'
 import { toast } from 'sonner'
 import { format, parseISO } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
+import useCashFlowStore from '@/stores/useCashFlowStore'
 
 export default function Users() {
   const { userProfile } = useAuth()
+  const { companies } = useCashFlowStore() // All companies available to admin
   const [users, setUsers] = useState<UserProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -73,14 +79,18 @@ export default function Users() {
     name: '',
     email: '',
     profile: 'User',
+    company_ids: [] as string[],
   })
   const [isInviting, setIsInviting] = useState(false)
 
   // Edit Form
   const [editData, setEditData] = useState({
     name: '',
+    email: '',
     profile: 'User',
     status: 'Active',
+    is_2fa_enabled: false,
+    company_ids: [] as string[],
   })
   const [isSaving, setIsSaving] = useState(false)
 
@@ -119,6 +129,15 @@ export default function Users() {
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsInviting(true)
+
+    // Email Validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(inviteData.email)) {
+      toast.error('Formato de e-mail inválido.')
+      setIsInviting(false)
+      return
+    }
+
     try {
       const { data, error } = await supabase.functions.invoke('manage-users', {
         body: {
@@ -126,7 +145,7 @@ export default function Users() {
           email: inviteData.email,
           name: inviteData.name,
           profile: inviteData.profile,
-          company_id: userProfile?.company_id,
+          company_ids: inviteData.company_ids,
           redirectTo: `${window.location.origin}/reset-password`,
         },
       })
@@ -135,7 +154,7 @@ export default function Users() {
 
       toast.success(`Convite enviado para ${inviteData.email}`)
       setIsInviteOpen(false)
-      setInviteData({ name: '', email: '', profile: 'User' })
+      setInviteData({ name: '', email: '', profile: 'User', company_ids: [] })
       fetchUsers()
     } catch (error: any) {
       toast.error(
@@ -146,15 +165,39 @@ export default function Users() {
     }
   }
 
-  const handleEdit = (user: UserProfile) => {
+  const handleEdit = async (user: UserProfile) => {
     setSelectedUser(user)
-    setEditData({ name: user.name, profile: user.profile, status: user.status })
+
+    // Fetch associated companies
+    const { data: userCompanies } = await supabase
+      .from('user_companies')
+      .select('company_id')
+      .eq('user_id', user.id)
+
+    const companyIds = userCompanies?.map((c) => c.company_id) || []
+
+    setEditData({
+      name: user.name,
+      email: user.email,
+      profile: user.profile,
+      status: user.status,
+      is_2fa_enabled: user.is_2fa_enabled || false,
+      company_ids: companyIds,
+    })
     setIsEditOpen(true)
   }
 
   const handleSaveEdit = async () => {
     if (!selectedUser) return
     setIsSaving(true)
+
+    // Email Validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!editData.email || !emailRegex.test(editData.email)) {
+      toast.error('Formato de e-mail inválido.')
+      setIsSaving(false)
+      return
+    }
 
     try {
       // Check for profile change
@@ -170,7 +213,6 @@ export default function Users() {
       }
 
       // Check for status change logic handled in edge function
-      let updateStatus = false
       if (editData.status !== selectedUser.status) {
         const { error: statusError } = await supabase.functions.invoke(
           'manage-users',
@@ -183,33 +225,30 @@ export default function Users() {
           },
         )
         if (statusError) throw statusError
-        updateStatus = true
       }
 
-      // Update basic info
-      if (
-        editData.name !== selectedUser.name ||
-        editData.profile !== selectedUser.profile
-      ) {
-        const { error: profileError } = await supabase.functions.invoke(
-          'manage-users',
-          {
-            body: {
-              action: 'update_profile',
-              id: selectedUser.id,
-              name: editData.name,
-              profile: editData.profile,
-            },
+      // Update basic info, email, 2FA, and companies
+      const { error: profileError } = await supabase.functions.invoke(
+        'manage-users',
+        {
+          body: {
+            action: 'update_profile',
+            id: selectedUser.id,
+            name: editData.name,
+            email: editData.email,
+            profile: editData.profile,
+            is_2fa_enabled: editData.is_2fa_enabled,
+            company_ids: editData.company_ids,
           },
-        )
-        if (profileError) throw profileError
-      }
+        },
+      )
+      if (profileError) throw profileError
 
       toast.success('Usuário atualizado com sucesso.')
       setIsEditOpen(false)
       fetchUsers()
     } catch (error: any) {
-      toast.error('Erro ao atualizar usuário.')
+      toast.error('Erro ao atualizar usuário: ' + error.message)
       console.error(error)
     } finally {
       setIsSaving(false)
@@ -295,10 +334,10 @@ export default function Users() {
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
+      <CardComponent>
+        <CardHeaderComponent>
           <div className="flex items-center justify-between">
-            <CardTitle>Usuários do Sistema</CardTitle>
+            <CardTitleComponent>Usuários do Sistema</CardTitleComponent>
             <div className="flex gap-2">
               <Select value={profileFilter} onValueChange={setProfileFilter}>
                 <SelectTrigger className="w-[130px]">
@@ -333,8 +372,8 @@ export default function Users() {
               </div>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
+        </CardHeaderComponent>
+        <CardContentComponent>
           <Table>
             <TableHeader>
               <TableRow>
@@ -342,21 +381,20 @@ export default function Users() {
                 <TableHead>Email</TableHead>
                 <TableHead>Perfil</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Último Acesso</TableHead>
-                <TableHead>Criado em</TableHead>
+                <TableHead>2FA</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={6} className="text-center py-8">
                     Carregando...
                   </TableCell>
                 </TableRow>
               ) : filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={6} className="text-center py-8">
                     Nenhum usuário encontrado.
                   </TableCell>
                 </TableRow>
@@ -403,12 +441,11 @@ export default function Users() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {user.last_access
-                        ? format(parseISO(user.last_access), 'dd/MM/yyyy HH:mm')
-                        : '-'}
-                    </TableCell>
-                    <TableCell>
-                      {format(parseISO(user.created_at), 'dd/MM/yyyy')}
+                      <Badge
+                        variant={user.is_2fa_enabled ? 'default' : 'secondary'}
+                      >
+                        {user.is_2fa_enabled ? 'Ativo' : 'Inativo'}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
@@ -443,16 +480,16 @@ export default function Users() {
               )}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </CardContentComponent>
+      </CardComponent>
 
       {/* Invite Dialog */}
       <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Convidar Novo Usuário</DialogTitle>
             <DialogDescription>
-              O usuário receberá um e-mail para definir sua senha.
+              Preencha os dados do novo usuário e suas permissões.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleInvite} className="space-y-4">
@@ -494,6 +531,44 @@ export default function Users() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Acesso a Empresas</Label>
+              <div className="border rounded-md p-2 max-h-[150px] overflow-y-auto space-y-2">
+                {companies.map((company) => (
+                  <div key={company.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`invite-comp-${company.id}`}
+                      checked={inviteData.company_ids.includes(company.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setInviteData({
+                            ...inviteData,
+                            company_ids: [
+                              ...inviteData.company_ids,
+                              company.id,
+                            ],
+                          })
+                        } else {
+                          setInviteData({
+                            ...inviteData,
+                            company_ids: inviteData.company_ids.filter(
+                              (id) => id !== company.id,
+                            ),
+                          })
+                        }
+                      }}
+                    />
+                    <Label
+                      htmlFor={`invite-comp-${company.id}`}
+                      className="text-sm font-normal"
+                    >
+                      {company.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <DialogFooter>
               <Button
                 type="button"
@@ -515,10 +590,9 @@ export default function Users() {
 
       {/* Edit Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Editar Usuário</DialogTitle>
-            <DialogDescription>{selectedUser?.email}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -527,6 +601,16 @@ export default function Users() {
                 value={editData.name}
                 onChange={(e) =>
                   setEditData({ ...editData, name: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>E-mail</Label>
+              <Input
+                type="email"
+                value={editData.email}
+                onChange={(e) =>
+                  setEditData({ ...editData, email: e.target.value })
                 }
               />
             </div>
@@ -566,6 +650,59 @@ export default function Users() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="flex items-center justify-between border p-3 rounded-md">
+              <div className="space-y-0.5">
+                <Label className="text-base">
+                  Autenticação de Dois Fatores (2FA)
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Obrigatório no login se ativado.
+                </p>
+              </div>
+              <Switch
+                checked={editData.is_2fa_enabled}
+                onCheckedChange={(checked) =>
+                  setEditData({ ...editData, is_2fa_enabled: checked })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Acesso a Empresas</Label>
+              <div className="border rounded-md p-2 max-h-[150px] overflow-y-auto space-y-2">
+                {companies.map((company) => (
+                  <div key={company.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`edit-comp-${company.id}`}
+                      checked={editData.company_ids.includes(company.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setEditData({
+                            ...editData,
+                            company_ids: [...editData.company_ids, company.id],
+                          })
+                        } else {
+                          setEditData({
+                            ...editData,
+                            company_ids: editData.company_ids.filter(
+                              (id) => id !== company.id,
+                            ),
+                          })
+                        }
+                      }}
+                    />
+                    <Label
+                      htmlFor={`edit-comp-${company.id}`}
+                      className="text-sm font-normal"
+                    >
+                      {company.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsEditOpen(false)}>
                 Cancelar

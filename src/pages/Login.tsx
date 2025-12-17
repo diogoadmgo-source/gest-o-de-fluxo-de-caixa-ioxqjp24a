@@ -8,17 +8,21 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ShieldCheck } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+
+  // 2FA State
+  const [show2FA, setShow2FA] = useState(false)
+  const [twoFACode, setTwoFACode] = useState('')
+
   const { signIn } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -30,7 +34,8 @@ export default function Login() {
     setIsLoading(true)
 
     try {
-      const { error } = await signIn(email, password)
+      const result = await signIn(email, password)
+      const { error } = result as any // type assertion needed if useAuth return type updated
 
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
@@ -42,6 +47,9 @@ export default function Login() {
         } else {
           toast.error('Ocorreu um erro ao tentar fazer login.')
         }
+      } else if (result.requires2FA) {
+        setShow2FA(true)
+        toast.info('Autenticação de dois fatores necessária.')
       } else {
         navigate(from, { replace: true })
       }
@@ -50,6 +58,77 @@ export default function Login() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handle2FASubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    // Simulate 2FA Verification
+    setTimeout(() => {
+      setIsLoading(false)
+      if (twoFACode === '123456') {
+        // Mock check
+        navigate(from, { replace: true })
+      } else {
+        toast.error('Código 2FA inválido. (Tente 123456)')
+      }
+    }, 1000)
+  }
+
+  if (show2FA) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-2">
+              <ShieldCheck className="w-8 h-8 text-primary" />
+            </div>
+            <CardTitle className="text-2xl">Verificação 2FA</CardTitle>
+            <CardDescription>
+              Digite o código de verificação enviado para seu dispositivo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handle2FASubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="code">Código de Verificação</Label>
+                <Input
+                  id="code"
+                  type="text"
+                  placeholder="000000"
+                  value={twoFACode}
+                  onChange={(e) => setTwoFACode(e.target.value)}
+                  required
+                  autoFocus
+                  maxLength={6}
+                  className="text-center text-lg tracking-widest"
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  Para teste use: 123456
+                </p>
+              </div>
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Verificar
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  setShow2FA(false)
+                  setPassword('')
+                }}
+              >
+                Voltar
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -86,7 +165,7 @@ export default function Login() {
                 <Label htmlFor="password">Senha</Label>
                 <Link
                   to="/forgot-password"
-                  class="text-xs text-primary hover:underline"
+                  className="text-xs text-primary hover:underline"
                 >
                   Esqueceu a senha?
                 </Link>

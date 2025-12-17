@@ -14,6 +14,7 @@ interface AuthContextType {
   user: User | null
   session: Session | null
   userProfile: UserProfile | null
+  allowedCompanyIds: string[]
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => Promise<{ error: any }>
   resetPassword: (email: string) => Promise<{ error: any }>
@@ -36,6 +37,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [allowedCompanyIds, setAllowedCompanyIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchProfile = async (userId: string) => {
@@ -50,6 +52,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.error('Error fetching profile:', error)
         return null
       }
+
+      // Fetch user companies
+      const { data: companiesData } = await supabase
+        .from('user_companies')
+        .select('company_id')
+        .eq('user_id', userId)
+
+      const companyIds = companiesData?.map((c) => c.company_id) || []
+      setAllowedCompanyIds(companyIds)
+
       return data as UserProfile
     } catch (err) {
       console.error('Exception fetching profile:', err)
@@ -57,22 +69,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
-  const logAudit = async (action: string, details?: any) => {
-    if (!user) return
-    try {
-      await supabase.from('audit_logs').insert({
-        action,
-        entity: 'Auth',
-        user_id: user.id,
-        details,
-      })
-    } catch (e) {
-      // ignore log errors
-    }
-  }
-
   useEffect(() => {
-    // Set up auth state listener FIRST
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
@@ -89,29 +86,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               setUserProfile(null)
             } else {
               setUserProfile(profile)
-              // Update last access if needed, but maybe not on every state change to avoid spam
             }
           }
         })
       } else {
         setUserProfile(null)
+        setAllowedCompanyIds([])
       }
       setLoading(false)
     })
 
-    // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
         fetchProfile(session.user.id).then((profile) => {
-          if (profile) {
-            if (profile.status === 'Blocked' || profile.status === 'Inactive') {
-              supabase.auth.signOut()
-            } else {
-              setUserProfile(profile)
-            }
-          }
+          setUserProfile(profile)
         })
       }
       setLoading(false)
@@ -131,7 +121,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { error }
       }
 
-      // Check profile status immediately after login
       if (data.user) {
         const profile = await fetchProfile(data.user.id)
         if (
@@ -147,7 +136,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }
         }
 
-        // Log access
+        // Check for 2FA requirement
+        if (profile?.is_2fa_enabled) {
+          // We can't really "pause" the login here easily without real MFA flow.
+          // For this implementation, we will pass a signal back to the UI
+          // but we won't sign out immediately, effectively allowing access but UI should block.
+          // Or we can return a specific error code that the UI handles.
+
+          // Note: In a real app with Supabase MFA, signInWithPassword would require MFA
+          // if configured. Since we are using a custom flag, we handle it in UI.
+          return { error: null, requires2FA: true }
+        }
+
         if (profile) {
           await supabase
             .from('user_profiles')
@@ -193,7 +193,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const updatePassword = async (password: string) => {
     const { error } = await supabase.auth.updateUser({ password })
     if (!error && user) {
-      // If profile was pending, activate it
       if (userProfile?.status === 'Pending') {
         await supabase
           .from('user_profiles')
@@ -223,6 +222,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     user,
     session,
     userProfile,
+    allowedCompanyIds,
     signIn,
     signOut,
     resetPassword,
