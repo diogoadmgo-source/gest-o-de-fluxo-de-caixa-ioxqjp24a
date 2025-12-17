@@ -14,16 +14,19 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase/client'
-import { Users as UsersIcon, ShieldAlert } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Users as UsersIcon, ShieldAlert, Loader2 } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ManualAdjustmentsTab } from '@/components/settings/ManualAdjustmentsTab'
 
 export default function Settings() {
-  const { userProfile, updatePassword, refreshProfile } = useAuth()
+  const { userProfile, refreshProfile } = useAuth()
+  const [searchParams] = useSearchParams()
   const [name, setName] = useState(userProfile?.name || '')
   const [email, setEmail] = useState(userProfile?.email || '')
   const [newPassword, setNewPassword] = useState('')
   const [isUpdating, setIsUpdating] = useState(false)
   const [is2FAEnabled, setIs2FAEnabled] = useState(false)
+  const [activeTab, setActiveTab] = useState('profile')
 
   useEffect(() => {
     if (userProfile) {
@@ -33,71 +36,80 @@ export default function Settings() {
     }
   }, [userProfile])
 
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab) {
+      setActiveTab(tab)
+    }
+  }, [searchParams])
+
   const handleUpdateProfile = async () => {
+    // Client-side Validation
+    if (!name.trim()) {
+      toast.error('O nome não pode estar vazio.')
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      toast.error('Formato de e-mail inválido.')
+      return
+    }
+
+    if (newPassword && newPassword.length < 6) {
+      toast.error('Senha não atende aos critérios mínimos (6 caracteres).')
+      return
+    }
+
     setIsUpdating(true)
     try {
-      // 1. Update Profile Data
-      if (name !== userProfile?.name) {
-        const { error } = await supabase
-          .from('user_profiles')
-          .update({ name })
-          .eq('id', userProfile?.id)
+      const { error } = await supabase.functions.invoke('manage-users', {
+        body: {
+          action: 'update_own_profile',
+          name,
+          email,
+          password: newPassword || undefined,
+        },
+      })
 
-        if (error) throw error
-        toast.success('Nome atualizado.')
-      }
-
-      // 2. Update Email
-      if (email !== userProfile?.email) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-        if (!emailRegex.test(email)) {
-          toast.error('Formato de e-mail inválido.')
-        } else {
-          // Check if email is already taken (handled by auth update usually returning error)
-          const { error: authError } = await supabase.auth.updateUser({ email })
-          if (authError) {
-            toast.error('Erro ao atualizar email: ' + authError.message)
-          } else {
-            toast.success(
-              'Email atualizado. Verifique sua caixa de entrada para confirmar.',
-            )
-            // We also update the profile table locally, though the trigger should handle it
-            await supabase
-              .from('user_profiles')
-              .update({ email })
-              .eq('id', userProfile?.id)
-          }
+      if (error) {
+        // Parse error message for user friendliness
+        let message = 'Erro ao atualizar perfil.'
+        try {
+          const errBody = JSON.parse(error.message || '{}')
+          message = errBody.error || message
+        } catch {
+          if (error.message) message = error.message
         }
+
+        // Handle common auth errors with custom messages as requested
+        if (message.includes('already registered'))
+          message = 'E-mail já cadastrado.'
+        if (message.includes('Password should be'))
+          message = 'Senha não atende aos critérios mínimos.'
+
+        throw new Error(message)
       }
 
-      // 3. Update Password
-      if (newPassword) {
-        if (newPassword.length < 6) {
-          toast.error('A senha deve ter pelo menos 6 caracteres.')
-        } else {
-          const { error } = await updatePassword(newPassword)
-          if (error) throw error
-          toast.success('Senha atualizada.')
-          setNewPassword('')
-        }
-      }
-
+      toast.success('Perfil atualizado com sucesso!')
+      if (newPassword) setNewPassword('')
       await refreshProfile()
     } catch (error: any) {
-      toast.error('Erro ao atualizar perfil.')
-      console.error(error)
+      console.error('Update profile error:', error)
+      toast.error(error.message || 'Erro desconhecido ao atualizar perfil.')
     } finally {
       setIsUpdating(false)
     }
   }
 
   const handleToggle2FA = async (checked: boolean) => {
-    // Toggle 2FA
     try {
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ is_2fa_enabled: checked })
-        .eq('id', userProfile?.id)
+      const { error } = await supabase.functions.invoke('manage-users', {
+        body: {
+          action: 'update_own_profile',
+          is_2fa_enabled: checked,
+        },
+      })
 
       if (error) throw error
 
@@ -120,11 +132,16 @@ export default function Settings() {
         </p>
       </div>
 
-      <Tabs defaultValue="profile">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="profile">Meu Perfil</TabsTrigger>
           <TabsTrigger value="security">Segurança</TabsTrigger>
-          <TabsTrigger value="company">Empresa</TabsTrigger>
+          {userProfile?.profile === 'Administrator' && (
+            <>
+              <TabsTrigger value="company">Empresa</TabsTrigger>
+              <TabsTrigger value="ajustes">Ajustes</TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         <TabsContent value="profile">
@@ -153,7 +170,7 @@ export default function Settings() {
                     onChange={(e) => setEmail(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Alterar o email exigirá re-confirmação.
+                    Alterar o email enviará uma confirmação.
                   </p>
                 </div>
                 <div className="grid gap-2">
@@ -182,7 +199,14 @@ export default function Settings() {
                 </div>
 
                 <Button onClick={handleUpdateProfile} disabled={isUpdating}>
-                  {isUpdating ? 'Salvando...' : 'Salvar Alterações'}
+                  {isUpdating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />{' '}
+                      Salvando...
+                    </>
+                  ) : (
+                    'Salvar Alterações'
+                  )}
                 </Button>
               </CardContent>
             </Card>
@@ -233,18 +257,27 @@ export default function Settings() {
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent value="company">
-          <Card>
-            <CardHeader>
-              <CardTitle>Dados da Empresa</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Configurações globais da empresa (Apenas Admin).
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
+
+        {userProfile?.profile === 'Administrator' && (
+          <>
+            <TabsContent value="company">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Dados da Empresa</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">
+                    Configurações globais da empresa (Apenas Admin).
+                  </p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="ajustes">
+              <ManualAdjustmentsTab />
+            </TabsContent>
+          </>
+        )}
       </Tabs>
     </div>
   )

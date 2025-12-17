@@ -11,7 +11,6 @@ import {
   Wallet,
   Landmark,
   Users,
-  SlidersHorizontal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,7 +23,6 @@ import {
 import { useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 
-// Removed CalendarCheck (Fechamento)
 const baseMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
   { icon: Wallet, label: 'Fluxo de Caixa', path: '/fluxo-de-caixa' },
@@ -32,8 +30,6 @@ const baseMenuItems = [
   { icon: ArrowDownToLine, label: 'Contas a Receber', path: '/recebiveis' },
   { icon: ArrowUpFromLine, label: 'Contas a Pagar', path: '/pagaveis' },
   { icon: BarChart3, label: 'Relatórios', path: '/relatorios' },
-  // Fechamento removed from here
-  { icon: Settings, label: 'Configurações', path: '/configuracoes' },
   { icon: Search, label: 'Auditoria', path: '/auditoria' },
 ]
 
@@ -42,35 +38,24 @@ export function Sidebar() {
   const [open, setOpen] = useState(false)
   const { userProfile } = useAuth()
 
+  // Filter menu items for User profile (remove Configurações)
   const menuItems = [...baseMenuItems]
 
   // Add specific items for administrators
   if (userProfile?.profile === 'Administrator') {
+    // Add Settings and Users management for Admins
+    menuItems.push({
+      icon: Settings,
+      label: 'Configurações',
+      path: '/configuracoes',
+    })
+
+    // Insert "Usuários" after Settings
     const settingsIndex = menuItems.findIndex(
       (i) => i.path === '/configuracoes',
     )
-
-    // Insert "Ajustes" before Settings if Settings exists, otherwise append
     if (settingsIndex !== -1) {
-      menuItems.splice(settingsIndex, 0, {
-        icon: SlidersHorizontal,
-        label: 'Ajustes',
-        path: '/ajustes',
-      })
-
-      // Insert "Usuários" after Settings
-      menuItems.splice(settingsIndex + 2, 0, {
-        icon: Users,
-        label: 'Usuários',
-        path: '/configuracoes/usuarios',
-      })
-    } else {
-      menuItems.push({
-        icon: SlidersHorizontal,
-        label: 'Ajustes',
-        path: '/ajustes',
-      })
-      menuItems.push({
+      menuItems.splice(settingsIndex + 1, 0, {
         icon: Users,
         label: 'Usuários',
         path: '/configuracoes/usuarios',

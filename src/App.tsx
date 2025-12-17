@@ -11,7 +11,6 @@ import Receivables from './pages/Receivables'
 import Payables from './pages/Payables'
 import Reports from './pages/Reports'
 import PeriodClosing from './pages/PeriodClosing'
-import ManualAdjustments from './pages/ManualAdjustments'
 import Settings from './pages/Settings'
 import Audit from './pages/Audit'
 import CashFlow from './pages/CashFlow'
@@ -44,7 +43,7 @@ const App = () => (
               {/* Importacoes removed */}
               <Route path="/relatorios" element={<Reports />} />
               <Route path="/fechamento" element={<PeriodClosing />} />
-              <Route path="/ajustes" element={<ManualAdjustments />} />
+              {/* /ajustes removed - logic moved to /configuracoes */}
               <Route path="/configuracoes" element={<Settings />} />
               <Route path="/configuracoes/usuarios" element={<Users />} />
               <Route path="/auditoria" element={<Audit />} />

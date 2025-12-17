@@ -136,7 +136,7 @@ export function Header() {
             </DropdownMenuItem>
             {userProfile?.profile === 'Administrator' && (
               <DropdownMenuItem asChild>
-                <Link to="/ajustes">
+                <Link to="/configuracoes?tab=ajustes">
                   <SettingsIcon className="mr-2 h-4 w-4" />
                   <span>Ajustes Manuais</span>
                 </Link>
