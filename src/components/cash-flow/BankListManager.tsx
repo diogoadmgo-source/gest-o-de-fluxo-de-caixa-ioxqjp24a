@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Table,
   TableBody,
@@ -23,16 +23,19 @@ import { Bank } from '@/lib/types'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase/client'
+import { getVisibleCompanyIds } from '@/services/financial'
+import { useAuth } from '@/hooks/use-auth'
 
 export function BankListManager() {
-  const {
-    banks,
-    addBank,
-    updateBank,
-    deleteBank,
-    companies,
-    selectedCompanyId,
-  } = useCashFlowStore()
+  const { addBank, updateBank, deleteBank, companies, selectedCompanyId } =
+    useCashFlowStore()
+  const { user } = useAuth()
+
+  // Local state for all banks (including inactive ones)
+  const [localBanks, setLocalBanks] = useState<Bank[]>([])
+  const [loading, setLoading] = useState(false)
+
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
   const [isNewCompany, setIsNewCompany] = useState(false)
@@ -49,6 +52,42 @@ export function BankListManager() {
     type: 'bank',
     company_id: selectedCompanyId || undefined,
   })
+
+  useEffect(() => {
+    fetchLocalBanks()
+  }, [selectedCompanyId, user])
+
+  const fetchLocalBanks = async () => {
+    if (!user) return
+    setLoading(true)
+    try {
+      const visibleIds = await getVisibleCompanyIds(
+        supabase,
+        user.id,
+        selectedCompanyId,
+      )
+
+      if (visibleIds.length === 0) {
+        setLocalBanks([])
+        return
+      }
+
+      const { data } = await supabase
+        .from('banks')
+        .select('*')
+        .in('company_id', visibleIds)
+        .order('created_at', { ascending: false })
+
+      if (data) {
+        setLocalBanks(data as Bank[])
+      }
+    } catch (error) {
+      console.error('Error fetching manage banks:', error)
+      toast.error('Erro ao carregar lista de bancos')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const resetForm = () => {
     setFormData({
@@ -124,7 +163,6 @@ export function BankListManager() {
     if (editingId) {
       await updateBank({ ...payload, id: editingId } as Bank)
       toast.success('Conta atualizada com sucesso!')
-      resetForm()
     } else {
       const { error } = await addBank({
         ...payload,
@@ -138,16 +176,20 @@ export function BankListManager() {
         } else {
           toast.error('Erro ao cadastrar banco: ' + error.message)
         }
+        return // Do not reset or refresh if error
       } else {
         toast.success('Nova conta cadastrada com sucesso!')
-        resetForm()
       }
     }
+
+    await fetchLocalBanks()
+    resetForm()
   }
 
-  const handleDelete = (id: string) => {
-    deleteBank(id)
+  const handleDelete = async (id: string) => {
+    await deleteBank(id)
     toast.success('Conta inativada com sucesso.')
+    await fetchLocalBanks()
   }
 
   return (
@@ -379,70 +421,86 @@ export function BankListManager() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {banks.map((bank) => {
-              return (
-                <TableRow
-                  key={bank.id}
-                  className={cn(!bank.active && 'opacity-50')}
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-4">
+                  Carregando contas...
+                </TableCell>
+              </TableRow>
+            ) : localBanks.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={8}
+                  className="text-center py-4 text-muted-foreground"
                 >
-                  <TableCell className="text-xs font-mono font-medium">
-                    {bank.code}
-                  </TableCell>
-                  <TableCell className="font-medium">{bank.name}</TableCell>
-                  <TableCell>
-                    {bank.type === 'cash' ? (
-                      <Badge
-                        variant="outline"
-                        className="text-emerald-600 bg-emerald-50 border-emerald-200"
-                      >
-                        Caixa
+                  Nenhuma conta encontrada.
+                </TableCell>
+              </TableRow>
+            ) : (
+              localBanks.map((bank) => {
+                return (
+                  <TableRow
+                    key={bank.id}
+                    className={cn(!bank.active && 'opacity-50')}
+                  >
+                    <TableCell className="text-xs font-mono font-medium">
+                      {bank.code}
+                    </TableCell>
+                    <TableCell className="font-medium">{bank.name}</TableCell>
+                    <TableCell>
+                      {bank.type === 'cash' ? (
+                        <Badge
+                          variant="outline"
+                          className="text-emerald-600 bg-emerald-50 border-emerald-200"
+                        >
+                          Caixa
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-blue-600 bg-blue-50 border-blue-200"
+                        >
+                          Banco
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{bank.institution}</TableCell>
+                    <TableCell>{bank.agency || '-'}</TableCell>
+                    <TableCell>
+                      {bank.account_number}
+                      {bank.account_digit ? `-${bank.account_digit}` : ''}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={bank.active ? 'default' : 'secondary'}>
+                        {bank.active ? 'Ativo' : 'Inativo'}
                       </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="text-blue-600 bg-blue-50 border-blue-200"
-                      >
-                        Banco
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{bank.institution}</TableCell>
-                  <TableCell>{bank.agency || '-'}</TableCell>
-                  <TableCell>
-                    {bank.account_number}
-                    {bank.account_digit ? `-${bank.account_digit}` : ''}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={bank.active ? 'default' : 'secondary'}>
-                      {bank.active ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleEdit(bank)}
-                        disabled={!bank.active}
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      {bank.active && (
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive/90"
-                          onClick={() => handleDelete(bank.id)}
+                          className="h-8 w-8"
+                          onClick={() => handleEdit(bank)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Edit2 className="h-4 w-4" />
                         </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
+                        {bank.active && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive/90"
+                            onClick={() => handleDelete(bank.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            )}
           </TableBody>
         </Table>
       </div>

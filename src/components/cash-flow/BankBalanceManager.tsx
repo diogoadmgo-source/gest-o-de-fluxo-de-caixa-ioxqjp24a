@@ -43,7 +43,8 @@ export function BankBalanceManager({
   onSave,
 }: BankBalanceManagerProps) {
   const { banks, selectedCompanyId } = useCashFlowStore()
-  const activeBanks = banks.filter((b) => b.active)
+  // The store now returns only active banks, so we can use it directly
+  const activeBanks = banks
 
   const [balances, setBalances] = useState<BankBalance[]>(initialBalances)
   const [editingId, setEditingId] = useState<string | null>(null)

@@ -56,7 +56,7 @@ interface CashFlowContextType {
 
   addBank: (bank: Bank) => Promise<{ error?: any }>
   updateBank: (bank: Bank) => Promise<void>
-  deleteBank: (id: string) => void
+  deleteBank: (id: string) => Promise<void>
 
   addAdjustment: (adjustment: FinancialAdjustment) => Promise<void>
 
@@ -141,7 +141,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .from('receivables')
         .select('*')
         .in('company_id', visibleIds)
-      // .gte('due_date', '2020-01-01') // Optional: Filter by period if needed, currently kept open for history
 
       if (receivablesData) setReceivables(receivablesData as any)
 
@@ -154,10 +153,14 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       if (payablesData) setPayables(payablesData as any)
 
-      // 4. Fetch Banks (Ordered by created_at desc)
+      // 4. Fetch Banks (Active Only, Ordered by created_at desc)
+      // Selecting specific columns as per requirements + created_at for sorting
       const { data: banksData } = await supabase
         .from('banks')
-        .select('*')
+        .select(
+          'id, name, code, type, institution, agency, account_number, account_digit, company_id, active, created_at',
+        )
+        .eq('active', true)
         .in('company_id', visibleIds)
         .order('created_at', { ascending: false })
 
@@ -272,8 +275,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     const newEntries = sortedEntries.map((entry, index) => {
       const entryDate = parseISO(entry.date)
 
-      // Data is already filtered by company in fetchData, so we iterate over state directly
-
       const dayReceivables = receivables
         .filter(
           (r) =>
@@ -317,7 +318,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       let openingBalance = 0
       if (index === 0) {
-        openingBalance = hasManualBalance ? manualBalanceSum : 0 // If no manual balance, start 0, not mock
+        openingBalance = hasManualBalance ? manualBalanceSum : 0
       } else {
         openingBalance = currentAccumulated
       }
@@ -441,7 +442,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const addBank = async (bank: Bank) => {
     try {
       if (!user) throw new Error('Usuário não autenticado')
-      const data = await salvarBankManual(bank, user.id)
+      await salvarBankManual(bank, user.id)
       await fetchData()
       return { error: null }
     } catch (error: any) {
@@ -464,10 +465,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       .from('banks')
       .update({ active: false })
       .eq('id', id)
-    if (error) return
-    setBanks((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, active: false } : b)),
-    )
+    if (error) {
+      toast.error('Erro ao inativar banco: ' + error.message)
+      return
+    }
+    // Remove from the list since the store only keeps active banks
+    setBanks((prev) => prev.filter((b) => b.id !== id))
   }
 
   const addAdjustment = async (adjustment: FinancialAdjustment) => {
