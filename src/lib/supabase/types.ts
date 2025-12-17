@@ -573,13 +573,6 @@ export type Database = {
             referencedRelation: 'companies'
             referencedColumns: ['id']
           },
-          {
-            foreignKeyName: 'user_companies_user_id_fkey'
-            columns: ['user_id']
-            isOneToOne: false
-            referencedRelation: 'user_profiles'
-            referencedColumns: ['id']
-          },
         ]
       }
       user_profiles: {
@@ -634,6 +627,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ensure_company_and_link_user: {
+        Args: { p_company_name: string; p_user_id: string }
+        Returns: string
+      }
       is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
