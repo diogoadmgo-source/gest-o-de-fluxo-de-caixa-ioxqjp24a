@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   Card,
   CardContent,
@@ -50,6 +50,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
 import { toast } from 'sonner'
 import { format, parseISO, isSameDay, startOfDay, endOfDay } from 'date-fns'
 import { DateRange } from 'react-day-picker'
@@ -79,6 +88,10 @@ export default function Receivables() {
   const [minValue, setMinValue] = useState('')
   const [maxValue, setMaxValue] = useState('')
 
+  // --- Pagination State ---
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 20
+
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<Receivable | null>(null)
   const [viewingItem, setViewingItem] = useState<Receivable | null>(null)
@@ -102,6 +115,18 @@ export default function Receivables() {
     toast.info('Filtros limpos.')
   }
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [
+    searchTerm,
+    statusFilter,
+    dueDateRange,
+    issueDateRange,
+    minValue,
+    maxValue,
+  ])
+
   const reloadReceivables = useCallback(() => {
     recalculateCashFlow()
   }, [recalculateCashFlow])
@@ -120,18 +145,17 @@ export default function Receivables() {
 
       // 2. Status
       let matchesStatus = true
+      const today = startOfDay(new Date())
+      const itemDate = t.due_date ? parseISO(t.due_date) : null
+
       if (statusFilter === 'all') {
         matchesStatus = true
       } else if (statusFilter === 'vencida') {
         // Overdue: Status Open AND Due Date < Today
-        const today = startOfDay(new Date())
-        const itemDate = t.due_date ? parseISO(t.due_date) : null
         matchesStatus =
           t.title_status === 'Aberto' && !!itemDate && itemDate < today
       } else if (statusFilter === 'a_vencer') {
         // To Due: Status Open AND Due Date >= Today
-        const today = startOfDay(new Date())
-        const itemDate = t.due_date ? parseISO(t.due_date) : null
         matchesStatus =
           t.title_status === 'Aberto' && !!itemDate && itemDate >= today
       } else {
@@ -143,16 +167,16 @@ export default function Receivables() {
       // 3. Due Date
       if (dueDateRange?.from) {
         if (!t.due_date) return false
-        const itemDate = parseISO(t.due_date)
+        const dDate = parseISO(t.due_date)
         if (dueDateRange.to) {
           if (
-            itemDate < startOfDay(dueDateRange.from) ||
-            itemDate > endOfDay(dueDateRange.to)
+            dDate < startOfDay(dueDateRange.from) ||
+            dDate > endOfDay(dueDateRange.to)
           ) {
             return false
           }
         } else {
-          if (!isSameDay(itemDate, dueDateRange.from)) {
+          if (!isSameDay(dDate, dueDateRange.from)) {
             return false
           }
         }
@@ -161,16 +185,16 @@ export default function Receivables() {
       // 4. Issue Date
       if (issueDateRange?.from) {
         if (!t.issue_date) return false
-        const itemDate = parseISO(t.issue_date)
+        const iDate = parseISO(t.issue_date)
         if (issueDateRange.to) {
           if (
-            itemDate < startOfDay(issueDateRange.from) ||
-            itemDate > endOfDay(issueDateRange.to)
+            iDate < startOfDay(issueDateRange.from) ||
+            iDate > endOfDay(issueDateRange.to)
           ) {
             return false
           }
         } else {
-          if (!isSameDay(itemDate, issueDateRange.from)) {
+          if (!isSameDay(iDate, issueDateRange.from)) {
             return false
           }
         }
@@ -193,7 +217,15 @@ export default function Receivables() {
     maxValue,
   ])
 
-  // --- Dashboard Logic ---
+  // --- Pagination Logic ---
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage)
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+    return filteredData.slice(startIndex, endIndex)
+  }, [filteredData, currentPage])
+
+  // --- Dashboard Logic (Calculated on Filtered Data) ---
   const { overdueStats, toDueStats, totalStats } = useMemo(() => {
     const today = startOfDay(new Date())
 
@@ -213,7 +245,9 @@ export default function Receivables() {
           principal: acc.principal + (curr.principal_value || 0),
           fine: acc.fine + (curr.fine || 0),
           interest: acc.interest + (curr.interest || 0),
-          // AC Requirement: metric MUST be the sum of principal_value
+          // AC Requirement: metric MUST be the sum of principal_value for the 'Total' display as well?
+          // Usually 'total' implies updated value, but the request says "metric MUST be the sum of principal_value".
+          // We will sum principal value for the big number display as requested.
           total: acc.total + (curr.principal_value || 0),
         }),
         { principal: 0, fine: 0, interest: 0, total: 0 },
@@ -222,8 +256,6 @@ export default function Receivables() {
     return {
       overdueStats: calculateStats(overdue),
       toDueStats: calculateStats(toDue),
-      // Fix: Calculate total stats based on ALL filtered data, including paid/cancelled/etc.
-      // This ensures the "Total" card reflects the entire list/spreadsheet sum.
       totalStats: calculateStats(filteredData),
     }
   }, [filteredData])
@@ -239,9 +271,10 @@ export default function Receivables() {
   const handleSaveEdit = async (updated: Receivable) => {
     if (updated.id) {
       await updateReceivable(updated)
-      toast.success('Título atualizado com sucesso!')
+      // Toast handled in store
     } else {
       await addReceivable(updated)
+      // Toast handled in store
     }
     setEditingItem(null)
   }
@@ -273,14 +306,14 @@ export default function Receivables() {
       if (dueDate && dueDate < today) {
         // Overdue -> Red
         return {
-          label: 'Aberto',
+          label: 'Aberto (Vencido)',
           className:
             'bg-red-100 text-red-800 hover:bg-red-200 border-transparent',
         }
       } else {
         // To Due -> Green
         return {
-          label: 'A Vencer',
+          label: 'Aberto (A Vencer)',
           className:
             'bg-green-100 text-green-800 hover:bg-green-200 border-transparent',
         }
@@ -292,6 +325,91 @@ export default function Receivables() {
       label: item.title_status,
       className: 'bg-secondary text-secondary-foreground',
     }
+  }
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null
+
+    // Determine range of page numbers to show
+    const delta = 2
+    const range = []
+    const rangeWithDots = []
+    let l
+
+    range.push(1)
+    for (let i = currentPage - delta; i <= currentPage + delta; i++) {
+      if (i < totalPages && i > 1) {
+        range.push(i)
+      }
+    }
+    if (totalPages > 1) {
+      range.push(totalPages)
+    }
+
+    for (const i of range) {
+      if (l) {
+        if (i - l === 2) {
+          rangeWithDots.push(l + 1)
+        } else if (i - l !== 1) {
+          rangeWithDots.push('...')
+        }
+      }
+      rangeWithDots.push(i)
+      l = i
+    }
+
+    return (
+      <Pagination className="justify-end mt-4">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious
+              href="#"
+              onClick={(e) => {
+                e.preventDefault()
+                if (currentPage > 1) setCurrentPage((p) => p - 1)
+              }}
+              className={
+                currentPage === 1 ? 'pointer-events-none opacity-50' : ''
+              }
+            />
+          </PaginationItem>
+          {rangeWithDots.map((page, index) =>
+            page === '...' ? (
+              <PaginationItem key={`dots-${index}`}>
+                <PaginationEllipsis />
+              </PaginationItem>
+            ) : (
+              <PaginationItem key={page}>
+                <PaginationLink
+                  href="#"
+                  isActive={page === currentPage}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setCurrentPage(page as number)
+                  }}
+                >
+                  {page}
+                </PaginationLink>
+              </PaginationItem>
+            ),
+          )}
+          <PaginationItem>
+            <PaginationNext
+              href="#"
+              onClick={(e) => {
+                e.preventDefault()
+                if (currentPage < totalPages) setCurrentPage((p) => p + 1)
+              }}
+              className={
+                currentPage === totalPages
+                  ? 'pointer-events-none opacity-50'
+                  : ''
+              }
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
+    )
   }
 
   return (
@@ -395,7 +513,8 @@ export default function Receivables() {
             <div>
               <CardTitle>Listagem de Títulos</CardTitle>
               <CardDescription>
-                Exibindo {filteredData.length} registros
+                Exibindo {paginatedData.length} de {filteredData.length}{' '}
+                registros
               </CardDescription>
             </div>
           </div>
@@ -406,7 +525,7 @@ export default function Receivables() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[100px]">NF</TableHead>
-                  <TableHead className="w-[100px]">Status</TableHead>
+                  <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead className="w-[50px]">UF</TableHead>
                   <TableHead className="w-[100px]">Vencimento</TableHead>
@@ -423,7 +542,7 @@ export default function Receivables() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredData.length === 0 ? (
+                {paginatedData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-8">
                       {loading
@@ -432,7 +551,7 @@ export default function Receivables() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredData.map((item) => {
+                  paginatedData.map((item) => {
                     const statusBadge = getStatusBadge(item)
                     return (
                       <TableRow key={item.id} className="hover:bg-muted/50">
@@ -443,7 +562,7 @@ export default function Receivables() {
                           <Badge
                             variant="secondary"
                             className={cn(
-                              'text-[10px] px-1.5 py-0 font-medium border',
+                              'text-[10px] px-1.5 py-0 font-medium border whitespace-nowrap',
                               statusBadge.className,
                             )}
                           >
@@ -516,9 +635,11 @@ export default function Receivables() {
               </TableBody>
             </Table>
           </div>
+          <div className="p-4">{renderPagination()}</div>
         </CardContent>
       </Card>
 
+      {/* Dialogs */}
       <Dialog
         open={!!editingItem}
         onOpenChange={(open) => !open && setEditingItem(null)}
@@ -574,6 +695,12 @@ export default function Receivables() {
                 <span>{viewingItem.uf || '-'}</span>
                 <span className="font-semibold">Valor Principal:</span>
                 <span>{formatCurrency(viewingItem.principal_value)}</span>
+                <span className="font-semibold">Multa/Juros:</span>
+                <span>
+                  {formatCurrency(
+                    (viewingItem.fine || 0) + (viewingItem.interest || 0),
+                  )}
+                </span>
                 <span className="font-semibold">Valor Atualizado:</span>
                 <span className="font-bold">
                   {formatCurrency(

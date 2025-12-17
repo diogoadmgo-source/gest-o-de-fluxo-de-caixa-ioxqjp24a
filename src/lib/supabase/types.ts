@@ -430,6 +430,7 @@ export type Database = {
           order_number: string | null
           payment_prediction: string | null
           principal_value: number | null
+          raw_status: string | null
           regional: string | null
           seller: string | null
           title_status: string | null
@@ -456,6 +457,7 @@ export type Database = {
           order_number?: string | null
           payment_prediction?: string | null
           principal_value?: number | null
+          raw_status?: string | null
           regional?: string | null
           seller?: string | null
           title_status?: string | null
@@ -482,6 +484,7 @@ export type Database = {
           order_number?: string | null
           payment_prediction?: string | null
           principal_value?: number | null
+          raw_status?: string | null
           regional?: string | null
           seller?: string | null
           title_status?: string | null
@@ -639,7 +642,98 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      receivables_view: {
+        Row: {
+          company_id: string | null
+          created_at: string | null
+          customer: string | null
+          customer_code: string | null
+          customer_doc: string | null
+          days_overdue: number | null
+          description: string | null
+          due_date: string | null
+          fine: number | null
+          id: string | null
+          installment: string | null
+          interest: number | null
+          invoice_number: string | null
+          issue_date: string | null
+          negativado: string | null
+          order_number: string | null
+          payment_prediction: string | null
+          principal_value: number | null
+          regional: string | null
+          seller: string | null
+          status_operacional: string | null
+          title_status: string | null
+          uf: string | null
+          updated_value: number | null
+          utilization: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string | null
+          customer?: string | null
+          customer_code?: string | null
+          customer_doc?: string | null
+          days_overdue?: number | null
+          description?: string | null
+          due_date?: string | null
+          fine?: number | null
+          id?: string | null
+          installment?: string | null
+          interest?: number | null
+          invoice_number?: string | null
+          issue_date?: string | null
+          negativado?: string | null
+          order_number?: string | null
+          payment_prediction?: string | null
+          principal_value?: number | null
+          regional?: string | null
+          seller?: string | null
+          status_operacional?: never
+          title_status?: string | null
+          uf?: string | null
+          updated_value?: number | null
+          utilization?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string | null
+          customer?: string | null
+          customer_code?: string | null
+          customer_doc?: string | null
+          days_overdue?: number | null
+          description?: string | null
+          due_date?: string | null
+          fine?: number | null
+          id?: string | null
+          installment?: string | null
+          interest?: number | null
+          invoice_number?: string | null
+          issue_date?: string | null
+          negativado?: string | null
+          order_number?: string | null
+          payment_prediction?: string | null
+          principal_value?: number | null
+          regional?: string | null
+          seller?: string | null
+          status_operacional?: never
+          title_status?: string | null
+          uf?: string | null
+          updated_value?: number | null
+          utilization?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'receivables_company_id_fkey'
+            columns: ['company_id']
+            isOneToOne: false
+            referencedRelation: 'companies'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Functions: {
       ensure_company_and_link_user: {
