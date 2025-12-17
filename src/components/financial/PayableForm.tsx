@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select'
 import { Transaction } from '@/lib/types'
 import useCashFlowStore from '@/stores/useCashFlowStore'
+import { toast } from 'sonner'
 
 interface PayableFormProps {
   initialData?: Transaction
@@ -58,6 +59,13 @@ export function PayableForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Front-end Validation as per Acceptance Criteria
+    if (!formData.company_id) {
+      toast.error('Selecione/Informe a empresa')
+      return
+    }
+
     if (formData.entity_name && formData.principal_value !== undefined) {
       onSave(formData as Transaction)
     }

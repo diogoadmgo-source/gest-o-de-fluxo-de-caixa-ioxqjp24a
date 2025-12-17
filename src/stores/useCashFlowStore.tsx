@@ -20,7 +20,12 @@ import { isSameDay, parseISO } from 'date-fns'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { importContasAReceberFromSheetRows } from '@/services/importer'
+import {
+  salvarReceivableManual,
+  salvarPayableManual,
+  importarReceivables,
+  importarPayables,
+} from '@/services/financial'
 
 interface CashFlowContextType {
   companies: Company[]
@@ -148,7 +153,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
               id: log.id,
               date: log.created_at,
               filename: log.filename,
-              type: 'receivable', // Default fallback, log needs type column in future improvement
+              type: 'receivable', // Default fallback
               status: log.status === 'success' ? 'success' : 'error',
               records_count: log.total_records,
               user_name: userProfile?.name || 'Usuário',
@@ -218,7 +223,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   ])
 
   const performRecalculation = () => {
-    // Generate base dates entries (mocking 90 days range for projection)
     const baseEntries = generateCashFlowData(90)
 
     const sortedEntries = [...baseEntries].sort(
@@ -250,7 +254,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         )
         .reduce((sum, p) => sum + (p.amount || 0), 0)
 
-      // Adjustments
       const dayAdjustments = filteredAdjustments.filter((a) =>
         isSameDay(parseISO(a.date), entryDate),
       )
@@ -262,7 +265,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .filter((a) => a.type === 'debit' && a.status === 'approved')
         .reduce((sum, a) => sum + a.amount, 0)
 
-      // Use bank balances if available for this day (manual override/snapshot)
       const dayBalances = filteredBankBalances.filter((b) =>
         isSameDay(parseISO(b.date), entryDate),
       )
@@ -275,10 +277,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       let openingBalance = 0
       if (index === 0) {
-        // Start with current available balance if today, otherwise previous accumulated
         openingBalance = hasManualBalance
           ? manualBalanceSum
-          : entry.opening_balance // fallback
+          : entry.opening_balance
       } else {
         openingBalance = currentAccumulated
       }
@@ -288,13 +289,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         dayPayables -
         entry.imports -
         entry.other_expenses +
-        adjustmentsCredit -
-        adjustmentsDebit
+        adjustments_credit -
+        adjustments_debit
 
       let accumulatedBalance = openingBalance + dailyBalance
 
       if (hasManualBalance) {
-        // If we have a concrete balance for this day, reset the accumulation to match reality
         accumulatedBalance = manualBalanceSum
       }
 
@@ -320,41 +320,26 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   // --- Actions ---
   const addReceivable = async (receivable: Receivable) => {
-    const { id, ...data } = receivable
-    const { data: newRec, error } = await supabase
-      .from('receivables')
-      .insert([
-        {
-          ...data,
-          company_id: receivable.company_id || selectedCompanyId,
-        },
-      ])
-      .select()
-      .single()
-
-    if (error) {
+    try {
+      if (!user) throw new Error('Usuário não autenticado')
+      await salvarReceivableManual(receivable, user.id)
+      toast.success('Recebível adicionado com sucesso!')
+      await fetchData() // Reload data
+    } catch (error: any) {
       toast.error('Erro ao adicionar recebível: ' + error.message)
       console.error(error)
-      return
     }
-
-    setReceivables((prev) => [...prev, newRec as any])
-    toast.success('Recebível adicionado')
   }
 
-  const updateReceivable = async (updated: Receivable) => {
-    const { error } = await supabase
-      .from('receivables')
-      .update(updated)
-      .eq('id', updated.id)
-
-    if (error) {
+  const updateReceivable = async (receivable: Receivable) => {
+    try {
+      if (!user) throw new Error('Usuário não autenticado')
+      await salvarReceivableManual(receivable, user.id)
+      toast.success('Recebível atualizado com sucesso!')
+      await fetchData()
+    } catch (error: any) {
       toast.error('Erro ao atualizar recebível: ' + error.message)
-      return
     }
-    setReceivables((prev) =>
-      prev.map((r) => (r.id === updated.id ? updated : r)),
-    )
   }
 
   const deleteReceivable = async (id: string) => {
@@ -367,38 +352,25 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const addPayable = async (payable: Transaction) => {
-    const { id, ...data } = payable
-    const { data: newPay, error } = await supabase
-      .from('transactions')
-      .insert([
-        {
-          ...data,
-          type: 'payable',
-          company_id: payable.company_id || selectedCompanyId,
-        },
-      ])
-      .select()
-      .single()
-
-    if (error) {
-      toast.error('Erro ao adicionar conta a pagar: ' + error.message)
-      return
+    try {
+      if (!user) throw new Error('Usuário não autenticado')
+      await salvarPayableManual(payable, user.id)
+      toast.success('Conta a pagar adicionada com sucesso!')
+      await fetchData()
+    } catch (error: any) {
+      toast.error('Erro ao adicionar conta: ' + error.message)
     }
-    setPayables((prev) => [...prev, newPay as any])
-    toast.success('Conta a pagar adicionada')
   }
 
-  const updatePayable = async (updated: Transaction) => {
-    const { error } = await supabase
-      .from('transactions')
-      .update(updated)
-      .eq('id', updated.id)
-
-    if (error) {
+  const updatePayable = async (payable: Transaction) => {
+    try {
+      if (!user) throw new Error('Usuário não autenticado')
+      await salvarPayableManual(payable, user.id)
+      toast.success('Conta atualizada com sucesso!')
+      await fetchData()
+    } catch (error: any) {
       toast.error('Erro ao atualizar conta: ' + error.message)
-      return
     }
-    setPayables((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
   }
 
   const deletePayable = async (id: string) => {
@@ -428,7 +400,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .eq('company_id', selectedCompanyId)
     } else {
       if (userProfile?.profile === 'Administrator') {
-        await supabase.from('bank_balances').delete().neq('id', '0') // delete all
+        await supabase.from('bank_balances').delete().neq('id', '0')
       }
     }
     const { data } = await supabase.from('bank_balances').select('*')
@@ -509,25 +481,15 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       if (!user) throw new Error('Usuário não autenticado.')
 
       if (type === 'receivable') {
-        // Use the new Importer Service
-        importResults = await importContasAReceberFromSheetRows(data, user.id)
-
-        successCount = importResults.success
-        errorCount = importResults.errors.length
-
-        // Refresh Data needed
-        if (successCount > 0) {
-          await refreshProfile() // Update company links
-          await fetchData() // Fetch new receivables and companies
-        }
-      } else {
-        // Fallback for Payable (Not implemented in this story, keeping legacy partial logic)
-        throw new Error(
-          'Importação de Contas a Pagar não implementada neste fluxo.',
-        )
+        importResults = await importarReceivables(data, user.id)
+      } else if (type === 'payable') {
+        importResults = await importarPayables(data, user.id)
       }
 
-      // 5. Persist Log
+      successCount = importResults.success
+      errorCount = importResults.errors.length
+
+      // Log import
       if (user) {
         await supabase.from('import_logs').insert({
           user_id: user.id,
@@ -541,17 +503,21 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         })
       }
 
+      // If any success, refresh data
+      if (successCount > 0) {
+        await refreshProfile()
+        await fetchData()
+      }
+
       if (errorCount > 0) {
-        // Join first 3 errors for the toast message
         const errorMsg = importResults.errors.slice(0, 3).join('; ')
         return {
           success: false,
-          message: `Importação concluída com erros (${errorCount} falhas). ${errorMsg}${importResults.errors.length > 3 ? '...' : ''}`,
+          message: `Importação com erros (${errorCount} falhas). ${errorMsg}`,
         }
       }
 
       if (importResults.message) {
-        // Special case for empty file
         return {
           success: false,
           message: importResults.message,
@@ -564,7 +530,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error: any) {
       console.error('Import error:', error)
-      // Log critical failure
       if (user) {
         await supabase.from('import_logs').insert({
           user_id: user.id,
@@ -573,13 +538,13 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           total_records: data.length,
           success_count: successCount,
           error_count: data.length,
-          error_details: [{ error: `Critical Failure: ${error.message}` }],
+          error_details: [{ error: `Critical: ${error.message}` }],
         })
       }
 
       return {
         success: false,
-        message: `Falha crítica na importação: ${error.message}`,
+        message: `Falha crítica: ${error.message}`,
       }
     } finally {
       setLoading(false)

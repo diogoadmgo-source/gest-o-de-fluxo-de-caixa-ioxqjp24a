@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select'
 import { Receivable } from '@/lib/types'
 import useCashFlowStore from '@/stores/useCashFlowStore'
+import { toast } from 'sonner'
 
 interface ReceivableFormProps {
   initialData?: Receivable
@@ -67,6 +68,13 @@ export function ReceivableForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Front-end Validation as per Acceptance Criteria
+    if (!formData.company_id) {
+      toast.error('Selecione/Informe a empresa')
+      return
+    }
+
     if (formData.customer && formData.principal_value !== undefined) {
       onSave(formData as Receivable)
     }
