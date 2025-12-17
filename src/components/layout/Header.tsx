@@ -52,7 +52,7 @@ const getPageTitle = (pathname: string) => {
     case '/auditoria':
       return 'Auditoria'
     case '/ajustes':
-      return 'Ajustes Manuais'
+      return 'Correções e Lançamentos'
     default:
       return 'HospCash'
   }
@@ -69,7 +69,9 @@ export function Header() {
   return (
     <header className="sticky top-0 z-20 w-full h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-6 transition-all duration-300">
       <div className="flex items-center gap-4 ml-8 md:ml-0">
-        <h1 className="text-xl font-bold text-foreground">{title}</h1>
+        <h1 className="text-xl font-bold text-foreground truncate max-w-[200px] md:max-w-none">
+          {title}
+        </h1>
       </div>
 
       <div className="flex items-center gap-4">
@@ -136,9 +138,9 @@ export function Header() {
             </DropdownMenuItem>
             {userProfile?.profile === 'Administrator' && (
               <DropdownMenuItem asChild>
-                <Link to="/configuracoes?tab=ajustes">
+                <Link to="/ajustes">
                   <SettingsIcon className="mr-2 h-4 w-4" />
-                  <span>Ajustes Manuais</span>
+                  <span>Ajustes</span>
                 </Link>
               </DropdownMenuItem>
             )}

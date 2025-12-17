@@ -14,9 +14,8 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase/client'
-import { Users as UsersIcon, ShieldAlert, Loader2 } from 'lucide-react'
+import { Users as UsersIcon, Loader2 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ManualAdjustmentsTab } from '@/components/settings/ManualAdjustmentsTab'
 
 export default function Settings() {
   const { userProfile, refreshProfile } = useAuth()
@@ -137,10 +136,7 @@ export default function Settings() {
           <TabsTrigger value="profile">Meu Perfil</TabsTrigger>
           <TabsTrigger value="security">Segurança</TabsTrigger>
           {userProfile?.profile === 'Administrator' && (
-            <>
-              <TabsTrigger value="company">Empresa</TabsTrigger>
-              <TabsTrigger value="ajustes">Ajustes</TabsTrigger>
-            </>
+            <TabsTrigger value="company">Empresa</TabsTrigger>
           )}
         </TabsList>
 
@@ -259,24 +255,18 @@ export default function Settings() {
         </TabsContent>
 
         {userProfile?.profile === 'Administrator' && (
-          <>
-            <TabsContent value="company">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Dados da Empresa</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">
-                    Configurações globais da empresa (Apenas Admin).
-                  </p>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="ajustes">
-              <ManualAdjustmentsTab />
-            </TabsContent>
-          </>
+          <TabsContent value="company">
+            <Card>
+              <CardHeader>
+                <CardTitle>Dados da Empresa</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  Configurações globais da empresa (Apenas Admin).
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
         )}
       </Tabs>
     </div>

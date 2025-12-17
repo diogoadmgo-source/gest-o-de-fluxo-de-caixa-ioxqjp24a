@@ -11,6 +11,7 @@ import {
   Wallet,
   Landmark,
   Users,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +30,11 @@ const baseMenuItems = [
   { icon: Landmark, label: 'Saldos', path: '/saldos' },
   { icon: ArrowDownToLine, label: 'Contas a Receber', path: '/recebiveis' },
   { icon: ArrowUpFromLine, label: 'Contas a Pagar', path: '/pagaveis' },
+  {
+    icon: FileSpreadsheet,
+    label: 'Correções e Lançamentos Extraordinários',
+    path: '/ajustes',
+  },
   { icon: BarChart3, label: 'Relatórios', path: '/relatorios' },
   { icon: Search, label: 'Auditoria', path: '/auditoria' },
 ]
@@ -77,7 +83,7 @@ export function Sidebar() {
           HospCash
         </span>
       </div>
-      <nav className="flex-1 space-y-1 px-3">
+      <nav className="flex-1 space-y-1 px-3 overflow-y-auto">
         {menuItems.map((item) => {
           const isActive = location.pathname === item.path
           return (
@@ -91,16 +97,17 @@ export function Sidebar() {
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
               )}
+              title={item.label.length > 25 ? item.label : undefined}
             >
               <item.icon
                 className={cn(
-                  'h-5 w-5',
+                  'h-5 w-5 shrink-0',
                   isActive
                     ? 'text-primary'
                     : 'text-muted-foreground group-hover:text-foreground',
                 )}
               />
-              {item.label}
+              <span className="truncate">{item.label}</span>
             </Link>
           )
         })}

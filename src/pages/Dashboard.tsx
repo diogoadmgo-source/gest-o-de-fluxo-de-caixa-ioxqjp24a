@@ -46,8 +46,13 @@ export default function Dashboard() {
         date: entry.date,
         closing_balance: entry.accumulated_balance,
         is_projected: entry.is_projected || false,
-        total_inflows: entry.total_receivables,
-        total_outflows: entry.total_payables,
+        total_inflows:
+          entry.total_receivables + (entry.adjustments_credit || 0),
+        total_outflows:
+          entry.total_payables +
+          (entry.imports || 0) +
+          (entry.other_expenses || 0) +
+          (entry.adjustments_debit || 0),
         net_flow: entry.daily_balance,
       }))
 

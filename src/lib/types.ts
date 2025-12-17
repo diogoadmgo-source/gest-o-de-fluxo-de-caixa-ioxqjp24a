@@ -58,6 +58,18 @@ export interface Receivable {
   payment_prediction: string // Previsão de Pgto.
 }
 
+export interface FinancialAdjustment {
+  id: string
+  company_id?: string
+  type: 'credit' | 'debit'
+  amount: number
+  date: string
+  reason: string
+  status: 'pending' | 'approved' | 'rejected'
+  user_id?: string
+  created_at?: string
+}
+
 export interface KPI {
   pmr: number
   pmp: number
@@ -80,7 +92,9 @@ export interface CashFlowEntry {
   total_receivables: number // Total a Receber
   total_payables: number // Total a Pagar
   imports: number // Importações
-  other_expenses: number // Outras Despesas
+  other_expenses: number // Outras Despesas (Automated)
+  adjustments_credit: number // Ajustes Manuais (Entrada)
+  adjustments_debit: number // Ajustes Manuais (Saída)
   daily_balance: number // Saldo do Dia
   accumulated_balance: number // Saldo Acumulado
   notes?: string

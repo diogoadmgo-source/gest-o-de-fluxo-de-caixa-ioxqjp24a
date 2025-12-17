@@ -6,7 +6,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CashFlowEntry } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -80,6 +79,9 @@ export function CashFlowGrid({
                 <TableHead className="text-right text-orange-500 font-semibold min-w-[120px]">
                   Importações
                 </TableHead>
+                <TableHead className="text-right text-blue-500 font-semibold min-w-[120px]">
+                  Ajustes
+                </TableHead>
                 <TableHead className="text-right text-muted-foreground font-semibold min-w-[120px]">
                   Outras Desp.
                 </TableHead>
@@ -98,6 +100,10 @@ export function CashFlowGrid({
                 const isSelected =
                   format(currentDate, 'yyyy-MM-dd') ===
                   format(selectedDate, 'yyyy-MM-dd')
+
+                const netAdjustments =
+                  (entry.adjustments_credit || 0) -
+                  (entry.adjustments_debit || 0)
 
                 return (
                   <TableRow
@@ -151,6 +157,25 @@ export function CashFlowGrid({
                       {entry.imports > 0
                         ? `- ${formatCurrency(entry.imports)}`
                         : '-'}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        'text-right',
+                        netAdjustments > 0
+                          ? 'text-success'
+                          : netAdjustments < 0
+                            ? 'text-destructive'
+                            : 'text-muted-foreground',
+                      )}
+                    >
+                      {netAdjustments !== 0 ? (
+                        <span>
+                          {netAdjustments > 0 ? '+ ' : '- '}
+                          {formatCurrency(Math.abs(netAdjustments))}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {entry.other_expenses > 0
@@ -283,6 +308,14 @@ export function CashFlowGrid({
                   <span>Importações:</span>
                   <span className="text-right text-orange-500 font-medium">
                     {formatCurrency(reviewEntry.imports)}
+                  </span>
+                  <span>Ajustes (Crédito):</span>
+                  <span className="text-right text-success font-medium">
+                    {formatCurrency(reviewEntry.adjustments_credit || 0)}
+                  </span>
+                  <span>Ajustes (Débito):</span>
+                  <span className="text-right text-destructive font-medium">
+                    {formatCurrency(reviewEntry.adjustments_debit || 0)}
                   </span>
                 </div>
               </div>

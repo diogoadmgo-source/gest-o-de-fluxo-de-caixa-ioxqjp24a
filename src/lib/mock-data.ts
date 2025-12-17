@@ -69,10 +69,17 @@ export const generateCashFlowData = (days: number = 30): CashFlowEntry[] => {
     const total_payables = Math.random() * 12000 + 4000
     const imports = Math.random() > 0.7 ? Math.random() * 5000 : 0
     const other_expenses = Math.random() * 1000
+    const adjustments_credit = Math.random() > 0.9 ? Math.random() * 2000 : 0
+    const adjustments_debit = Math.random() > 0.9 ? Math.random() * 1000 : 0
 
     const opening_balance = accumulatedBalance
     const daily_balance =
-      total_receivables - total_payables - imports - other_expenses
+      total_receivables -
+      total_payables -
+      imports -
+      other_expenses +
+      adjustments_credit -
+      adjustments_debit
     accumulatedBalance = opening_balance + daily_balance
 
     const has_alert = accumulatedBalance < 0
@@ -85,6 +92,8 @@ export const generateCashFlowData = (days: number = 30): CashFlowEntry[] => {
       total_payables: parseFloat(total_payables.toFixed(2)),
       imports: parseFloat(imports.toFixed(2)),
       other_expenses: parseFloat(other_expenses.toFixed(2)),
+      adjustments_credit: parseFloat(adjustments_credit.toFixed(2)),
+      adjustments_debit: parseFloat(adjustments_debit.toFixed(2)),
       daily_balance: parseFloat(daily_balance.toFixed(2)),
       accumulated_balance: parseFloat(accumulatedBalance.toFixed(2)),
       notes: Math.random() > 0.8 ? 'Revisar lançamentos' : undefined,

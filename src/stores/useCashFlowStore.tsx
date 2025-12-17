@@ -13,6 +13,7 @@ import {
   Bank,
   ImportHistoryEntry,
   Company,
+  FinancialAdjustment,
 } from '@/lib/types'
 import { generateCashFlowData } from '@/lib/mock-data'
 import { isSameDay, parseISO } from 'date-fns'
@@ -28,6 +29,7 @@ interface CashFlowContextType {
   receivables: Receivable[]
   payables: Transaction[]
   bankBalances: BankBalance[]
+  adjustments: FinancialAdjustment[]
   cashFlowEntries: CashFlowEntry[]
   banks: Bank[]
 
@@ -47,6 +49,8 @@ interface CashFlowContextType {
   addBank: (bank: Bank) => void
   updateBank: (bank: Bank) => void
   deleteBank: (id: string) => void
+
+  addAdjustment: (adjustment: FinancialAdjustment) => Promise<void>
 
   importData: (
     type: 'receivable' | 'payable',
@@ -82,6 +86,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const [payables, setPayables] = useState<Transaction[]>([])
   const [bankBalances, setBankBalances] = useState<BankBalance[]>([])
   const [banks, setBanks] = useState<Bank[]>([])
+  const [adjustments, setAdjustments] = useState<FinancialAdjustment[]>([])
   const [cashFlowEntries, setCashFlowEntries] = useState<CashFlowEntry[]>([])
   const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>([])
 
@@ -121,6 +126,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .from('bank_balances')
         .select('*')
       if (balancesData) setBankBalances(balancesData as any)
+
+      // Fetch Adjustments
+      const { data: adjustmentsData } = await supabase
+        .from('financial_adjustments')
+        .select('*')
+      if (adjustmentsData) setAdjustments(adjustmentsData as any)
     } catch (error) {
       console.error('Error fetching data:', error)
       toast.error('Erro ao carregar dados.')
@@ -165,11 +176,19 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const filteredPayables = payables.filter(filterByCompany)
   const filteredBankBalances = bankBalances.filter(filterByCompany)
   const filteredBanks = banks.filter(filterByCompany)
+  const filteredAdjustments = adjustments.filter(filterByCompany)
 
   // --- Recalculation ---
   useEffect(() => {
     performRecalculation()
-  }, [receivables, payables, bankBalances, selectedCompanyId])
+  }, [
+    receivables,
+    payables,
+    bankBalances,
+    adjustments,
+    selectedCompanyId,
+    companies,
+  ])
 
   const performRecalculation = () => {
     // Generate base dates entries (mocking 90 days range for projection)
@@ -204,6 +223,18 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         )
         .reduce((sum, p) => sum + (p.amount || 0), 0)
 
+      // Adjustments
+      const dayAdjustments = filteredAdjustments.filter((a) =>
+        isSameDay(parseISO(a.date), entryDate),
+      )
+      const adjustmentsCredit = dayAdjustments
+        .filter((a) => a.type === 'credit' && a.status === 'approved')
+        .reduce((sum, a) => sum + a.amount, 0)
+
+      const adjustmentsDebit = dayAdjustments
+        .filter((a) => a.type === 'debit' && a.status === 'approved')
+        .reduce((sum, a) => sum + a.amount, 0)
+
       // Use bank balances if available for this day (manual override/snapshot)
       const dayBalances = filteredBankBalances.filter((b) =>
         isSameDay(parseISO(b.date), entryDate),
@@ -226,7 +257,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const dailyBalance =
-        dayReceivables - dayPayables - entry.imports - entry.other_expenses
+        dayReceivables -
+        dayPayables -
+        entry.imports -
+        entry.other_expenses +
+        adjustmentsCredit -
+        adjustmentsDebit
 
       let accumulatedBalance = openingBalance + dailyBalance
 
@@ -242,6 +278,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         opening_balance: openingBalance,
         total_receivables: dayReceivables,
         total_payables: dayPayables,
+        adjustments_credit: adjustmentsCredit,
+        adjustments_debit: adjustmentsDebit,
         daily_balance: dailyBalance,
         accumulated_balance: accumulatedBalance,
         has_alert: accumulatedBalance < 0,
@@ -255,7 +293,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   // --- Actions ---
   const addReceivable = async (receivable: Receivable) => {
-    const { id, ...data } = receivable // omit ID to let DB generate it or use it if provided
+    const { id, ...data } = receivable
     const { data: newRec, error } = await supabase
       .from('receivables')
       .insert([
@@ -405,6 +443,30 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     )
   }
 
+  const addAdjustment = async (adjustment: FinancialAdjustment) => {
+    const { id, ...data } = adjustment
+    const { data: newAdj, error } = await supabase
+      .from('financial_adjustments')
+      .insert([
+        {
+          ...data,
+          company_id: adjustment.company_id || selectedCompanyId,
+          user_id: user?.id,
+        },
+      ])
+      .select()
+      .single()
+
+    if (error) {
+      toast.error('Erro ao adicionar ajuste')
+      console.error(error)
+      return
+    }
+
+    setAdjustments((prev) => [newAdj as any, ...prev])
+    toast.success('Ajuste registrado com sucesso!')
+  }
+
   const importData = async (
     type: 'receivable' | 'payable',
     data: any[],
@@ -419,9 +481,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       // 2. Prioritized Company Validation & Creation
       const companyMap = new Map<string, string>() // Name -> ID
-      const currentCompanies = await supabase.from('companies').select('*')
-      if (currentCompanies.data) {
-        currentCompanies.data.forEach((c) => companyMap.set(c.name, c.id))
+      const { data: currentCompanies } = await supabase
+        .from('companies')
+        .select('*')
+      if (currentCompanies) {
+        currentCompanies.forEach((c) => companyMap.set(c.name, c.id))
       }
 
       for (const compName of uniqueCompanies) {
@@ -548,6 +612,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         receivables: filteredReceivables,
         payables: filteredPayables,
         bankBalances: filteredBankBalances,
+        adjustments: filteredAdjustments,
         cashFlowEntries,
         banks: filteredBanks,
         importHistory,
@@ -562,6 +627,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         addBank,
         updateBank,
         deleteBank,
+        addAdjustment,
         importData,
         clearImportHistory,
         recalculateCashFlow,
