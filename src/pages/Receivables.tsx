@@ -96,8 +96,15 @@ export default function Receivables() {
     })
   }, [receivables, searchTerm, statusFilter])
 
-  const openReceivables = receivables.filter((r) => r.title_status === 'Aberto')
-  const liquidatedReceivables = receivables.filter(
+  // Calculation needs to depend on filteredData if we want totals to reflect search?
+  // User story says: "Totals values ... must sum correctly ... for filtered period"
+  // Assuming 'filteredData' here respects the company filters from store and status filters from UI.
+  // The 'receivables' from store are already filtered by visible companies.
+
+  const openReceivables = filteredData.filter(
+    (r) => r.title_status === 'Aberto',
+  )
+  const liquidatedReceivables = filteredData.filter(
     (r) => r.title_status === 'Liquidado',
   )
 

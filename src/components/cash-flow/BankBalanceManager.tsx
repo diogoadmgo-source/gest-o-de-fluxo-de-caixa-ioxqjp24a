@@ -84,6 +84,12 @@ export function BankBalanceManager({
   }
 
   const handleSaveEntry = () => {
+    // 1. Check if specific company is selected (Restriction)
+    if (!selectedCompanyId) {
+      toast.error('Selecione uma empresa para lançar saldo')
+      return
+    }
+
     if (!selectedBankId || !amount) {
       toast.error('Selecione a conta/caixa e informe o valor')
       return
@@ -217,7 +223,7 @@ export function BankBalanceManager({
               <SelectContent>
                 {activeBanks.length === 0 ? (
                   <SelectItem value="none" disabled>
-                    Nenhuma conta disponível
+                    Nenhuma conta cadastrada para as empresas selecionadas
                   </SelectItem>
                 ) : (
                   activeBanks.map((bank) => (
@@ -231,9 +237,10 @@ export function BankBalanceManager({
                 )}
               </SelectContent>
             </Select>
-            {activeBanks.length === 0 && selectedCompanyId && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Nenhum banco encontrado para esta empresa.
+            {activeBanks.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1 text-orange-500">
+                Cadastre contas em "Gerenciar Bancos" ou selecione outra
+                empresa.
               </p>
             )}
           </div>

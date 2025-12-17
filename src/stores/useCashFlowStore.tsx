@@ -26,6 +26,7 @@ import {
   salvarBankManual,
   importarReceivables,
   importarPayables,
+  getVisibleCompanyIds,
 } from '@/services/financial'
 
 interface CashFlowContextType {
@@ -116,91 +117,92 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     setCashFlowEntries([])
 
     try {
-      // Fetch Companies
+      // 1. Fetch Visible Companies (Single or All allowed)
+      const visibleIds = await getVisibleCompanyIds(
+        supabase,
+        user.id,
+        selectedCompanyId,
+      )
+
+      // Fetch Companies List for Dropdown
       const { data: companiesData } = await supabase
         .from('companies')
         .select('*')
       if (companiesData) setCompanies(companiesData)
 
-      // Define filter
-      const targetIds = selectedCompanyId
-        ? [selectedCompanyId]
-        : userProfile?.profile === 'Administrator'
-          ? [] // Admin sees all if no specific selected, usually handled by checking nothing or all
-          : allowedCompanyIds
-
-      const applyFilter = (query: any) => {
-        if (selectedCompanyId) {
-          return query.eq('company_id', selectedCompanyId)
-        }
-        if (userProfile?.profile !== 'Administrator') {
-          return query.in('company_id', allowedCompanyIds)
-        }
-        return query
+      // If no visible companies (e.g. user has no companies), stop
+      if (visibleIds.length === 0) {
+        setLoading(false)
+        return
       }
 
-      // Fetch Receivables
-      let rQuery = supabase.from('receivables').select('*')
-      rQuery = applyFilter(rQuery)
-      const { data: receivablesData } = await rQuery
+      // 2. Fetch Receivables using visibleIds and company_id field
+      const { data: receivablesData } = await supabase
+        .from('receivables')
+        .select('*')
+        .in('company_id', visibleIds)
+      // .gte('due_date', '2020-01-01') // Optional: Filter by period if needed, currently kept open for history
+
       if (receivablesData) setReceivables(receivablesData as any)
 
-      // Fetch Payables
-      let pQuery = supabase
+      // 3. Fetch Payables
+      const { data: payablesData } = await supabase
         .from('transactions')
         .select('*')
         .eq('type', 'payable')
-      pQuery = applyFilter(pQuery)
-      const { data: payablesData } = await pQuery
+        .in('company_id', visibleIds)
+
       if (payablesData) setPayables(payablesData as any)
 
-      // Fetch Banks
-      let bQuery = supabase.from('banks').select('*')
-      bQuery = applyFilter(bQuery)
-      const { data: banksData } = await bQuery
+      // 4. Fetch Banks (Ordered by created_at desc)
+      const { data: banksData } = await supabase
+        .from('banks')
+        .select('*')
+        .in('company_id', visibleIds)
+        .order('created_at', { ascending: false })
+
       if (banksData) setBanks(banksData as any)
 
-      // Fetch Bank Balances
-      let bbQuery = supabase.from('bank_balances').select('*')
-      bbQuery = applyFilter(bbQuery)
-      const { data: balancesData } = await bbQuery
+      // 5. Fetch Bank Balances
+      const { data: balancesData } = await supabase
+        .from('bank_balances')
+        .select('*')
+        .in('company_id', visibleIds)
+
       if (balancesData) setBankBalances(balancesData as any)
 
-      // Fetch Adjustments
-      let aQuery = supabase.from('financial_adjustments').select('*')
-      aQuery = applyFilter(aQuery)
-      const { data: adjustmentsData } = await aQuery
+      // 6. Fetch Adjustments
+      const { data: adjustmentsData } = await supabase
+        .from('financial_adjustments')
+        .select('*')
+        .in('company_id', visibleIds)
+
       if (adjustmentsData) setAdjustments(adjustmentsData as any)
 
-      // Fetch Import Logs (Recent) - Also filtered
-      let lQuery = supabase
+      // 7. Fetch Import Logs (Recent)
+      const { data: logsData } = await supabase
         .from('import_logs')
         .select('*')
+        .in('company_id', visibleIds)
         .order('created_at', { ascending: false })
         .limit(10)
 
-      lQuery = applyFilter(lQuery)
-
-      if (user) {
-        const { data: logsData } = await lQuery
-
-        if (logsData) {
-          setImportHistory(
-            logsData.map((log) => ({
-              id: log.id,
-              date: log.created_at,
-              filename: log.filename,
-              type: 'receivable', // Default fallback
-              status: log.status === 'success' ? 'success' : 'error',
-              records_count: log.total_records || 0,
-              user_name: userProfile?.name || 'Usuário',
-              company_id: log.company_id,
-              success_count: log.success_count || 0,
-              error_count: log.error_count || 0,
-              error_details: log.error_details,
-            })),
-          )
-        }
+      if (logsData) {
+        setImportHistory(
+          logsData.map((log) => ({
+            id: log.id,
+            date: log.created_at,
+            filename: log.filename,
+            type: 'receivable', // Default fallback
+            status: log.status === 'success' ? 'success' : 'error',
+            records_count: log.total_records || 0,
+            user_name: userProfile?.name || 'Usuário',
+            company_id: log.company_id,
+            success_count: log.success_count || 0,
+            error_count: log.error_count || 0,
+            error_details: log.error_details,
+          })),
+        )
       }
     } catch (error) {
       console.error('Error fetching data:', error)
@@ -271,7 +273,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       const entryDate = parseISO(entry.date)
 
       // Data is already filtered by company in fetchData, so we iterate over state directly
-      // But we must double check if we are in 'All Companies' mode and the fetch actually fetched all allowed
 
       const dayReceivables = receivables
         .filter(
@@ -321,7 +322,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         openingBalance = currentAccumulated
       }
 
-      // We remove mock "imports" and "other_expenses" logic to be "Real Data-Driven"
       const dailyBalance =
         dayReceivables - dayPayables + adjustmentsCredit - adjustmentsDebit
 
@@ -338,8 +338,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         opening_balance: openingBalance,
         total_receivables: dayReceivables,
         total_payables: dayPayables,
-        imports: 0, // No random mock data
-        other_expenses: 0, // No random mock data
+        imports: 0,
+        other_expenses: 0,
         adjustments_credit: adjustmentsCredit,
         adjustments_debit: adjustmentsDebit,
         daily_balance: dailyBalance,
@@ -427,15 +427,13 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const resetBalanceHistory = async () => {
-    if (selectedCompanyId) {
-      await supabase
-        .from('bank_balances')
-        .delete()
-        .eq('company_id', selectedCompanyId)
-    } else {
-      if (userProfile?.profile === 'Administrator') {
-        await supabase.from('bank_balances').delete().neq('id', '0')
-      }
+    const visibleIds = await getVisibleCompanyIds(
+      supabase,
+      user?.id || '',
+      selectedCompanyId,
+    )
+    if (visibleIds.length > 0) {
+      await supabase.from('bank_balances').delete().in('company_id', visibleIds)
     }
     await fetchData()
   }
@@ -529,11 +527,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       // Log import
       if (user) {
-        // We use lastCompanyId as the logged company, or fallback to selectedCompanyId
-        // This is a best effort mapping since imports can contain multiple companies
         const logCompanyId = importResults.lastCompanyId || selectedCompanyId
 
-        if (logCompanyId) {
+        if (logCompanyId && logCompanyId !== 'all') {
           await supabase.from('import_logs').insert({
             user_id: user.id,
             filename: filename,
@@ -549,7 +545,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // If any success, refresh data
+      // If any success, refresh data immediately to show in grid
       if (successCount > 0) {
         await refreshProfile()
         await fetchData()
@@ -590,7 +586,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const recalculateCashFlow = () => {
-    fetchData() // Re-fetch to ensure clean state
+    fetchData()
   }
 
   return (
@@ -599,12 +595,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         companies: visibleCompanies,
         selectedCompanyId,
         setSelectedCompanyId,
-        receivables: receivables, // Already filtered
-        payables: payables, // Already filtered
-        bankBalances: bankBalances, // Already filtered
-        adjustments: adjustments, // Already filtered
+        receivables: receivables,
+        payables: payables,
+        bankBalances: bankBalances,
+        adjustments: adjustments,
         cashFlowEntries,
-        banks: banks, // Already filtered
+        banks: banks,
         importHistory,
         addReceivable,
         updateReceivable,

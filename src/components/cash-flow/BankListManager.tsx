@@ -116,16 +116,12 @@ export function BankListManager() {
     }
 
     // Construct Payload
-    // If isNewCompany, company_id is undefined, but company_name is set.
-    // salvarBankManual handles the resolution.
     const payload = {
       ...formData,
       company_name: isNewCompany ? newCompanyName : undefined,
     }
 
     if (editingId) {
-      // For updates, company_id MUST be present.
-      // If user is editing and switching to a new company, `updateBank` -> `salvarBankManual` handles it.
       await updateBank({ ...payload, id: editingId } as Bank)
       toast.success('Conta atualizada com sucesso!')
       resetForm()

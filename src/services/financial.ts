@@ -33,6 +33,34 @@ export function d(value: any): string | null {
   return null
 }
 
+// --- Company Visibility Logic ---
+
+export async function getVisibleCompanyIds(
+  supabaseClient: any,
+  userId: string,
+  selectedCompanyId: string | null,
+): Promise<string[]> {
+  if (selectedCompanyId && selectedCompanyId !== 'all') {
+    return [selectedCompanyId]
+  }
+
+  const { data, error } = await supabaseClient
+    .from('user_companies')
+    .select('company_id')
+    .eq('user_id', userId)
+
+  if (error) {
+    console.error('Error fetching visible companies:', error)
+    return []
+  }
+
+  if (!data || data.length === 0) {
+    return []
+  }
+
+  return data.map((item: any) => item.company_id)
+}
+
 // --- Company & User Linking Logic ---
 
 export async function ensureCompanyAndLink(
