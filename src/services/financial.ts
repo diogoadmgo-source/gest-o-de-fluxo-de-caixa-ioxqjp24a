@@ -48,10 +48,10 @@ export async function fetchAllRecords(
 ) {
   let allData: any[] = []
   let page = 0
-  const pageSize = 2000 // Optimized page size
+  const pageSize = 1000 // Optimized page size (matches Supabase default limit to avoid premature loop termination)
   let hasMore = true
 
-  // Safety limit to prevent infinite loops (e.g., 200k records max for client-side)
+  // Safety limit to prevent infinite loops (e.g., 100k records max for client-side)
   const MAX_PAGES = 100
 
   while (hasMore && page < MAX_PAGES) {
@@ -73,11 +73,15 @@ export async function fetchAllRecords(
     if (error) throw error
 
     if (data) {
-      allData = [...allData, ...data]
-      if (data.length < pageSize) {
+      if (data.length === 0) {
         hasMore = false
       } else {
-        page++
+        allData = [...allData, ...data]
+        if (data.length < pageSize) {
+          hasMore = false
+        } else {
+          page++
+        }
       }
     } else {
       hasMore = false

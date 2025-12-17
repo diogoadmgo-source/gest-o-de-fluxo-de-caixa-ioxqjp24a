@@ -23,7 +23,6 @@ import {
   Trash2,
   Edit,
   Eye,
-  CheckCircle2,
   AlertCircle,
   Briefcase,
   RefreshCcw,
@@ -195,38 +194,39 @@ export default function Receivables() {
   ])
 
   // --- Dashboard Logic ---
-  const today = startOfDay(new Date())
+  const { overdueStats, toDueStats, totalStats } = useMemo(() => {
+    const today = startOfDay(new Date())
 
-  const overdueReceivables = filteredData.filter((r) => {
-    const itemDate = r.due_date ? parseISO(r.due_date) : null
-    return r.title_status === 'Aberto' && itemDate && itemDate < today
-  })
+    const overdue = filteredData.filter((r) => {
+      const itemDate = r.due_date ? parseISO(r.due_date) : null
+      return r.title_status === 'Aberto' && itemDate && itemDate < today
+    })
 
-  const toDueReceivables = filteredData.filter((r) => {
-    const itemDate = r.due_date ? parseISO(r.due_date) : null
-    return r.title_status === 'Aberto' && itemDate && itemDate >= today
-  })
+    const toDue = filteredData.filter((r) => {
+      const itemDate = r.due_date ? parseISO(r.due_date) : null
+      return r.title_status === 'Aberto' && itemDate && itemDate >= today
+    })
 
-  const calculateDashboardStats = (items: Receivable[]) =>
-    items.reduce(
-      (acc, curr) => ({
-        principal: acc.principal + (curr.principal_value || 0),
-        fine: acc.fine + (curr.fine || 0),
-        interest: acc.interest + (curr.interest || 0),
-        // AC Requirement: metric MUST be the sum of principal_value
-        total: acc.total + (curr.principal_value || 0),
-      }),
-      { principal: 0, fine: 0, interest: 0, total: 0 },
-    )
+    const calculateStats = (items: Receivable[]) =>
+      items.reduce(
+        (acc, curr) => ({
+          principal: acc.principal + (curr.principal_value || 0),
+          fine: acc.fine + (curr.fine || 0),
+          interest: acc.interest + (curr.interest || 0),
+          // AC Requirement: metric MUST be the sum of principal_value
+          total: acc.total + (curr.principal_value || 0),
+        }),
+        { principal: 0, fine: 0, interest: 0, total: 0 },
+      )
 
-  const overdueStats = calculateDashboardStats(overdueReceivables)
-  const toDueStats = calculateDashboardStats(toDueReceivables)
-  const totalDashboardStats = {
-    principal: overdueStats.principal + toDueStats.principal,
-    fine: overdueStats.fine + toDueStats.fine,
-    interest: overdueStats.interest + toDueStats.interest,
-    total: overdueStats.total + toDueStats.total,
-  }
+    return {
+      overdueStats: calculateStats(overdue),
+      toDueStats: calculateStats(toDue),
+      // Fix: Calculate total stats based on ALL filtered data, including paid/cancelled/etc.
+      // This ensures the "Total" card reflects the entire list/spreadsheet sum.
+      totalStats: calculateStats(filteredData),
+    }
+  }, [filteredData])
 
   const handleDelete = async () => {
     if (deletingId) {
@@ -361,12 +361,12 @@ export default function Receivables() {
           },
           {
             label: 'Total',
-            ...totalDashboardStats,
+            ...totalStats,
             color: 'default',
             icon: Briefcase,
             onClick: () => {
-              setStatusFilter('Aberto')
-              toast.info('Filtrando por todos títulos em aberto.')
+              setStatusFilter('all')
+              toast.info('Exibindo todos os títulos.')
             },
           },
         ]}
