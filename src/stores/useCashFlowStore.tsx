@@ -481,6 +481,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       if (!user) throw new Error('Usuário não autenticado')
       const data = await salvarBankManual(bank, user.id)
       await logAudit('Create', 'Banks', data.id, { name: data.name })
+      // Ensure the UI refreshes after bank creation
       await fetchData()
       return { error: null }
     } catch (error: any) {
@@ -603,10 +604,26 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     try {
       if (!user) throw new Error('Usuário não autenticado.')
 
+      // Determine fallback company ID from global state
+      const fallbackCompanyId =
+        selectedCompanyId && selectedCompanyId !== 'all'
+          ? selectedCompanyId
+          : null
+
       if (type === 'receivable') {
-        importResults = await importarReceivables(data, user.id, onProgress)
+        importResults = await importarReceivables(
+          data,
+          user.id,
+          fallbackCompanyId,
+          onProgress,
+        )
       } else if (type === 'payable') {
-        importResults = await importarPayables(data, user.id, onProgress)
+        importResults = await importarPayables(
+          data,
+          user.id,
+          fallbackCompanyId,
+          onProgress,
+        )
       }
 
       successCount = importResults.success
@@ -614,8 +631,14 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       // Log import
       if (user) {
-        const logCompanyId = importResults.lastCompanyId || selectedCompanyId
+        // Resolve company id for log: fallback > lastCompany > all/mixed
+        const logCompanyId =
+          fallbackCompanyId || importResults.lastCompanyId || selectedCompanyId
 
+        // Only log if we have a valid single company context, otherwise it might be mixed
+        // But for ImportLogs table we need a valid company_id.
+        // If 'all' is selected and multiple companies imported, we might just pick one or fail logging?
+        // Using lastCompanyId as best effort.
         if (logCompanyId && logCompanyId !== 'all') {
           const { data: logData, error: logError } = await supabase
             .from('import_logs')

@@ -258,6 +258,84 @@ export type Database = {
           },
         ]
       }
+      product_imports: {
+        Row: {
+          actual_arrival_date: string | null
+          company_id: string
+          created_at: string
+          description: string
+          exchange_rate: number
+          expected_arrival_date: string | null
+          foreign_currency_code: string
+          foreign_currency_value: number
+          id: string
+          international_supplier: string
+          logistics_costs: number | null
+          nationalization_costs: number | null
+          process_number: string | null
+          start_date: string
+          status: string
+          taxes: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_arrival_date?: string | null
+          company_id: string
+          created_at?: string
+          description: string
+          exchange_rate: number
+          expected_arrival_date?: string | null
+          foreign_currency_code: string
+          foreign_currency_value: number
+          id?: string
+          international_supplier: string
+          logistics_costs?: number | null
+          nationalization_costs?: number | null
+          process_number?: string | null
+          start_date: string
+          status: string
+          taxes?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_arrival_date?: string | null
+          company_id?: string
+          created_at?: string
+          description?: string
+          exchange_rate?: number
+          expected_arrival_date?: string | null
+          foreign_currency_code?: string
+          foreign_currency_value?: number
+          id?: string
+          international_supplier?: string
+          logistics_costs?: number | null
+          nationalization_costs?: number | null
+          process_number?: string | null
+          start_date?: string
+          status?: string
+          taxes?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'product_imports_company_id_fkey'
+            columns: ['company_id']
+            isOneToOne: false
+            referencedRelation: 'companies'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'product_imports_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       receivables: {
         Row: {
           company_id: string

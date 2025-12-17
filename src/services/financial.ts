@@ -3,10 +3,12 @@ import { parse, isValid, format } from 'date-fns'
 
 // --- Normalization Helpers ---
 
-export function s(text: any): string {
+export function normalizeText(text: any): string {
   if (text === null || text === undefined) return ''
   return String(text).trim()
 }
+// Alias for backward compatibility if needed within file or by external callers
+export const s = normalizeText
 
 export function n(value: any): number {
   if (typeof value === 'number') return value
@@ -67,7 +69,7 @@ export async function ensureCompanyAndLink(
   userId: string,
   companyIdOrName: string,
 ): Promise<string> {
-  const val = s(companyIdOrName)
+  const val = normalizeText(companyIdOrName)
   if (!val) throw new Error('ID ou Nome da empresa é obrigatório')
 
   const isUuid =
@@ -142,10 +144,7 @@ export async function ensureCompanyAndLink(
   return finalCompanyId
 }
 
-export const getOrCreateEmpresaId = async (name: string) => {
-  // This logic is now inside ensureCompanyAndLink
-  return name
-}
+export const resolveCompanyIdFromName = ensureCompanyAndLink
 export const ensureEmpresaAndLink = ensureCompanyAndLink
 
 // --- Manual Saving ---
@@ -161,10 +160,14 @@ export async function salvarReceivableManual(payload: any, userId: string) {
 
   const dbPayload = {
     company_id: companyId,
-    invoice_number: s(payload.numero_da_fatura || payload.invoice_number),
-    order_number: s(payload.numero_do_pedido || payload.order_number),
-    customer: s(payload.cliente || payload.customer),
-    customer_doc: s(payload.documento || payload.customer_doc),
+    invoice_number: normalizeText(
+      payload.numero_da_fatura || payload.invoice_number,
+    ),
+    order_number: normalizeText(
+      payload.numero_do_pedido || payload.order_number,
+    ),
+    customer: normalizeText(payload.cliente || payload.customer),
+    customer_doc: normalizeText(payload.documento || payload.customer_doc),
     issue_date: d(payload.data_de_emissao || payload.issue_date),
     due_date: d(payload.data_de_vencimento || payload.due_date),
     payment_prediction: d(
@@ -174,18 +177,20 @@ export async function salvarReceivableManual(payload: any, userId: string) {
     fine: n(payload.multa || payload.fine),
     interest: n(payload.juros || payload.interest),
     updated_value: n(payload.valor_atualizado || payload.updated_value),
-    title_status: s(
+    title_status: normalizeText(
       payload.status_do_titulo || payload.title_status || 'Aberto',
     ),
-    seller: s(payload.vendedor || payload.seller || payload.salesperson),
-    customer_code: s(payload.customer_code || payload.code),
-    uf: s(payload.uf || payload.state),
-    regional: s(payload.regional),
-    installment: s(payload.installment),
+    seller: normalizeText(
+      payload.vendedor || payload.seller || payload.salesperson,
+    ),
+    customer_code: normalizeText(payload.customer_code || payload.code),
+    uf: normalizeText(payload.uf || payload.state),
+    regional: normalizeText(payload.regional),
+    installment: normalizeText(payload.installment),
     days_overdue: n(payload.days_overdue || payload.dias),
-    utilization: s(payload.utilization),
-    negativado: s(payload.negativado || payload.is_negative),
-    description: s(payload.description),
+    utilization: normalizeText(payload.utilization),
+    negativado: normalizeText(payload.negativado || payload.is_negative),
+    description: normalizeText(payload.description),
   }
 
   if (payload.id) {
@@ -218,20 +223,22 @@ export async function salvarPayableManual(payload: any, userId: string) {
 
   const dbPayload = {
     company_id: companyId,
-    entity_name: s(
+    entity_name: normalizeText(
       payload.entity_name || payload.fornecedor || payload.supplier,
     ),
-    document_number: s(payload.document_number || payload.documento),
+    document_number: normalizeText(
+      payload.document_number || payload.documento,
+    ),
     issue_date: d(payload.issue_date || payload.emissao),
     due_date: d(payload.due_date || payload.vencimento),
     principal_value: n(payload.principal_value || payload.valor_principal),
     fine: n(payload.fine || payload.multa),
     interest: n(payload.interest || payload.juros),
     amount: n(payload.amount || payload.valor_total || payload.valor),
-    status: s(payload.status || 'pending'),
+    status: normalizeText(payload.status || 'pending'),
     type: 'payable',
-    category: s(payload.category || payload.categoria),
-    description: s(payload.description || payload.descricao),
+    category: normalizeText(payload.category || payload.categoria),
+    description: normalizeText(payload.description || payload.descricao),
   }
 
   if (payload.id) {
@@ -270,13 +277,13 @@ export async function salvarBankManual(payload: any, userId: string) {
 
   const dbPayload = {
     company_id: companyId,
-    name: s(payload.name),
-    code: s(payload.code),
-    institution: s(payload.institution),
-    agency: s(payload.agency),
-    account_number: s(payload.account_number),
-    account_digit: s(payload.account_digit),
-    type: s(payload.type || 'bank'),
+    name: normalizeText(payload.name),
+    code: normalizeText(payload.code),
+    institution: normalizeText(payload.institution),
+    agency: normalizeText(payload.agency),
+    account_number: normalizeText(payload.account_number),
+    account_digit: normalizeText(payload.account_digit),
+    type: normalizeText(payload.type || 'bank'),
     active: payload.active !== undefined ? payload.active : true,
   }
 
@@ -325,8 +332,8 @@ export async function salvarImportLogManual(payload: any, userId: string) {
   const dbPayload = {
     company_id: companyId,
     user_id: userId,
-    filename: s(payload.filename),
-    status: s(payload.status),
+    filename: normalizeText(payload.filename),
+    status: normalizeText(payload.status),
     total_records: n(payload.total_records),
     success_count: n(payload.success_count),
     error_count: n(payload.error_count),
@@ -358,6 +365,7 @@ export async function salvarImportLogManual(payload: any, userId: string) {
 export async function importarReceivables(
   rows: any[],
   userId: string,
+  fallbackCompanyId: string | null,
   onProgress?: (percent: number) => void,
 ) {
   const results = {
@@ -371,17 +379,20 @@ export async function importarReceivables(
     return { ...results, message: 'Arquivo vazio.' }
   }
 
-  // Pre-process Rows (Forward Fill Company)
+  // Pre-process Rows (Forward Fill Company if not fallback)
   let lastCompanyName = ''
   const preProcessedRows = rows.map((row, index) => {
-    let companyName = s(
-      row['Empresa'] || row['company'] || row['id_da_empresa'],
-    )
-    if (!companyName && lastCompanyName) {
-      companyName = lastCompanyName
-    }
-    if (companyName) {
-      lastCompanyName = companyName
+    let companyName = ''
+    if (!fallbackCompanyId) {
+      companyName = normalizeText(
+        row['Empresa'] || row['company'] || row['id_da_empresa'],
+      )
+      if (!companyName && lastCompanyName) {
+        companyName = lastCompanyName
+      }
+      if (companyName) {
+        lastCompanyName = companyName
+      }
     }
     return {
       ...row,
@@ -396,39 +407,41 @@ export async function importarReceivables(
   for (let i = 0; i < preProcessedRows.length; i += BATCH_SIZE) {
     const batch = preProcessedRows.slice(i, i + BATCH_SIZE)
     const promises = batch.map(async (row) => {
-      const rowIndex = row.__originalIndex // Defined outside try/catch to be accessible
+      const rowIndex = row.__originalIndex
       try {
-        const companyName = row.__companyNameResolved
+        let companyId = fallbackCompanyId
 
-        if (!companyName) {
-          throw new Error('Empresa não identificada (Linha sem empresa).')
-        }
-
-        let companyId = companyCache.get(companyName)
         if (!companyId) {
-          companyId = await ensureCompanyAndLink(userId, companyName)
-          companyCache.set(companyName, companyId)
+          const companyName = row.__companyNameResolved
+          if (!companyName) {
+            throw new Error('Empresa não identificada (Linha sem empresa).')
+          }
+          companyId = companyCache.get(companyName)
+          if (!companyId) {
+            companyId = await ensureCompanyAndLink(userId, companyName)
+            companyCache.set(companyName, companyId)
+          }
         }
 
-        results.lastCompanyId = companyId
+        results.lastCompanyId = companyId!
 
         const dbItem = {
           company_id: companyId,
-          invoice_number: s(
+          invoice_number: normalizeText(
             row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
           ),
-          order_number: s(
+          order_number: normalizeText(
             row['Nr do Pedido'] ||
               row['order_number'] ||
               row['numero_do_pedido'],
           ),
-          customer: s(
+          customer: normalizeText(
             row['Cliente'] ||
               row['customer'] ||
               row['cliente'] ||
               'Consumidor Final',
           ),
-          customer_doc: s(
+          customer_doc: normalizeText(
             row['CNPJ/CPF'] || row['customer_doc'] || row['documento'],
           ),
           issue_date:
@@ -460,20 +473,22 @@ export async function importarReceivables(
               row['valor_atualizado'] ||
               row['Vlr Principal'],
           ),
-          title_status: s(
+          title_status: normalizeText(
             row['Status do Título'] ||
               row['title_status'] ||
               row['status_do_titulo'] ||
               'Aberto',
           ),
-          seller: s(row['Vendedor'] || row['seller'] || row['vendedor']),
-          customer_code: s(row['Código'] || row['customer_code']),
-          uf: s(row['UF'] || row['uf']),
-          regional: s(row['Regional'] || row['regional']),
-          installment: s(row['Parcela'] || row['installment']),
+          seller: normalizeText(
+            row['Vendedor'] || row['seller'] || row['vendedor'],
+          ),
+          customer_code: normalizeText(row['Código'] || row['customer_code']),
+          uf: normalizeText(row['UF'] || row['uf']),
+          regional: normalizeText(row['Regional'] || row['regional']),
+          installment: normalizeText(row['Parcela'] || row['installment']),
           days_overdue: n(row['Dias'] || row['days_overdue']),
-          utilization: s(row['Utilização'] || row['utilization']),
-          negativado: s(row['Negativado'] || row['negativado']),
+          utilization: normalizeText(row['Utilização'] || row['utilization']),
+          negativado: normalizeText(row['Negativado'] || row['negativado']),
           description: 'Importado via Planilha',
         }
 
@@ -505,6 +520,7 @@ export async function importarReceivables(
 export async function importarPayables(
   rows: any[],
   userId: string,
+  fallbackCompanyId: string | null,
   onProgress?: (percent: number) => void,
 ) {
   const results = {
@@ -518,15 +534,18 @@ export async function importarPayables(
     return { ...results, message: 'Arquivo vazio.' }
   }
 
-  // Pre-process Rows (Forward Fill Company)
+  // Pre-process Rows (Forward Fill Company if not fallback)
   let lastCompanyName = ''
   const preProcessedRows = rows.map((row, index) => {
-    let companyName = s(row['Empresa'] || row['company'])
-    if (!companyName && lastCompanyName) {
-      companyName = lastCompanyName
-    }
-    if (companyName) {
-      lastCompanyName = companyName
+    let companyName = ''
+    if (!fallbackCompanyId) {
+      companyName = normalizeText(row['Empresa'] || row['company'])
+      if (!companyName && lastCompanyName) {
+        companyName = lastCompanyName
+      }
+      if (companyName) {
+        lastCompanyName = companyName
+      }
     }
     return {
       ...row,
@@ -541,28 +560,32 @@ export async function importarPayables(
   for (let i = 0; i < preProcessedRows.length; i += BATCH_SIZE) {
     const batch = preProcessedRows.slice(i, i + BATCH_SIZE)
     const promises = batch.map(async (row) => {
-      const rowIndex = row.__originalIndex // Defined outside try/catch
+      const rowIndex = row.__originalIndex
       try {
-        const companyName = row.__companyNameResolved
+        let companyId = fallbackCompanyId
 
-        if (!companyName) {
-          throw new Error('Empresa não identificada.')
-        }
-
-        let companyId = companyCache.get(companyName)
         if (!companyId) {
-          companyId = await ensureCompanyAndLink(userId, companyName)
-          companyCache.set(companyName, companyId)
+          const companyName = row.__companyNameResolved
+          if (!companyName) {
+            throw new Error('Empresa não identificada.')
+          }
+          companyId = companyCache.get(companyName)
+          if (!companyId) {
+            companyId = await ensureCompanyAndLink(userId, companyName)
+            companyCache.set(companyName, companyId)
+          }
         }
 
-        results.lastCompanyId = companyId
+        results.lastCompanyId = companyId!
 
         const payload = {
           company_id: companyId,
-          entity_name: s(
+          entity_name: normalizeText(
             row['Fornecedor'] || row['entity_name'] || row['supplier'],
           ),
-          document_number: s(row['Documento'] || row['document_number']),
+          document_number: normalizeText(
+            row['Documento'] || row['document_number'],
+          ),
           issue_date:
             d(row['Emissao'] || row['issue_date']) || new Date().toISOString(),
           due_date: d(row['Vencimento'] || row['due_date']),
@@ -572,9 +595,11 @@ export async function importarPayables(
           fine: n(row['Multa'] || row['fine']),
           interest: n(row['Juros'] || row['interest']),
           amount: n(row['Total'] || row['amount'] || row['Valor']),
-          status: s(row['Status'] || 'pending'),
-          category: s(row['Categoria'] || row['category']),
-          description: s(row['Descrição'] || 'Importado via Planilha'),
+          status: normalizeText(row['Status'] || 'pending'),
+          category: normalizeText(row['Categoria'] || row['category']),
+          description: normalizeText(
+            row['Descrição'] || 'Importado via Planilha',
+          ),
           type: 'payable',
         }
 
