@@ -61,6 +61,7 @@ export interface Receivable {
   negativado?: string
   payment_prediction: string
   description?: string
+  created_at?: string
 }
 
 export interface FinancialAdjustment {

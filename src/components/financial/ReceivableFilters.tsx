@@ -26,6 +26,8 @@ interface ReceivableFiltersProps {
   setDueDateRange: (range: DateRange | undefined) => void
   issueDateRange: DateRange | undefined
   setIssueDateRange: (range: DateRange | undefined) => void
+  createdAtRange: DateRange | undefined
+  setCreatedAtRange: (range: DateRange | undefined) => void
   minValue: string
   setMinValue: (value: string) => void
   maxValue: string
@@ -43,6 +45,8 @@ export function ReceivableFilters({
   setDueDateRange,
   issueDateRange,
   setIssueDateRange,
+  createdAtRange,
+  setCreatedAtRange,
   minValue,
   setMinValue,
   maxValue,
@@ -52,7 +56,7 @@ export function ReceivableFilters({
 }: ReceivableFiltersProps) {
   return (
     <div className="space-y-4 bg-muted/20 p-4 rounded-lg border border-border/40">
-      <div className="flex flex-col lg:flex-row gap-4">
+      <div className="flex flex-col xl:flex-row gap-4 flex-wrap">
         {/* Search */}
         <div className="flex-1 min-w-[250px]">
           <Label className="text-xs mb-1.5 block text-muted-foreground">
@@ -70,7 +74,7 @@ export function ReceivableFilters({
         </div>
 
         {/* Status */}
-        <div className="w-full lg:w-[180px]">
+        <div className="w-full sm:w-[180px]">
           <Label className="text-xs mb-1.5 block text-muted-foreground">
             Status
           </Label>
@@ -97,7 +101,7 @@ export function ReceivableFilters({
             date={dueDateRange}
             setDate={setDueDateRange}
             placeholder="Período de Vencimento"
-            className="w-full lg:w-[260px]"
+            className="w-full sm:w-[260px]"
           />
         </div>
 
@@ -110,7 +114,20 @@ export function ReceivableFilters({
             date={issueDateRange}
             setDate={setIssueDateRange}
             placeholder="Período de Emissão"
-            className="w-full lg:w-[260px]"
+            className="w-full sm:w-[260px]"
+          />
+        </div>
+
+        {/* Created At (Batch Audit) */}
+        <div>
+          <Label className="text-xs mb-1.5 block text-muted-foreground">
+            Importação / Criação
+          </Label>
+          <DateRangePicker
+            date={createdAtRange}
+            setDate={setCreatedAtRange}
+            placeholder="Período de Criação"
+            className="w-full sm:w-[260px]"
           />
         </div>
 
@@ -123,7 +140,7 @@ export function ReceivableFilters({
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className={`w-full lg:w-[140px] justify-between ${
+                className={`w-full sm:w-[140px] justify-between ${
                   minValue || maxValue
                     ? 'text-primary border-primary/50 bg-primary/5'
                     : 'text-muted-foreground'

@@ -27,6 +27,7 @@ import {
   Briefcase,
   RefreshCcw,
   Clock,
+  AlertTriangle,
 } from 'lucide-react'
 import {
   Dialog,
@@ -60,7 +61,14 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination'
 import { toast } from 'sonner'
-import { format, parseISO, isSameDay, startOfDay, endOfDay } from 'date-fns'
+import {
+  format,
+  parseISO,
+  isSameDay,
+  startOfDay,
+  endOfDay,
+  isValid,
+} from 'date-fns'
 import { DateRange } from 'react-day-picker'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Receivable } from '@/lib/types'
@@ -68,7 +76,13 @@ import { FinancialStats } from '@/components/financial/FinancialStats'
 import { ReceivableForm } from '@/components/financial/ReceivableForm'
 import { ImportDialog } from '@/components/common/ImportDialog'
 import { ReceivableFilters } from '@/components/financial/ReceivableFilters'
+import { ReceivablesQualityDashboard } from '@/components/financial/ReceivablesQualityDashboard'
 import { cn } from '@/lib/utils'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 export default function Receivables() {
   const {
@@ -85,6 +99,7 @@ export default function Receivables() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [dueDateRange, setDueDateRange] = useState<DateRange | undefined>()
   const [issueDateRange, setIssueDateRange] = useState<DateRange | undefined>()
+  const [createdAtRange, setCreatedAtRange] = useState<DateRange | undefined>()
   const [minValue, setMinValue] = useState('')
   const [maxValue, setMaxValue] = useState('')
 
@@ -102,6 +117,7 @@ export default function Receivables() {
     statusFilter !== 'all' ||
     dueDateRange !== undefined ||
     issueDateRange !== undefined ||
+    createdAtRange !== undefined ||
     minValue !== '' ||
     maxValue !== ''
 
@@ -110,6 +126,7 @@ export default function Receivables() {
     setStatusFilter('all')
     setDueDateRange(undefined)
     setIssueDateRange(undefined)
+    setCreatedAtRange(undefined)
     setMinValue('')
     setMaxValue('')
     toast.info('Filtros limpos.')
@@ -123,6 +140,7 @@ export default function Receivables() {
     statusFilter,
     dueDateRange,
     issueDateRange,
+    createdAtRange,
     minValue,
     maxValue,
   ])
@@ -200,7 +218,25 @@ export default function Receivables() {
         }
       }
 
-      // 5. Value
+      // 5. Created At (Batch)
+      if (createdAtRange?.from) {
+        if (!t.created_at) return false
+        const cDate = parseISO(t.created_at)
+        if (createdAtRange.to) {
+          if (
+            cDate < startOfDay(createdAtRange.from) ||
+            cDate > endOfDay(createdAtRange.to)
+          ) {
+            return false
+          }
+        } else {
+          if (!isSameDay(cDate, createdAtRange.from)) {
+            return false
+          }
+        }
+      }
+
+      // 6. Value
       const val = t.principal_value || 0
       if (minValue && val < parseFloat(minValue)) return false
       if (maxValue && val > parseFloat(maxValue)) return false
@@ -213,6 +249,7 @@ export default function Receivables() {
     statusFilter,
     dueDateRange,
     issueDateRange,
+    createdAtRange,
     minValue,
     maxValue,
   ])
@@ -245,10 +282,8 @@ export default function Receivables() {
           principal: acc.principal + (curr.principal_value || 0),
           fine: acc.fine + (curr.fine || 0),
           interest: acc.interest + (curr.interest || 0),
-          // AC Requirement: metric MUST be the sum of principal_value for the 'Total' display as well?
-          // Usually 'total' implies updated value, but the request says "metric MUST be the sum of principal_value".
-          // We will sum principal value for the big number display as requested.
-          total: acc.total + (curr.principal_value || 0),
+          // User Requirement: Total Updated Value
+          total: acc.total + (curr.updated_value || curr.principal_value || 0),
         }),
         { principal: 0, fine: 0, interest: 0, total: 0 },
       )
@@ -325,6 +360,32 @@ export default function Receivables() {
       label: item.title_status,
       className: 'bg-secondary text-secondary-foreground',
     }
+  }
+
+  const getErrorFlags = (item: Receivable) => {
+    const errors: string[] = []
+    if (
+      !item.company_id ||
+      !item.invoice_number ||
+      !item.customer ||
+      item.principal_value === undefined
+    ) {
+      errors.push('Campos obrigatórios ausentes.')
+    }
+    if ((item.principal_value || 0) < 0) {
+      errors.push('Valor principal negativo.')
+    }
+    if ((item.updated_value || 0) < (item.principal_value || 0) - 0.01) {
+      errors.push('Valor atualizado menor que principal.')
+    }
+    if (item.due_date && item.issue_date) {
+      const d = parseISO(item.due_date)
+      const i = parseISO(item.issue_date)
+      if (isValid(d) && isValid(i) && d < i) {
+        errors.push('Vencimento anterior à emissão.')
+      }
+    }
+    return errors
   }
 
   const renderPagination = () => {
@@ -455,6 +516,8 @@ export default function Receivables() {
         </div>
       </div>
 
+      <ReceivablesQualityDashboard data={filteredData} />
+
       <FinancialStats
         stats={[
           {
@@ -478,7 +541,7 @@ export default function Receivables() {
             },
           },
           {
-            label: 'Total',
+            label: 'Total Geral',
             ...totalStats,
             color: 'default',
             icon: Briefcase,
@@ -499,6 +562,8 @@ export default function Receivables() {
         setDueDateRange={setDueDateRange}
         issueDateRange={issueDateRange}
         setIssueDateRange={setIssueDateRange}
+        createdAtRange={createdAtRange}
+        setCreatedAtRange={setCreatedAtRange}
         minValue={minValue}
         setMinValue={setMinValue}
         maxValue={maxValue}
@@ -524,6 +589,7 @@ export default function Receivables() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[50px]"></TableHead>
                   <TableHead className="w-[100px]">NF</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead>Cliente</TableHead>
@@ -544,7 +610,7 @@ export default function Receivables() {
               <TableBody>
                 {paginatedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={10} className="text-center py-8">
                       {loading
                         ? 'Carregando...'
                         : 'Nenhum título encontrado com os filtros atuais.'}
@@ -553,8 +619,25 @@ export default function Receivables() {
                 ) : (
                   paginatedData.map((item) => {
                     const statusBadge = getStatusBadge(item)
+                    const errorFlags = getErrorFlags(item)
                     return (
                       <TableRow key={item.id} className="hover:bg-muted/50">
+                        <TableCell>
+                          {errorFlags.length > 0 && (
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <AlertTriangle className="h-4 w-4 text-orange-500" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {errorFlags.map((err, i) => (
+                                  <p key={i} className="text-xs">
+                                    - {err}
+                                  </p>
+                                ))}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </TableCell>
                         <TableCell className="text-xs font-medium">
                           {item.invoice_number}
                         </TableCell>
@@ -713,6 +796,15 @@ export default function Receivables() {
                 <span>{viewingItem.installment || '-'}</span>
                 <span className="font-semibold">Vendedor:</span>
                 <span>{viewingItem.seller || '-'}</span>
+                <span className="font-semibold">Criado em:</span>
+                <span>
+                  {viewingItem.created_at
+                    ? format(
+                        parseISO(viewingItem.created_at),
+                        'dd/MM/yyyy HH:mm',
+                      )
+                    : '-'}
+                </span>
               </div>
             </div>
           )}
