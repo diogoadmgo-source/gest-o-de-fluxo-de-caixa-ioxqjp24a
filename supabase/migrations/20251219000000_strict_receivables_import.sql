@@ -10,7 +10,7 @@ CREATE OR REPLACE FUNCTION strict_replace_receivables(
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
 DECLARE
   v_count_before INTEGER;
   v_total_before NUMERIC;
@@ -120,5 +120,4 @@ EXCEPTION WHEN OTHERS THEN
     'error', SQLERRM
   );
 END;
-$;
-
+$$;
