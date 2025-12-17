@@ -20,6 +20,18 @@ WHERE id IN (
 );
 
 -- Add the unique constraint to prevent future duplicates
-ALTER TABLE public.receivables
-ADD CONSTRAINT receivables_unique_import 
-UNIQUE (company_id, invoice_number, order_number, installment);
+-- Wrapped in a DO block to prevent errors if the constraint/index already exists
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'receivables_unique_import'
+        AND n.nspname = 'public'
+    ) THEN
+        ALTER TABLE public.receivables
+        ADD CONSTRAINT receivables_unique_import 
+        UNIQUE (company_id, invoice_number, order_number, installment);
+    END IF;
+END $$;
