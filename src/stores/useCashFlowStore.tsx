@@ -284,13 +284,15 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         openingBalance = currentAccumulated
       }
 
+      // FIXED: Used correctly initialized variables adjustmentsCredit and adjustmentsDebit
+      // instead of undefined adjustments_credit and adjustments_debit
       const dailyBalance =
         dayReceivables -
         dayPayables -
         entry.imports -
         entry.other_expenses +
-        adjustments_credit -
-        adjustments_debit
+        adjustmentsCredit -
+        adjustmentsDebit
 
       let accumulatedBalance = openingBalance + dailyBalance
 
