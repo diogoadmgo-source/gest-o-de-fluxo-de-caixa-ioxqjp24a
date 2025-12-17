@@ -27,6 +27,7 @@ import {
   AlertCircle,
   Briefcase,
   RefreshCcw,
+  Clock,
 } from 'lucide-react'
 import {
   Dialog,
@@ -193,27 +194,39 @@ export default function Receivables() {
     maxValue,
   ])
 
-  const openReceivables = filteredData.filter(
-    (r) => r.title_status === 'Aberto',
-  )
-  const liquidatedReceivables = filteredData.filter(
-    (r) => r.title_status === 'Liquidado',
-  )
+  // --- Dashboard Logic ---
+  const today = startOfDay(new Date())
 
-  const sumValues = (items: Receivable[]) =>
+  const overdueReceivables = filteredData.filter((r) => {
+    const itemDate = r.due_date ? parseISO(r.due_date) : null
+    return r.title_status === 'Aberto' && itemDate && itemDate < today
+  })
+
+  const toDueReceivables = filteredData.filter((r) => {
+    const itemDate = r.due_date ? parseISO(r.due_date) : null
+    return r.title_status === 'Aberto' && itemDate && itemDate >= today
+  })
+
+  const calculateDashboardStats = (items: Receivable[]) =>
     items.reduce(
       (acc, curr) => ({
         principal: acc.principal + (curr.principal_value || 0),
         fine: acc.fine + (curr.fine || 0),
         interest: acc.interest + (curr.interest || 0),
-        total: acc.total + (curr.updated_value || 0),
+        // AC Requirement: metric MUST be the sum of principal_value
+        total: acc.total + (curr.principal_value || 0),
       }),
       { principal: 0, fine: 0, interest: 0, total: 0 },
     )
 
-  const openStats = sumValues(openReceivables)
-  const liquidatedStats = sumValues(liquidatedReceivables)
-  const totalStats = sumValues(filteredData)
+  const overdueStats = calculateDashboardStats(overdueReceivables)
+  const toDueStats = calculateDashboardStats(toDueReceivables)
+  const totalDashboardStats = {
+    principal: overdueStats.principal + toDueStats.principal,
+    fine: overdueStats.fine + toDueStats.fine,
+    interest: overdueStats.interest + toDueStats.interest,
+    total: overdueStats.total + toDueStats.total,
+  }
 
   const handleDelete = async () => {
     if (deletingId) {
@@ -327,33 +340,33 @@ export default function Receivables() {
       <FinancialStats
         stats={[
           {
-            label: 'Total Geral (Filtrado)',
-            ...totalStats,
+            label: 'A Vencer',
+            ...toDueStats,
             color: 'primary',
-            icon: Briefcase,
+            icon: Clock,
             onClick: () => {
-              setStatusFilter('all')
-              toast.info('Exibindo todos os títulos.')
+              setStatusFilter('a_vencer')
+              toast.info('Filtrando por títulos a vencer.')
             },
           },
           {
-            label: 'Total Aberto (Filtrado)',
-            ...openStats,
+            label: 'Vencido',
+            ...overdueStats,
             color: 'custom-red',
             icon: AlertCircle,
             onClick: () => {
-              setStatusFilter('Aberto')
-              toast.info('Filtrando por títulos em aberto.')
+              setStatusFilter('vencida')
+              toast.info('Filtrando por títulos vencidos.')
             },
           },
           {
-            label: 'Total Liquidado (Filtrado)',
-            ...liquidatedStats,
-            color: 'custom-green',
-            icon: CheckCircle2,
+            label: 'Total',
+            ...totalDashboardStats,
+            color: 'default',
+            icon: Briefcase,
             onClick: () => {
-              setStatusFilter('Liquidado')
-              toast.info('Filtrando por títulos liquidados.')
+              setStatusFilter('Aberto')
+              toast.info('Filtrando por todos títulos em aberto.')
             },
           },
         ]}

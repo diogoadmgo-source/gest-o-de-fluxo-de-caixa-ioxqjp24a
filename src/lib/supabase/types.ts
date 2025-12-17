@@ -395,6 +395,21 @@ export type Database = {
           },
         ]
       }
+      receivable_status_map: {
+        Row: {
+          canonical: string
+          raw: string
+        }
+        Insert: {
+          canonical: string
+          raw: string
+        }
+        Update: {
+          canonical?: string
+          raw?: string
+        }
+        Relationships: []
+      }
       receivables: {
         Row: {
           company_id: string
