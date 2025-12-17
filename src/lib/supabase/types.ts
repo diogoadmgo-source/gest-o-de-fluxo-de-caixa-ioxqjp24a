@@ -58,17 +58,17 @@ export type Database = {
       }
       bank_balances: {
         Row: {
-          company_id: string | null
+          company_id: string
           created_at: string | null
           id: string
         }
         Insert: {
-          company_id?: string | null
+          company_id: string
           created_at?: string | null
           id?: string
         }
         Update: {
-          company_id?: string | null
+          company_id?: string
           created_at?: string | null
           id?: string
         }
@@ -89,7 +89,7 @@ export type Database = {
           active: boolean | null
           agency: string | null
           code: string | null
-          company_id: string | null
+          company_id: string
           created_at: string | null
           id: string
           institution: string | null
@@ -102,7 +102,7 @@ export type Database = {
           active?: boolean | null
           agency?: string | null
           code?: string | null
-          company_id?: string | null
+          company_id: string
           created_at?: string | null
           id?: string
           institution?: string | null
@@ -115,7 +115,7 @@ export type Database = {
           active?: boolean | null
           agency?: string | null
           code?: string | null
-          company_id?: string | null
+          company_id?: string
           created_at?: string | null
           id?: string
           institution?: string | null
@@ -156,7 +156,7 @@ export type Database = {
       financial_adjustments: {
         Row: {
           amount: number
-          company_id: string | null
+          company_id: string
           created_at: string
           date: string
           id: string
@@ -167,7 +167,7 @@ export type Database = {
         }
         Insert: {
           amount?: number
-          company_id?: string | null
+          company_id: string
           created_at?: string
           date: string
           id?: string
@@ -178,7 +178,7 @@ export type Database = {
         }
         Update: {
           amount?: number
-          company_id?: string | null
+          company_id?: string
           created_at?: string
           date?: string
           id?: string
@@ -206,6 +206,7 @@ export type Database = {
       }
       import_logs: {
         Row: {
+          company_id: string
           created_at: string
           error_count: number | null
           error_details: Json | null
@@ -217,6 +218,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          company_id: string
           created_at?: string
           error_count?: number | null
           error_details?: Json | null
@@ -228,6 +230,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          company_id?: string
           created_at?: string
           error_count?: number | null
           error_details?: Json | null
@@ -240,6 +243,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: 'import_logs_company_id_fkey'
+            columns: ['company_id']
+            isOneToOne: false
+            referencedRelation: 'companies'
+            referencedColumns: ['id']
+          },
+          {
             foreignKeyName: 'import_logs_user_id_fkey'
             columns: ['user_id']
             isOneToOne: false
@@ -250,7 +260,7 @@ export type Database = {
       }
       receivables: {
         Row: {
-          company_id: string | null
+          company_id: string
           created_at: string | null
           customer: string | null
           customer_code: string | null
@@ -276,7 +286,7 @@ export type Database = {
           utilization: string | null
         }
         Insert: {
-          company_id?: string | null
+          company_id: string
           created_at?: string | null
           customer?: string | null
           customer_code?: string | null
@@ -302,7 +312,7 @@ export type Database = {
           utilization?: string | null
         }
         Update: {
-          company_id?: string | null
+          company_id?: string
           created_at?: string | null
           customer?: string | null
           customer_code?: string | null
@@ -341,7 +351,7 @@ export type Database = {
         Row: {
           amount: number | null
           category: string | null
-          company_id: string | null
+          company_id: string
           created_at: string | null
           description: string | null
           document_number: string | null
@@ -358,7 +368,7 @@ export type Database = {
         Insert: {
           amount?: number | null
           category?: string | null
-          company_id?: string | null
+          company_id: string
           created_at?: string | null
           description?: string | null
           document_number?: string | null
@@ -375,7 +385,7 @@ export type Database = {
         Update: {
           amount?: number | null
           category?: string | null
-          company_id?: string | null
+          company_id?: string
           created_at?: string | null
           description?: string | null
           document_number?: string | null

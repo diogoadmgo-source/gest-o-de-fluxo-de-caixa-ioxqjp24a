@@ -57,6 +57,7 @@ export async function ensureCompanyAndLink(
     if (data) {
       finalCompanyId = data.id
     } else {
+      // If UUID provided but not found, check if it was treated as name or error
       throw new Error(`Empresa com ID ${val} não encontrada.`)
     }
   } else {
@@ -113,7 +114,6 @@ export async function ensureCompanyAndLink(
   return finalCompanyId
 }
 
-// Kept for backward compatibility if needed, but redirects to new function
 export const getOrCreateEmpresaId = async (name: string) => {
   // This logic is now inside ensureCompanyAndLink
   return name
@@ -229,11 +229,16 @@ export async function salvarPayableManual(payload: any, userId: string) {
 export async function salvarBankManual(payload: any, userId: string) {
   const companyInput =
     payload.company_id || payload.company || payload.company_name
+
   if (!companyInput) {
-    throw new Error('Selecione/Informe a empresa')
+    throw new Error('Selecione/Informe a empresa (Obrigatório)')
   }
 
   const companyId = await ensureCompanyAndLink(userId, companyInput)
+
+  if (!companyId) {
+    throw new Error('Falha crítica ao resolver ID da empresa.')
+  }
 
   const dbPayload = {
     company_id: companyId,
@@ -283,59 +288,50 @@ export async function salvarBankManual(payload: any, userId: string) {
 
 // --- Import Logic with Batching ---
 
-let lastCompany: string = ''
-
-function forwardFill(current: string): string {
-  if (current) {
-    lastCompany = current
-    return current
-  }
-  return lastCompany
-}
-
 export async function importarReceivables(
   rows: any[],
   userId: string,
   onProgress?: (percent: number) => void,
 ) {
-  lastCompany = ''
   const results = {
     total: rows.length,
     success: 0,
     errors: [] as string[],
-    lastCompanyId: '' as string, // To store in logs
+    lastCompanyId: '' as string,
   }
 
   if (rows.length === 0) {
     return { ...results, message: 'Arquivo vazio.' }
   }
 
+  // Pre-process Rows (Forward Fill Company)
+  let lastCompanyName = ''
+  const preProcessedRows = rows.map((row, index) => {
+    let companyName = s(
+      row['Empresa'] || row['company'] || row['id_da_empresa'],
+    )
+    if (!companyName && lastCompanyName) {
+      companyName = lastCompanyName
+    }
+    if (companyName) {
+      lastCompanyName = companyName
+    }
+    return {
+      ...row,
+      __companyNameResolved: companyName,
+      __originalIndex: index,
+    }
+  })
+
   const companyCache = new Map<string, string>()
   const BATCH_SIZE = 50
 
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE)
-    const promises = batch.map(async (row, idx) => {
+  for (let i = 0; i < preProcessedRows.length; i += BATCH_SIZE) {
+    const batch = preProcessedRows.slice(i, i + BATCH_SIZE)
+    const promises = batch.map(async (row) => {
+      const rowIndex = row.__originalIndex // Defined outside try/catch to be accessible
       try {
-        const rowIndex = i + idx
-        // 1. Resolve Company
-        let companyName = s(
-          row['Empresa'] || row['company'] || row['id_da_empresa'],
-        )
-
-        // Handling Forward Fill in a batched context is tricky if batches are parallel.
-        // However, we are running batches sequentially in the loop, but processing items in batch parallel.
-        // Forward fill logic strictly depends on sequential order.
-        // If row['Empresa'] is empty, it needs previous row.
-        // We must process sequentially for forward fill logic to work correctly or pre-process.
-        // Let's pre-process company names sequentially first or just run sequentially inside loop.
-        // Given forwardFill is simple state, we must run it sequentially.
-
-        // Wait, if I do `batch.map`, `lastCompany` might be raced if async.
-        // But `forwardFill` is sync. The problem is `ensureCompanyAndLink` is async.
-        // So we need to resolve companyName sequentially first, then we can parallelize DB inserts.
-
-        companyName = forwardFill(companyName)
+        const companyName = row.__companyNameResolved
 
         if (!companyName) {
           throw new Error('Empresa não identificada (Linha sem empresa).')
@@ -343,12 +339,10 @@ export async function importarReceivables(
 
         let companyId = companyCache.get(companyName)
         if (!companyId) {
-          // We must await here to cache it correctly, avoiding multiple creations
           companyId = await ensureCompanyAndLink(userId, companyName)
           companyCache.set(companyName, companyId)
         }
 
-        // Keep track of last used company ID for log purposes
         results.lastCompanyId = companyId
 
         const dbItem = {
@@ -427,17 +421,14 @@ export async function importarReceivables(
       }
     })
 
-    // Wait for batch to complete
     await Promise.all(promises)
 
-    // Update progress
     if (onProgress) {
       const processed = Math.min(i + BATCH_SIZE, rows.length)
       const percent = Math.round((processed / rows.length) * 100)
       onProgress(percent)
     }
 
-    // Small delay to allow UI to update
     await new Promise((resolve) => setTimeout(resolve, 0))
   }
 
@@ -449,7 +440,6 @@ export async function importarPayables(
   userId: string,
   onProgress?: (percent: number) => void,
 ) {
-  lastCompany = ''
   const results = {
     total: rows.length,
     success: 0,
@@ -461,17 +451,32 @@ export async function importarPayables(
     return { ...results, message: 'Arquivo vazio.' }
   }
 
+  // Pre-process Rows (Forward Fill Company)
+  let lastCompanyName = ''
+  const preProcessedRows = rows.map((row, index) => {
+    let companyName = s(row['Empresa'] || row['company'])
+    if (!companyName && lastCompanyName) {
+      companyName = lastCompanyName
+    }
+    if (companyName) {
+      lastCompanyName = companyName
+    }
+    return {
+      ...row,
+      __companyNameResolved: companyName,
+      __originalIndex: index,
+    }
+  })
+
   const companyCache = new Map<string, string>()
   const BATCH_SIZE = 50
 
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE)
-    const promises = batch.map(async (row, idx) => {
+  for (let i = 0; i < preProcessedRows.length; i += BATCH_SIZE) {
+    const batch = preProcessedRows.slice(i, i + BATCH_SIZE)
+    const promises = batch.map(async (row) => {
+      const rowIndex = row.__originalIndex // Defined outside try/catch
       try {
-        const rowIndex = i + idx
-        // 1. Resolve Company
-        let companyName = s(row['Empresa'] || row['company'])
-        companyName = forwardFill(companyName)
+        const companyName = row.__companyNameResolved
 
         if (!companyName) {
           throw new Error('Empresa não identificada.')
@@ -485,7 +490,6 @@ export async function importarPayables(
 
         results.lastCompanyId = companyId
 
-        // 2. Map Payload
         const payload = {
           company_id: companyId,
           entity_name: s(

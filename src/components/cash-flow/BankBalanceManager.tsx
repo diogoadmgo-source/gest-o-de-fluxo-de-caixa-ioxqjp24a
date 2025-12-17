@@ -52,10 +52,9 @@ export function BankBalanceManager({
   const [selectedBankId, setSelectedBankId] = useState('')
   const [amount, setAmount] = useState('')
 
-  // Sync state with props when initialBalances changes (e.g. date change or store update)
+  // Sync state with props when initialBalances changes
   useEffect(() => {
     setBalances(initialBalances)
-    // Also reset form when date changes to avoid confusion
     resetForm()
   }, [initialBalances])
 
@@ -69,8 +68,6 @@ export function BankBalanceManager({
   }
 
   const handleEdit = (balance: BankBalance) => {
-    // Try to find by ID first if available (though type might not have it strictly linked, we use bank_name/account logic)
-    // Ideally we should store bank_id in BankBalance
     let bank = banks.find((b) => b.id === balance.bank_id)
 
     if (!bank) {
@@ -101,6 +98,13 @@ export function BankBalanceManager({
     const bank = banks.find((b) => b.id === selectedBankId)
     if (!bank) return
 
+    // Mandatory Company ID Check
+    const finalCompanyId = bank.company_id || selectedCompanyId
+    if (!finalCompanyId) {
+      toast.error('Erro de integridade: Empresa não identificada para o banco.')
+      return
+    }
+
     if (editingId) {
       // Update existing
       setBalances((prev) =>
@@ -112,14 +116,13 @@ export function BankBalanceManager({
                 bank_id: bank.id,
                 account_number: bank.account_number,
                 balance: val,
-                company_id: bank.company_id || selectedCompanyId || undefined,
+                company_id: finalCompanyId,
               }
             : b,
         ),
       )
       toast.success('Saldo atualizado na lista.')
     } else {
-      // Check if bank already exists in the list to avoid duplicates
       const existingIndex = balances.findIndex(
         (b) =>
           b.bank_id === bank.id ||
@@ -128,7 +131,6 @@ export function BankBalanceManager({
       )
 
       if (existingIndex >= 0) {
-        // Update existing instead of creating duplicate
         setBalances((prev) => {
           const newArr = [...prev]
           newArr[existingIndex] = {
@@ -137,13 +139,12 @@ export function BankBalanceManager({
             bank_name: bank.name,
             bank_id: bank.id,
             account_number: bank.account_number,
-            company_id: bank.company_id || selectedCompanyId || undefined,
+            company_id: finalCompanyId,
           }
           return newArr
         })
         toast.success('Saldo atualizado.')
       } else {
-        // Create new
         const newEntry: BankBalance = {
           id: Math.random().toString(36).substr(2, 9),
           date: dateStr,
@@ -152,7 +153,7 @@ export function BankBalanceManager({
           account_number: bank.account_number,
           balance: val,
           status: 'draft',
-          company_id: bank.company_id || selectedCompanyId || undefined,
+          company_id: finalCompanyId,
         }
         setBalances((prev) => [...prev, newEntry])
         toast.success('Saldo adicionado à lista.')
@@ -167,7 +168,15 @@ export function BankBalanceManager({
   }
 
   const handleSaveAll = () => {
-    // Ensure all balances have the correct date (in case they were carried over somehow, though useEffect prevents this)
+    // Validate all items have company_id before saving
+    const invalidItems = balances.filter((b) => !b.company_id)
+    if (invalidItems.length > 0) {
+      toast.error(
+        'Existem saldos sem empresa vinculada. Remova-os e adicione novamente.',
+      )
+      return
+    }
+
     const normalizedBalances = balances.map((b) => ({
       ...b,
       date: dateStr,

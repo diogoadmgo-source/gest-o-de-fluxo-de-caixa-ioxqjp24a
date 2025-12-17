@@ -77,7 +77,6 @@ export function BankListManager() {
 
   const handleSave = async () => {
     // Validation
-    // Validate Company
     if (isNewCompany) {
       if (!newCompanyName.trim()) {
         toast.error('Informe o nome da nova empresa.')
@@ -85,7 +84,7 @@ export function BankListManager() {
       }
     } else {
       if (!formData.company_id || formData.company_id === 'none') {
-        toast.error('Selecione/Informe a empresa')
+        toast.error('Selecione/Informe a empresa (Obrigatório)')
         return
       }
     }
@@ -117,19 +116,23 @@ export function BankListManager() {
     }
 
     // Construct Payload
+    // If isNewCompany, company_id is undefined, but company_name is set.
+    // salvarBankManual handles the resolution.
     const payload = {
       ...formData,
       company_name: isNewCompany ? newCompanyName : undefined,
     }
 
     if (editingId) {
+      // For updates, company_id MUST be present.
+      // If user is editing and switching to a new company, `updateBank` -> `salvarBankManual` handles it.
       await updateBank({ ...payload, id: editingId } as Bank)
       toast.success('Conta atualizada com sucesso!')
       resetForm()
     } else {
       const { error } = await addBank({
         ...payload,
-        id: `temp-${Date.now()}`, // Temporary ID, will be replaced by DB
+        id: `temp-${Date.now()}`,
         active: true,
       } as Bank)
 
