@@ -311,6 +311,10 @@ export async function salvarReceivableManual(payload: any, userId: string) {
     utilization: normalizeText(payload.utilization),
     negativado: normalizeText(payload.negativado || payload.is_negative),
     description: normalizeText(payload.description),
+    customer_name: normalizeText(
+      payload.customer_name || payload.nome_cliente || payload.customer,
+    ),
+    new_status: normalizeText(payload.new_status || payload.novo_status),
   }
 
   if (payload.id) {
@@ -505,8 +509,6 @@ export async function importarReceivables(
 
   // Pre-load fallback if available
   if (fallbackCompanyId) {
-    // Assuming fallback is a valid UUID already resolved by caller
-    // But we don't have the name easily here. We'll use the ID as key.
     companyIdCache.set('__fallback__', fallbackCompanyId)
   }
 
@@ -601,7 +603,15 @@ export async function importarReceivables(
         days_overdue: n(row['Dias'] || row['days_overdue']),
         utilization: normalizeText(row['Utilização'] || row['utilization']),
         negativado: normalizeText(row['Negativado'] || row['negativado']),
-        description: 'Importado via Planilha (Overwrite)',
+        description: normalizeText(row['Descrição'] || row['description']),
+        // New columns
+        customer_name: normalizeText(
+          row['customer_name'] ||
+            row['nome_cliente'] ||
+            row['Cliente'] ||
+            row['customer'],
+        ),
+        new_status: normalizeText(row['new_status'] || row['novo_status']),
       }
 
       if (!dbItem.due_date) {
@@ -632,14 +642,14 @@ export async function importarReceivables(
     }
   }
 
-  // 2. Perform Atomic Overwrite per Company
+  // 2. Perform Atomic Overwrite per Company using new STRICT RPC
   let companiesProcessed = 0
   const totalCompanies = companiesMap.size
 
   for (const [companyId, companyRows] of companiesMap.entries()) {
     try {
       const { data, error } = await supabase.rpc(
-        'replace_receivables_for_company',
+        'strict_replace_receivables', // Using the new strict function
         {
           p_company_id: companyId,
           p_rows: companyRows,
@@ -649,8 +659,8 @@ export async function importarReceivables(
       if (error) throw error
 
       if (data && data.success) {
-        results.success += data.inserted
-        results.deleted += data.deleted
+        results.success += data.stats.inserted
+        results.deleted += data.stats.deleted
       } else {
         throw new Error(data?.error || 'Erro desconhecido ao substituir dados.')
       }

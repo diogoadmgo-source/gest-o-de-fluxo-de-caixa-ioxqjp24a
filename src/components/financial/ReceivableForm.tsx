@@ -33,6 +33,7 @@ export function ReceivableForm({
     customer: '',
     customer_code: '',
     customer_doc: '',
+    customer_name: '', // New field
     invoice_number: '',
     order_number: '',
     description: '',
@@ -41,6 +42,7 @@ export function ReceivableForm({
     interest: 0,
     updated_value: 0,
     title_status: 'Aberto',
+    new_status: '', // New field
     due_date: new Date().toISOString().split('T')[0],
     issue_date: new Date().toISOString().split('T')[0],
     payment_prediction: '',
@@ -167,6 +169,27 @@ export function ReceivableForm({
             id="customer_code"
             value={formData.customer_code}
             onChange={(e) => handleChange('customer_code', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="customer_name">Nome Cliente (Importação)</Label>
+          <Input
+            id="customer_name"
+            value={formData.customer_name || ''}
+            onChange={(e) => handleChange('customer_name', e.target.value)}
+            placeholder="Nome oficial (se diferente)"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="new_status">Novo Status (Importação)</Label>
+          <Input
+            id="new_status"
+            value={formData.new_status || ''}
+            onChange={(e) => handleChange('new_status', e.target.value)}
+            placeholder="Status adicional"
           />
         </div>
       </div>

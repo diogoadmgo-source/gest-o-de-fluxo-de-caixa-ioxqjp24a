@@ -753,6 +753,8 @@ export default function Receivables() {
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span className="font-semibold">Cliente:</span>
                 <span>{viewingItem.customer}</span>
+                <span className="font-semibold">Nome Cliente (Imp.):</span>
+                <span>{viewingItem.customer_name || '-'}</span>
                 <span className="font-semibold">Código:</span>
                 <span>{viewingItem.customer_code || '-'}</span>
                 <span className="font-semibold">NF:</span>
@@ -789,6 +791,8 @@ export default function Receivables() {
                 </span>
                 <span className="font-semibold">Status:</span>
                 <span>{viewingItem.title_status}</span>
+                <span className="font-semibold">Novo Status:</span>
+                <span>{viewingItem.new_status || '-'}</span>
                 <span className="font-semibold">Parcela:</span>
                 <span>{viewingItem.installment || '-'}</span>
                 <span className="font-semibold">Vendedor:</span>
