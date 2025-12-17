@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS public.payables (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMPTZ DEFAULT now(),
-    company_id TEXT NOT NULL REFERENCES public.companies(id),
+    company_id UUID NOT NULL REFERENCES public.companies(id),
     issue_date DATE,
     due_date DATE,
     payment_prediction DATE,
