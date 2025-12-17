@@ -19,7 +19,7 @@ import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
-import { format } from 'date-fns'
+import { format, addDays } from 'date-fns'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 interface ImportDialogProps {
@@ -116,14 +116,14 @@ export function ImportDialog({
         setProgress((prev) => (prev < 90 ? prev + 15 : prev))
       }, 300)
 
-      // Mock parsed data - In reality this would come from the file content
+      // Mock parsed data with variable dates for realism
       const parsedData = Array.from({ length: 5 }).map((_, i) => ({
         description: `Importado ${type} ${i + 1} - ${selectedFile.name}`,
         amount: Math.random() * 5000 + 1000,
         principal_value: Math.random() * 5000 + 1000,
         fine: 0,
         interest: 0,
-        due_date: format(new Date(), 'yyyy-MM-dd'),
+        due_date: format(addDays(new Date(), i * 3), 'yyyy-MM-dd'),
         invoice_number: `IMP-${Date.now()}-${i}`,
         entity_name: `Fornecedor Importado ${i + 1}`,
         customer: `Cliente Importado ${i + 1}`,

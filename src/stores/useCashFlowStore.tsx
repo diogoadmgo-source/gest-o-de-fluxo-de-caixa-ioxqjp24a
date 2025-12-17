@@ -287,7 +287,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         dayPayables -
         entry.imports -
         entry.other_expenses +
-        adjustmentsCredit -
+        adjustments_credit -
         adjustmentsDebit
 
       let accumulatedBalance = openingBalance + dailyBalance
@@ -608,11 +608,25 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       // 4. Save Financial Records
       if (records.length > 0) {
         const table = type === 'receivable' ? 'receivables' : 'transactions'
-        const { error } = await supabase.from(table).insert(records)
+        // Use select() to return inserted data for immediate UI update
+        const { data: insertedRecords, error } = await supabase
+          .from(table)
+          .insert(records)
+          .select()
 
         if (error) {
           throw error
         }
+
+        // Optimistically update local state so UI reflects data immediately
+        if (insertedRecords) {
+          if (type === 'receivable') {
+            setReceivables((prev) => [...prev, ...(insertedRecords as any)])
+          } else {
+            setPayables((prev) => [...prev, ...(insertedRecords as any)])
+          }
+        }
+
         successCount = records.length
       }
 
@@ -630,10 +644,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // 6. Refresh Data
+      // We still call fetchData to ensure eventual consistency and update other stores like history
       await fetchData()
 
-      // Force recalculation
-      recalculateCashFlow()
+      // NOTE: We don't need to call recalculateCashFlow() explicitly because updating state
+      // (either manually or via fetchData) will trigger the useEffect that calls performRecalculation.
 
       if (errorCount > 0) {
         return {
