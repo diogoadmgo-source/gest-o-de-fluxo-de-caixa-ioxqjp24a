@@ -59,6 +59,7 @@ import { FinancialStats } from '@/components/financial/FinancialStats'
 import { ReceivableForm } from '@/components/financial/ReceivableForm'
 import { ImportDialog } from '@/components/common/ImportDialog'
 import { ReceivableFilters } from '@/components/financial/ReceivableFilters'
+import { cn } from '@/lib/utils'
 
 export default function Receivables() {
   const {
@@ -212,9 +213,6 @@ export default function Receivables() {
 
   const openStats = sumValues(openReceivables)
   const liquidatedStats = sumValues(liquidatedReceivables)
-
-  // Calculate Total Stats from ALL filtered data to ensure accuracy regardless of status
-  // This resolves the discrepancy where items with non-standard statuses were excluded
   const totalStats = sumValues(filteredData)
 
   const handleDelete = async () => {
@@ -237,6 +235,51 @@ export default function Receivables() {
 
   const formatCurrency = (val: number) =>
     (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+  // Helper to determine status badge appearance
+  const getStatusBadge = (item: Receivable) => {
+    const today = startOfDay(new Date())
+    const dueDate = item.due_date ? parseISO(item.due_date) : null
+
+    if (item.title_status === 'Liquidado') {
+      return {
+        label: 'Liquidado',
+        className:
+          'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-transparent',
+      }
+    }
+
+    if (item.title_status === 'Cancelado') {
+      return {
+        label: 'Cancelado',
+        className: 'bg-muted text-muted-foreground hover:bg-muted/80',
+      }
+    }
+
+    if (item.title_status === 'Aberto') {
+      if (dueDate && dueDate < today) {
+        // Overdue -> Red
+        return {
+          label: 'Aberto',
+          className:
+            'bg-red-100 text-red-800 hover:bg-red-200 border-transparent',
+        }
+      } else {
+        // To Due -> Green
+        return {
+          label: 'A Vencer',
+          className:
+            'bg-green-100 text-green-800 hover:bg-green-200 border-transparent',
+        }
+      }
+    }
+
+    // Fallback
+    return {
+      label: item.title_status,
+      className: 'bg-secondary text-secondary-foreground',
+    }
+  }
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
@@ -376,88 +419,86 @@ export default function Receivables() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredData.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-muted/50">
-                      <TableCell className="text-xs font-medium">
-                        {item.invoice_number}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            item.title_status === 'Liquidado'
-                              ? 'default'
-                              : 'secondary'
-                          }
-                          className={
-                            item.title_status === 'Liquidado'
-                              ? 'bg-success hover:bg-success/80 text-[10px] px-1.5 py-0'
-                              : 'text-[10px] px-1.5 py-0'
-                          }
+                  filteredData.map((item) => {
+                    const statusBadge = getStatusBadge(item)
+                    return (
+                      <TableRow key={item.id} className="hover:bg-muted/50">
+                        <TableCell className="text-xs font-medium">
+                          {item.invoice_number}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              'text-[10px] px-1.5 py-0 font-medium border',
+                              statusBadge.className,
+                            )}
+                          >
+                            {statusBadge.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell
+                          className="max-w-[200px] truncate text-xs"
+                          title={item.customer}
                         >
-                          {item.title_status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell
-                        className="max-w-[200px] truncate text-xs"
-                        title={item.customer}
-                      >
-                        {item.customer}
-                        {item.customer_code && (
-                          <span className="block text-[10px] text-muted-foreground">
-                            {item.customer_code}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {item.uf || '-'}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {item.due_date
-                          ? format(parseISO(item.due_date), 'dd/MM/yyyy')
-                          : '-'}
-                      </TableCell>
-                      <TableCell className="text-right text-xs">
-                        {formatCurrency(item.principal_value)}
-                      </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground">
-                        {formatCurrency(
-                          (item.fine || 0) + (item.interest || 0),
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-xs">
-                        {formatCurrency(
-                          item.updated_value || item.principal_value,
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-6 w-6 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => setViewingItem(item)}
-                            >
-                              <Eye className="mr-2 h-4 w-4" /> Ver detalhes
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setEditingItem(item)}
-                            >
-                              <Edit className="mr-2 h-4 w-4" /> Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => setDeletingId(item.id)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" /> Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                          {item.customer}
+                          {item.customer_code && (
+                            <span className="block text-[10px] text-muted-foreground">
+                              {item.customer_code}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {item.uf || '-'}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {item.due_date
+                            ? format(parseISO(item.due_date), 'dd/MM/yyyy')
+                            : '-'}
+                        </TableCell>
+                        <TableCell className="text-right text-xs">
+                          {formatCurrency(item.principal_value)}
+                        </TableCell>
+                        <TableCell className="text-right text-xs text-muted-foreground">
+                          {formatCurrency(
+                            (item.fine || 0) + (item.interest || 0),
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-xs">
+                          {formatCurrency(
+                            item.updated_value || item.principal_value,
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-6 w-6 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => setViewingItem(item)}
+                              >
+                                <Eye className="mr-2 h-4 w-4" /> Ver detalhes
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setEditingItem(item)}
+                              >
+                                <Edit className="mr-2 h-4 w-4" /> Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => setDeletingId(item.id)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>

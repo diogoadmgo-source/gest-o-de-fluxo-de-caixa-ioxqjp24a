@@ -80,11 +80,8 @@ export function ReceivableFilters({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="Aberto">Aberto</SelectItem>
-              <SelectItem value="a_vencer">A vencer</SelectItem>
+              <SelectItem value="a_vencer">A Vencer</SelectItem>
               <SelectItem value="vencida">Vencida</SelectItem>
-              <SelectItem value="Liquidado">Liquidado</SelectItem>
-              <SelectItem value="Cancelado">Cancelado</SelectItem>
             </SelectContent>
           </Select>
         </div>
