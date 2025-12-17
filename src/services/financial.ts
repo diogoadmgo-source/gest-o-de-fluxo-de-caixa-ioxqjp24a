@@ -35,6 +35,78 @@ export function d(value: any): string | null {
   return null
 }
 
+/**
+ * Normalizes installment field to "current/total" format.
+ * Handles Excel date conversion bugs (e.g. "01-Jan" -> "1/1").
+ */
+export function normalizeInstallment(value: any): string {
+  if (!value) return ''
+  const str = String(value).trim()
+
+  // If it's already in N/NN format, keep it
+  if (/^\d+\/\d+$/.test(str)) return str
+
+  // If it's a simple number, keep it (e.g. "1")
+  if (/^\d+$/.test(str)) return str
+
+  // Handle Excel Date conversions (e.g., "01-Jan", "1-fev")
+  // Excel converts fractions like 1/12 to dates (1st of December)
+  // Logic: Day = Numerator, Month = Denominator
+
+  const ptMonths = [
+    'jan',
+    'fev',
+    'mar',
+    'abr',
+    'mai',
+    'jun',
+    'jul',
+    'ago',
+    'set',
+    'out',
+    'nov',
+    'dez',
+  ]
+  const enMonths = [
+    'jan',
+    'feb',
+    'mar',
+    'apr',
+    'may',
+    'jun',
+    'jul',
+    'aug',
+    'sep',
+    'oct',
+    'nov',
+    'dec',
+  ]
+
+  const lower = str.toLowerCase()
+  let monthIndex = -1
+
+  // Detect month name
+  for (let i = 0; i < 12; i++) {
+    if (lower.includes(ptMonths[i]) || lower.includes(enMonths[i])) {
+      monthIndex = i + 1
+      break
+    }
+  }
+
+  if (monthIndex > 0) {
+    // Extract the numeric part (Day)
+    const match = lower.match(/(\d+)/)
+    if (match) {
+      const numerator = parseInt(match[1], 10)
+      // Reconstruct as Numerator/Denominator
+      return `${numerator}/${monthIndex}`
+    }
+  }
+
+  // Fallback: return as is if no pattern matches
+  return str
+}
+
 // --- Fetching Helpers ---
 
 /**
@@ -246,13 +318,14 @@ export async function salvarReceivableManual(payload: any, userId: string) {
     customer_code: normalizeText(payload.customer_code || payload.code),
     uf: normalizeText(payload.uf || payload.state),
     regional: normalizeText(payload.regional),
-    installment: normalizeText(payload.installment),
+    installment: normalizeInstallment(payload.installment),
     days_overdue: n(payload.days_overdue || payload.dias),
     utilization: normalizeText(payload.utilization),
     negativado: normalizeText(payload.negativado || payload.is_negative),
     description: normalizeText(payload.description),
   }
 
+  // Use Upsert logic for manual save as well if id is not provided
   if (payload.id) {
     const { data, error } = await supabase
       .from('receivables')
@@ -263,9 +336,12 @@ export async function salvarReceivableManual(payload: any, userId: string) {
     if (error) throw error
     return data
   } else {
+    // Check if we should use upsert here too to prevent duplicates on manual entry
     const { data, error } = await supabase
       .from('receivables')
-      .insert(dbPayload)
+      .upsert(dbPayload, {
+        onConflict: 'company_id,invoice_number,order_number,installment',
+      })
       .select()
       .single()
     if (error) throw error
@@ -544,7 +620,9 @@ export async function importarReceivables(
           customer_code: normalizeText(row['Código'] || row['customer_code']),
           uf: normalizeText(row['UF'] || row['uf']),
           regional: normalizeText(row['Regional'] || row['regional']),
-          installment: normalizeText(row['Parcela'] || row['installment']),
+          installment: normalizeInstallment(
+            row['Parcela'] || row['installment'],
+          ), // Apply normalization here
           days_overdue: n(row['Dias'] || row['days_overdue']),
           utilization: normalizeText(row['Utilização'] || row['utilization']),
           negativado: normalizeText(row['Negativado'] || row['negativado']),
@@ -555,7 +633,13 @@ export async function importarReceivables(
           throw new Error('Data de vencimento inválida.')
         }
 
-        await supabase.from('receivables').insert(dbItem)
+        // Changed from insert to upsert to support duplicate prevention logic
+        const { error } = await supabase.from('receivables').upsert(dbItem, {
+          onConflict: 'company_id,invoice_number,order_number,installment',
+          ignoreDuplicates: false, // Update existing records
+        })
+
+        if (error) throw error
         results.success++
       } catch (err: any) {
         results.errors.push(`Linha ${rowIndex + 2}: ${err.message}`)
