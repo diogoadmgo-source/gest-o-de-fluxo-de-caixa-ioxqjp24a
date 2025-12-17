@@ -112,7 +112,17 @@ export function ImportDialog({
       setProgress(50)
 
       if (type === 'receivable' || type === 'payable') {
-        const res = await importData(type, parsedData, selectedFile.name)
+        const res = await importData(
+          type,
+          parsedData,
+          selectedFile.name,
+          (percent) => {
+            // Map 0-100% from import process to 50-95% of total progress bar
+            // We leave the last 5% for finalization/refresh
+            const overallProgress = 50 + Math.round((percent * 45) / 100)
+            setProgress(overallProgress)
+          },
+        )
         setResult(res)
 
         if (res.success) {

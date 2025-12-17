@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 import {
   salvarReceivableManual,
   salvarPayableManual,
+  salvarBankManual,
   importarReceivables,
   importarPayables,
 } from '@/services/financial'
@@ -62,6 +63,7 @@ interface CashFlowContextType {
     type: 'receivable' | 'payable',
     data: any[],
     filename?: string,
+    onProgress?: (percent: number) => void,
   ) => Promise<{ success: boolean; message: string }>
   clearImportHistory: () => void
   recalculateCashFlow: () => void
@@ -284,8 +286,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         openingBalance = currentAccumulated
       }
 
-      // FIXED: Used correctly initialized variables adjustmentsCredit and adjustmentsDebit
-      // instead of undefined adjustments_credit and adjustments_debit
       const dailyBalance =
         dayReceivables -
         dayPayables -
@@ -410,28 +410,29 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const addBank = async (bank: Bank) => {
-    const { id, ...data } = bank
-    const { data: newBank, error } = await supabase
-      .from('banks')
-      .insert([{ ...data, company_id: bank.company_id || selectedCompanyId }])
-      .select()
-      .single()
-
-    if (error) {
+    try {
+      if (!user) throw new Error('Usuário não autenticado')
+      const data = await salvarBankManual(bank, user.id)
+      setBanks((prev) => [...prev, data as any])
+      // Refresh to get any updated links or IDs
+      await fetchData()
+      return { error: null }
+    } catch (error: any) {
       return { error }
     }
-
-    setBanks((prev) => [...prev, newBank as any])
-    return { error: null }
   }
 
   const updateBank = async (updated: Bank) => {
-    const { error } = await supabase
-      .from('banks')
-      .update(updated)
-      .eq('id', updated.id)
-    if (error) return
-    setBanks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))
+    try {
+      if (!user) throw new Error('Usuário não autenticado')
+      const data = await salvarBankManual(updated, user.id)
+      setBanks((prev) =>
+        prev.map((b) => (b.id === updated.id ? (data as any) : b)),
+      )
+      await fetchData()
+    } catch (error: any) {
+      toast.error('Erro ao atualizar banco: ' + error.message)
+    }
   }
 
   const deleteBank = async (id: string) => {
@@ -473,6 +474,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     type: 'receivable' | 'payable',
     data: any[],
     filename: string = 'import.csv',
+    onProgress?: (percent: number) => void,
   ) => {
     setLoading(true)
     let successCount = 0
@@ -483,9 +485,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       if (!user) throw new Error('Usuário não autenticado.')
 
       if (type === 'receivable') {
-        importResults = await importarReceivables(data, user.id)
+        importResults = await importarReceivables(data, user.id, onProgress)
       } else if (type === 'payable') {
-        importResults = await importarPayables(data, user.id)
+        importResults = await importarPayables(data, user.id, onProgress)
       }
 
       successCount = importResults.success

@@ -52,7 +52,7 @@ export function d(value: any): string | null {
 
 export async function getOrCreateEmpresaId(name: string): Promise<string> {
   const normalizedName = s(name)
-  if (!normalizedName) throw new Error('Company name is required')
+  if (!normalizedName) throw new Error('Nome da empresa é obrigatório')
 
   // 1. Check if exists
   const { data: existing } = await supabase
@@ -84,7 +84,7 @@ export async function getOrCreateEmpresaId(name: string): Promise<string> {
       if (retry) return retry.id
     }
     throw new Error(
-      `Failed to create company ${normalizedName}: ${error.message}`,
+      `Falha ao criar empresa ${normalizedName}: ${error.message}`,
     )
   }
 
@@ -107,8 +107,8 @@ export async function ensureUserCompanyLink(userId: string, companyId: string) {
 
     if (error && error.code !== '23505') {
       // Ignore duplicate key error
-      console.error(`Failed to link user to company: ${error.message}`)
-      // Not throwing here allows the process to continue, but ideally should ensure link
+      console.error(`Falha ao vincular usuário à empresa: ${error.message}`)
+      // Not throwing here allows the process to continue
     }
   }
 }
@@ -118,7 +118,7 @@ export async function ensureEmpresaAndLink(
   companyIdOrName: string,
 ): Promise<string> {
   const val = s(companyIdOrName)
-  if (!val) throw new Error('Company ID or Name is required')
+  if (!val) throw new Error('ID ou Nome da empresa é obrigatório')
 
   const isUuid =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
@@ -135,11 +135,8 @@ export async function ensureEmpresaAndLink(
     if (data) {
       finalCompanyId = data.id
     } else {
-      // If looks like UUID but not found, maybe it's a very weird name? Unlikely.
-      // Treat as name if not found? No, if it's UUID format, assume ID.
-      // If not found, we can't create a company with that UUID easily (let DB gen).
-      // Fallback: treat as name or error? Let's error if UUID provided but not found.
-      throw new Error(`Company with ID ${val} not found.`)
+      // If provided ID is not found, treat as an error rather than creating a company with that UUID as name
+      throw new Error(`Empresa com ID ${val} não encontrada.`)
     }
   } else {
     // It's a name
@@ -161,8 +158,6 @@ export async function salvarReceivableManual(payload: any, userId: string) {
 
   const companyId = await ensureEmpresaAndLink(userId, companyInput)
 
-  // Map payload to DB columns (User Story Requirement)
-  // We prioritize the explicit mapped keys, fallback to existing keys in payload
   const dbPayload = {
     company_id: companyId,
     invoice_number: s(payload.numero_da_fatura || payload.invoice_number),
@@ -182,7 +177,6 @@ export async function salvarReceivableManual(payload: any, userId: string) {
       payload.status_do_titulo || payload.title_status || 'Aberto',
     ),
     seller: s(payload.vendedor || payload.seller || payload.salesperson),
-    // Extra fields to maintain full data integrity
     customer_code: s(payload.customer_code || payload.code),
     uf: s(payload.uf || payload.state),
     regional: s(payload.regional),
@@ -259,6 +253,61 @@ export async function salvarPayableManual(payload: any, userId: string) {
   }
 }
 
+export async function salvarBankManual(payload: any, userId: string) {
+  const companyInput =
+    payload.company_id || payload.company || payload.company_name
+  if (!companyInput) {
+    throw new Error('Selecione/Informe a empresa')
+  }
+
+  const companyId = await ensureEmpresaAndLink(userId, companyInput)
+
+  const dbPayload = {
+    company_id: companyId,
+    name: s(payload.name),
+    code: s(payload.code),
+    institution: s(payload.institution),
+    agency: s(payload.agency),
+    account_number: s(payload.account_number),
+    account_digit: s(payload.account_digit),
+    type: s(payload.type || 'bank'),
+    active: payload.active !== undefined ? payload.active : true,
+  }
+
+  if (payload.id && !String(payload.id).startsWith('temp-')) {
+    const { data, error } = await supabase
+      .from('banks')
+      .update(dbPayload)
+      .eq('id', payload.id)
+      .select()
+      .single()
+    if (error) {
+      if (error.code === '23505') {
+        throw new Error(
+          'Já existe uma conta com este código para esta empresa.',
+        )
+      }
+      throw error
+    }
+    return data
+  } else {
+    const { data, error } = await supabase
+      .from('banks')
+      .insert(dbPayload)
+      .select()
+      .single()
+    if (error) {
+      if (error.code === '23505') {
+        throw new Error(
+          'Já existe uma conta com este código para esta empresa.',
+        )
+      }
+      throw error
+    }
+    return data
+  }
+}
+
 // --- Import Logic ---
 
 let lastCompany: string = ''
@@ -271,7 +320,11 @@ function forwardFill(current: string): string {
   return lastCompany
 }
 
-export async function importarReceivables(rows: any[], userId: string) {
+export async function importarReceivables(
+  rows: any[],
+  userId: string,
+  onProgress?: (percent: number) => void,
+) {
   lastCompany = ''
   const results = {
     total: rows.length,
@@ -307,80 +360,65 @@ export async function importarReceivables(rows: any[], userId: string) {
         companyCache.set(companyName, companyId)
       }
 
-      // 2. Prepare Payload using keys that map correctly in salvarReceivableManual
-      // We map row columns to the keys expected by salvarReceivableManual logic
-      const payload = {
-        company_id: companyId,
-        numero_da_fatura:
-          row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
-        numero_do_pedido:
-          row['Nr do Pedido'] || row['order_number'] || row['numero_do_pedido'],
-        cliente: row['Cliente'] || row['customer'] || row['cliente'],
-        documento: row['CNPJ/CPF'] || row['customer_doc'] || row['documento'],
-        data_de_emissao:
-          row['Data de Emissão'] || row['issue_date'] || row['data_de_emissao'],
-        data_de_vencimento:
-          row['Dt. Vencimento'] || row['due_date'] || row['data_de_vencimento'],
-        previsao_de_pagamento:
-          row['Previsão de Pgto.'] ||
-          row['payment_prediction'] ||
-          row['previsao_de_pagamento'],
-        valor_principal:
-          row['Vlr Principal'] ||
-          row['principal_value'] ||
-          row['valor_principal'],
-        multa: row['Multa'] || row['fine'] || row['multa'],
-        juros: row['Juros'] || row['interest'] || row['juros'],
-        valor_atualizado:
-          row['Vlr Atualizado'] ||
-          row['updated_value'] ||
-          row['valor_atualizado'],
-        status_do_titulo:
-          row['Status do Título'] ||
-          row['title_status'] ||
-          row['status_do_titulo'],
-        vendedor: row['Vendedor'] || row['seller'] || row['vendedor'],
-        customer_code: row['Código'] || row['customer_code'],
-        uf: row['UF'] || row['uf'],
-        regional: row['Regional'] || row['regional'],
-        installment: row['Parcela'] || row['installment'],
-        days_overdue: row['Dias'] || row['days_overdue'],
-        utilization: row['Utilização'] || row['utilization'],
-        negativado: row['Negativado'] || row['negativado'],
-        description: 'Importado via Planilha',
-      }
-
-      // 3. Save
-      // We reuse salvarReceivableManual logic but we might want bulk insert for performance.
-      // However, "using ensureEmpresaAndLink for each record" is satisfied.
-      // To optimize, we can construct the object here and bulk insert at end,
-      // OR call saving one by one. Bulk is safer for consistency but 'salvarReceivableManual' validation is good.
-      // Let's build array and insert bulk for speed, but applying normalization.
-
-      // We manually invoke the normalization logic here to build the DB object
       const dbItem = {
         company_id: companyId,
-        invoice_number: s(payload.numero_da_fatura),
-        order_number: s(payload.numero_do_pedido),
-        customer: s(payload.cliente || 'Consumidor Final'),
-        customer_doc: s(payload.documento),
-        issue_date: d(payload.data_de_emissao) || new Date().toISOString(),
-        due_date: d(payload.data_de_vencimento),
-        payment_prediction: d(payload.previsao_de_pagamento),
-        principal_value: n(payload.valor_principal),
-        fine: n(payload.multa),
-        interest: n(payload.juros),
-        updated_value: n(payload.valor_atualizado || payload.valor_principal),
-        title_status: s(payload.status_do_titulo),
-        seller: s(payload.vendedor),
-        customer_code: s(payload.customer_code),
-        uf: s(payload.uf),
-        regional: s(payload.regional),
-        installment: s(payload.installment),
-        days_overdue: n(payload.days_overdue),
-        utilization: s(payload.utilization),
-        negativado: s(payload.negativado),
-        description: payload.description,
+        invoice_number: s(
+          row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
+        ),
+        order_number: s(
+          row['Nr do Pedido'] || row['order_number'] || row['numero_do_pedido'],
+        ),
+        customer: s(
+          row['Cliente'] ||
+            row['customer'] ||
+            row['cliente'] ||
+            'Consumidor Final',
+        ),
+        customer_doc: s(
+          row['CNPJ/CPF'] || row['customer_doc'] || row['documento'],
+        ),
+        issue_date:
+          d(
+            row['Data de Emissão'] ||
+              row['issue_date'] ||
+              row['data_de_emissao'],
+          ) || new Date().toISOString(),
+        due_date: d(
+          row['Dt. Vencimento'] || row['due_date'] || row['data_de_vencimento'],
+        ),
+        payment_prediction: d(
+          row['Previsão de Pgto.'] ||
+            row['payment_prediction'] ||
+            row['previsao_de_pagamento'],
+        ),
+        principal_value: n(
+          row['Vlr Principal'] ||
+            row['principal_value'] ||
+            row['valor_principal'],
+        ),
+        fine: n(row['Multa'] || row['fine'] || row['multa']),
+        interest: n(row['Juros'] || row['interest'] || row['juros']),
+        updated_value: n(
+          row['Vlr Atualizado'] ||
+            row['updated_value'] ||
+            row['valor_atualizado'] ||
+            row['Vlr Principal'],
+        ),
+        title_status: s(
+          row['Status do Título'] ||
+            row['title_status'] ||
+            row['status_do_titulo'] ||
+            'Aberto',
+        ),
+        seller: s(row['Vendedor'] || row['seller'] || row['vendedor']),
+        customer_code: s(row['Código'] || row['customer_code']),
+        uf: s(row['UF'] || row['uf']),
+        regional: s(row['Regional'] || row['regional']),
+        installment: s(row['Parcela'] || row['installment']),
+        days_overdue: n(row['Dias'] || row['days_overdue']),
+        utilization: s(row['Utilização'] || row['utilization']),
+        negativado: s(row['Negativado'] || row['negativado']),
+        description: 'Importado via Planilha',
       }
 
       if (!dbItem.due_date) {
@@ -392,12 +430,24 @@ export async function importarReceivables(rows: any[], userId: string) {
     } catch (err: any) {
       results.errors.push(`Linha ${i + 2}: ${err.message}`)
     }
+
+    if (onProgress) {
+      // Yield to main thread every 10 rows to prevent freezing
+      if (i % 10 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        onProgress(Math.round(((i + 1) / rows.length) * 100))
+      }
+    }
   }
 
   return results
 }
 
-export async function importarPayables(rows: any[], userId: string) {
+export async function importarPayables(
+  rows: any[],
+  userId: string,
+  onProgress?: (percent: number) => void,
+) {
   lastCompany = ''
   const results = {
     total: rows.length,
@@ -457,6 +507,13 @@ export async function importarPayables(rows: any[], userId: string) {
       results.success++
     } catch (err: any) {
       results.errors.push(`Linha ${i + 2}: ${err.message}`)
+    }
+
+    if (onProgress) {
+      if (i % 10 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        onProgress(Math.round(((i + 1) / rows.length) * 100))
+      }
     }
   }
 

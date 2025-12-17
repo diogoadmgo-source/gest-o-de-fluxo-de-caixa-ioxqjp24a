@@ -35,6 +35,8 @@ export function BankListManager() {
   } = useCashFlowStore()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
+  const [isNewCompany, setIsNewCompany] = useState(false)
+  const [newCompanyName, setNewCompanyName] = useState('')
 
   // Form State
   const [formData, setFormData] = useState<Partial<Bank>>({
@@ -61,16 +63,33 @@ export function BankListManager() {
     })
     setEditingId(null)
     setIsAdding(false)
+    setIsNewCompany(false)
+    setNewCompanyName('')
   }
 
   const handleEdit = (bank: Bank) => {
     setFormData(bank)
     setEditingId(bank.id)
     setIsAdding(false)
+    setIsNewCompany(false)
+    setNewCompanyName('')
   }
 
   const handleSave = async () => {
     // Validation
+    // Validate Company
+    if (isNewCompany) {
+      if (!newCompanyName.trim()) {
+        toast.error('Informe o nome da nova empresa.')
+        return
+      }
+    } else {
+      if (!formData.company_id || formData.company_id === 'none') {
+        toast.error('Selecione/Informe a empresa')
+        return
+      }
+    }
+
     if (!formData.name?.trim()) {
       toast.error('O Nome de Exibição é obrigatório.')
       return
@@ -97,14 +116,25 @@ export function BankListManager() {
       }
     }
 
+    // Construct Payload
+    // If new company, pass company_name in a way that services can handle,
+    // or we construct a payload with 'company' key instead of 'company_id' if needed.
+    // addBank calls salvarBankManual which looks for company_id OR company OR company_name.
+    // So we can pass { ...formData, company_name: newCompanyName }
+
+    const payload = {
+      ...formData,
+      company_name: isNewCompany ? newCompanyName : undefined,
+    }
+
     if (editingId) {
-      await updateBank({ ...formData, id: editingId } as Bank)
+      await updateBank({ ...payload, id: editingId } as Bank)
       toast.success('Conta atualizada com sucesso!')
       resetForm()
     } else {
       const { error } = await addBank({
-        ...formData,
-        id: Math.random().toString(36).substr(2, 9), // Temp ID until fetch updates from DB, ideally addBank returns real data
+        ...payload,
+        id: `temp-${Date.now()}`, // Temporary ID, will be replaced by DB
         active: true,
       } as Bank)
 
@@ -154,28 +184,70 @@ export function BankListManager() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Empresa</Label>
-              <Select
-                value={formData.company_id || 'none'}
-                onValueChange={(val) =>
-                  setFormData({
-                    ...formData,
-                    company_id: val === 'none' ? undefined : val,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a empresa..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem vínculo</SelectItem>
-                  {companies.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>
+                Empresa <span className="text-destructive">*</span>
+              </Label>
+              <div className="flex flex-col gap-2">
+                {!isNewCompany ? (
+                  <Select
+                    value={formData.company_id || 'none'}
+                    onValueChange={(val) => {
+                      if (val === 'new') {
+                        setIsNewCompany(true)
+                        setFormData({ ...formData, company_id: undefined })
+                      } else {
+                        setFormData({
+                          ...formData,
+                          company_id: val === 'none' ? undefined : val,
+                        })
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a empresa..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Selecione...</SelectItem>
+                      {companies.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                      <SelectItem
+                        value="new"
+                        className="text-primary font-medium border-t mt-1"
+                      >
+                        + Nova Empresa...
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      value={newCompanyName}
+                      onChange={(e) => setNewCompanyName(e.target.value)}
+                      placeholder="Nome da nova empresa"
+                      className="border-primary"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setIsNewCompany(false)
+                        setNewCompanyName('')
+                      }}
+                      title="Voltar para seleção"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+                {isNewCompany && (
+                  <p className="text-xs text-muted-foreground">
+                    Esta empresa será criada e vinculada ao seu usuário.
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
