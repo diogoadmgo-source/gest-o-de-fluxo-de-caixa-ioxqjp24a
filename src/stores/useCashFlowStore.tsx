@@ -71,7 +71,7 @@ const STORAGE_KEYS = {
 }
 
 export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
-  const { allowedCompanyIds, userProfile, user } = useAuth()
+  const { allowedCompanyIds, userProfile, user, refreshProfile } = useAuth()
   const [loading, setLoading] = useState(false)
 
   // --- State ---
@@ -332,7 +332,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       .single()
 
     if (error) {
-      toast.error('Erro ao adicionar recebível')
+      toast.error('Erro ao adicionar recebível: ' + error.message)
       console.error(error)
       return
     }
@@ -348,7 +348,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       .eq('id', updated.id)
 
     if (error) {
-      toast.error('Erro ao atualizar recebível')
+      toast.error('Erro ao atualizar recebível: ' + error.message)
       return
     }
     setReceivables((prev) =>
@@ -380,7 +380,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       .single()
 
     if (error) {
-      toast.error('Erro ao adicionar conta a pagar')
+      toast.error('Erro ao adicionar conta a pagar: ' + error.message)
       return
     }
     setPayables((prev) => [...prev, newPay as any])
@@ -394,7 +394,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       .eq('id', updated.id)
 
     if (error) {
-      toast.error('Erro ao atualizar conta')
+      toast.error('Erro ao atualizar conta: ' + error.message)
       return
     }
     setPayables((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
@@ -412,7 +412,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const updateBankBalances = async (newBalances: BankBalance[]) => {
     const { error } = await supabase.from('bank_balances').upsert(newBalances)
     if (error) {
-      toast.error('Erro ao salvar saldos')
+      toast.error('Erro ao salvar saldos: ' + error.message)
       return
     }
     const { data } = await supabase.from('bank_balances').select('*')
@@ -485,7 +485,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       .single()
 
     if (error) {
-      toast.error('Erro ao adicionar ajuste')
+      toast.error('Erro ao adicionar ajuste: ' + error.message)
       console.error(error)
       return
     }
@@ -541,6 +541,19 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
             companyMap.set(newComp.name, newComp.id)
             setCompanies((prev) => [...prev, newComp])
 
+            // Link user to this new company to ensure they can see it
+            if (user) {
+              await supabase
+                .from('user_companies')
+                .insert({
+                  user_id: user.id,
+                  company_id: newComp.id,
+                })
+                .catch((err) =>
+                  console.error('Failed to link user to company', err),
+                )
+            }
+
             // Audit Log for Company Creation
             await supabase.from('audit_logs').insert({
               action: 'Create Company (Import)',
@@ -551,6 +564,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
             })
           }
         }
+      }
+
+      // Refresh User Profile to get new company associations
+      if (user) {
+        await refreshProfile()
       }
 
       // 3. Map & Validate Data

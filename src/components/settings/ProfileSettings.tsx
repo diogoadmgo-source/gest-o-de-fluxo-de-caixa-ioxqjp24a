@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -23,30 +23,58 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 const profileSchema = z.object({
   name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
+  email: z.string().email('Email inválido'),
   is_2fa_enabled: z.boolean(),
 })
 
 type ProfileFormValues = z.infer<typeof profileSchema>
 
 export function ProfileSettings() {
-  const { userProfile, updateProfile } = useAuth()
+  const { userProfile, updateProfile, user } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
       name: userProfile?.name || '',
+      email: user?.email || '',
       is_2fa_enabled: userProfile?.is_2fa_enabled || false,
     },
   })
 
+  // Reset form when profile loads
+  useEffect(() => {
+    if (userProfile && user) {
+      form.reset({
+        name: userProfile.name,
+        email: user.email || '',
+        is_2fa_enabled: userProfile.is_2fa_enabled,
+      })
+    }
+  }, [userProfile, user, form])
+
   async function onSubmit(data: ProfileFormValues) {
     setIsLoading(true)
-    await updateProfile(data)
-    setIsLoading(false)
+    try {
+      const { error, emailMessage } = await updateProfile(data)
+
+      if (error) {
+        toast.error('Erro ao atualizar perfil: ' + error.message)
+      } else {
+        toast.success('Perfil atualizado com sucesso!')
+        if (emailMessage) {
+          toast.info(emailMessage, { duration: 6000 })
+        }
+      }
+    } catch (err: any) {
+      toast.error('Ocorreu um erro inesperado.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -77,14 +105,22 @@ export function ProfileSettings() {
               )}
             />
 
-            <div className="space-y-2">
-              <FormLabel>Email</FormLabel>
-              <Input value={userProfile?.email || ''} disabled readOnly />
-              <p className="text-[0.8rem] text-muted-foreground">
-                O email não pode ser alterado diretamente. Contate o suporte
-                para alterações de email.
-              </p>
-            </div>
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input placeholder="seu@email.com" {...field} />
+                  </FormControl>
+                  <FormDescription>
+                    A alteração de email pode requerer confirmação.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

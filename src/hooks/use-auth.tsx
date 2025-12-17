@@ -15,11 +15,18 @@ interface AuthContextType {
   session: Session | null
   userProfile: UserProfile | null
   allowedCompanyIds: string[]
-  signIn: (email: string, password: string) => Promise<{ error: any }>
+  signIn: (
+    email: string,
+    password: string,
+  ) => Promise<{ error: any; requires2FA?: boolean }>
   signOut: () => Promise<{ error: any }>
   resetPassword: (email: string) => Promise<{ error: any }>
   updatePassword: (password: string) => Promise<{ error: any }>
-  updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: any }>
+  updateProfile: (data: {
+    name: string
+    email: string
+    is_2fa_enabled: boolean
+  }) => Promise<{ error: any; emailMessage?: string }>
   loading: boolean
   refreshProfile: () => Promise<void>
 }
@@ -205,22 +212,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error }
   }
 
-  const updateProfile = async (updates: Partial<UserProfile>) => {
-    if (!user) return { error: 'No user logged in' }
+  const updateProfile = async (data: {
+    name: string
+    email: string
+    is_2fa_enabled: boolean
+  }) => {
+    if (!user) return { error: { message: 'No user logged in' } }
 
-    const { error } = await supabase
+    let emailMessage = ''
+
+    // 1. Update Email in Auth (if changed)
+    if (data.email !== user.email) {
+      const { data: authData, error: authError } =
+        await supabase.auth.updateUser({
+          email: data.email,
+        })
+
+      if (authError) {
+        return { error: authError }
+      }
+
+      emailMessage =
+        'E-mail atualizado. Verifique sua caixa de entrada para confirmar a alteração, se necessário.'
+    }
+
+    // 2. Update Profile Table (Name & 2FA)
+    const { error: profileError } = await supabase
       .from('user_profiles')
-      .update(updates)
+      .update({
+        name: data.name,
+        is_2fa_enabled: data.is_2fa_enabled,
+      })
       .eq('id', user.id)
 
-    if (!error) {
-      await refreshProfile()
-      toast.success('Perfil atualizado com sucesso!')
-    } else {
-      toast.error('Erro ao atualizar perfil')
-      console.error(error)
+    if (profileError) {
+      return { error: profileError }
     }
-    return { error }
+
+    await refreshProfile()
+    return { error: null, emailMessage }
   }
 
   const refreshProfile = async () => {
