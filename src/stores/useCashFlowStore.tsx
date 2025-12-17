@@ -131,12 +131,29 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       )
 
       // Fetch Companies List for Dropdown
-      const { data: companiesData } = await supabase
-        .from('companies')
-        .select('*')
-      if (companiesData) setCompanies(companiesData)
+      // Always fetch all companies the user is linked to for the selector,
+      // regardless of the current 'visibleIds' filter which might be constrained to selectedCompanyId
+      const { data: userCompaniesData } = await supabase
+        .from('user_companies')
+        .select('company_id')
+        .eq('user_id', user.id)
 
-      // If no visible companies (e.g. user has no companies), stop
+      const allUserCompanyIds =
+        userCompaniesData?.map((uc) => uc.company_id) || []
+
+      if (allUserCompanyIds.length > 0) {
+        const { data: companiesData } = await supabase
+          .from('companies')
+          .select('*')
+          .in('id', allUserCompanyIds)
+          .order('name')
+
+        if (companiesData) setCompanies(companiesData)
+      } else {
+        setCompanies([])
+      }
+
+      // If no visible companies for current view (e.g. user has no companies), stop
       if (visibleIds.length === 0) {
         setLoading(false)
         return
@@ -223,7 +240,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   // Filter companies based on user access
   const visibleCompanies =
     userProfile?.profile === 'Administrator'
-      ? companies
+      ? companies // Admins might see all if we fetched all, but above we fetched only user linked ones. For true admin view, logic might differ.
       : companies.filter((c) => allowedCompanyIds.includes(c.id))
 
   // Validate selected company
@@ -636,11 +653,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           fallbackCompanyId || importResults.lastCompanyId || selectedCompanyId
 
         // Only log if we have a valid single company context, otherwise it might be mixed
-        // But for ImportLogs table we need a valid company_id.
-        // If 'all' is selected and multiple companies imported, we might just pick one or fail logging?
-        // Using lastCompanyId as best effort.
         if (logCompanyId && logCompanyId !== 'all') {
-          const { data: logData, error: logError } = await supabase
+          const { data: logData } = await supabase
             .from('import_logs')
             .insert({
               user_id: user.id,
@@ -666,9 +680,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // If any success, refresh data immediately to show in grid
+      // Refresh data immediately to show new companies and data
       if (successCount > 0) {
+        // Refresh Auth Profile first to update 'allowedCompanyIds' if new companies were created
         await refreshProfile()
+        // Then refresh all store data (companies, receivables, etc.)
         await fetchData()
       }
 

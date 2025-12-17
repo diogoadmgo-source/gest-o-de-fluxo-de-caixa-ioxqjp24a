@@ -258,6 +258,65 @@ export type Database = {
           },
         ]
       }
+      payables: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          description: string | null
+          due_date: string | null
+          fine: number | null
+          id: string
+          interest: number | null
+          issue_date: string | null
+          nf: string | null
+          payment_prediction: string | null
+          principal_value: number | null
+          supplier_cnpj: string | null
+          supplier_name: string | null
+          title_status: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          fine?: number | null
+          id?: string
+          interest?: number | null
+          issue_date?: string | null
+          nf?: string | null
+          payment_prediction?: string | null
+          principal_value?: number | null
+          supplier_cnpj?: string | null
+          supplier_name?: string | null
+          title_status?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          fine?: number | null
+          id?: string
+          interest?: number | null
+          issue_date?: string | null
+          nf?: string | null
+          payment_prediction?: string | null
+          principal_value?: number | null
+          supplier_cnpj?: string | null
+          supplier_name?: string | null
+          title_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'payables_company_id_fkey'
+            columns: ['company_id']
+            isOneToOne: false
+            referencedRelation: 'companies'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       product_imports: {
         Row: {
           actual_arrival_date: string | null

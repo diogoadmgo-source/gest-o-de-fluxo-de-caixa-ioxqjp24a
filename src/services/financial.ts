@@ -7,7 +7,7 @@ export function normalizeText(text: any): string {
   if (text === null || text === undefined) return ''
   return String(text).trim()
 }
-// Alias for backward compatibility if needed within file or by external callers
+// Alias for backward compatibility
 export const s = normalizeText
 
 export function n(value: any): number {
@@ -72,76 +72,22 @@ export async function ensureCompanyAndLink(
   const val = normalizeText(companyIdOrName)
   if (!val) throw new Error('ID ou Nome da empresa é obrigatório')
 
-  const isUuid =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
+  // Use Database Function for Atomic Resolution
+  const { data, error } = await supabase.rpc('ensure_company_and_link_user', {
+    p_user_id: userId,
+    p_company_name: val,
+  })
 
-  let finalCompanyId = ''
-
-  if (isUuid) {
-    const { data } = await supabase
-      .from('companies')
-      .select('id')
-      .eq('id', val)
-      .maybeSingle()
-
-    if (data) {
-      finalCompanyId = data.id
-    } else {
-      // If UUID provided but not found, check if it was treated as name or error
-      throw new Error(`Empresa com ID ${val} não encontrada.`)
-    }
-  } else {
-    // It's a name, lookup or create
-    const { data: existing } = await supabase
-      .from('companies')
-      .select('id')
-      .ilike('name', val)
-      .maybeSingle()
-
-    if (existing) {
-      finalCompanyId = existing.id
-    } else {
-      const { data: newCompany, error } = await supabase
-        .from('companies')
-        .insert({ name: val, origin: 'Import/Manual' })
-        .select('id')
-        .single()
-
-      if (error) {
-        if (error.code === '23505') {
-          // Race condition fallback
-          const { data: retry } = await supabase
-            .from('companies')
-            .select('id')
-            .ilike('name', val)
-            .maybeSingle()
-          if (retry) finalCompanyId = retry.id
-          else
-            throw new Error(`Falha ao criar empresa ${val}: ${error.message}`)
-        } else {
-          throw new Error(`Falha ao criar empresa ${val}: ${error.message}`)
-        }
-      } else {
-        finalCompanyId = newCompany.id
-      }
-    }
+  if (error) {
+    console.error('Error resolving company via RPC:', error)
+    throw new Error(`Falha ao resolver empresa: ${error.message}`)
   }
 
-  // Ensure link exists
-  const { data: link } = await supabase
-    .from('user_companies')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('company_id', finalCompanyId)
-    .maybeSingle()
-
-  if (!link) {
-    await supabase
-      .from('user_companies')
-      .insert({ user_id: userId, company_id: finalCompanyId })
+  if (!data) {
+    throw new Error('Falha crítica: ID da empresa não retornado.')
   }
 
-  return finalCompanyId
+  return data as string
 }
 
 export const resolveCompanyIdFromName = ensureCompanyAndLink
@@ -271,10 +217,6 @@ export async function salvarBankManual(payload: any, userId: string) {
 
   const companyId = await ensureCompanyAndLink(userId, companyInput)
 
-  if (!companyId) {
-    throw new Error('Falha crítica ao resolver ID da empresa.')
-  }
-
   const dbPayload = {
     company_id: companyId,
     name: normalizeText(payload.name),
@@ -327,6 +269,7 @@ export async function salvarImportLogManual(payload: any, userId: string) {
     throw new Error('Selecione/Informe a empresa')
   }
 
+  // Ensure existence before logging
   const companyId = await ensureCompanyAndLink(userId, companyInput)
 
   const dbPayload = {
@@ -401,6 +344,7 @@ export async function importarReceivables(
     }
   })
 
+  // Cache resolved company IDs to avoid RPC calls for every row
   const companyCache = new Map<string, string>()
   const BATCH_SIZE = 50
 
@@ -418,6 +362,7 @@ export async function importarReceivables(
           }
           companyId = companyCache.get(companyName)
           if (!companyId) {
+            // New RPC call handles existence check, creation, and linking atomically
             companyId = await ensureCompanyAndLink(userId, companyName)
             companyCache.set(companyName, companyId)
           }
@@ -511,6 +456,7 @@ export async function importarReceivables(
       onProgress(percent)
     }
 
+    // Small delay to prevent blocking UI thread completely
     await new Promise((resolve) => setTimeout(resolve, 0))
   }
 
@@ -534,7 +480,7 @@ export async function importarPayables(
     return { ...results, message: 'Arquivo vazio.' }
   }
 
-  // Pre-process Rows (Forward Fill Company if not fallback)
+  // Pre-process Rows
   let lastCompanyName = ''
   const preProcessedRows = rows.map((row, index) => {
     let companyName = ''
