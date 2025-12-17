@@ -114,8 +114,25 @@ export default function Receivables() {
       if (!matchesTerm) return false
 
       // 2. Status
-      const matchesStatus =
-        statusFilter === 'all' || t.title_status === statusFilter
+      let matchesStatus = true
+      if (statusFilter === 'all') {
+        matchesStatus = true
+      } else if (statusFilter === 'vencida') {
+        // Overdue: Status Open AND Due Date < Today
+        const today = startOfDay(new Date())
+        const itemDate = t.due_date ? parseISO(t.due_date) : null
+        matchesStatus =
+          t.title_status === 'Aberto' && !!itemDate && itemDate < today
+      } else if (statusFilter === 'a_vencer') {
+        // To Due: Status Open AND Due Date >= Today
+        const today = startOfDay(new Date())
+        const itemDate = t.due_date ? parseISO(t.due_date) : null
+        matchesStatus =
+          t.title_status === 'Aberto' && !!itemDate && itemDate >= today
+      } else {
+        matchesStatus = t.title_status === statusFilter
+      }
+
       if (!matchesStatus) return false
 
       // 3. Due Date
