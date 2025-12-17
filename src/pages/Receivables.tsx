@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Card,
   CardContent,
@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Briefcase,
+  RefreshCcw,
 } from 'lucide-react'
 import {
   Dialog,
@@ -61,7 +62,14 @@ import { ReceivableForm } from '@/components/financial/ReceivableForm'
 import { ImportDialog } from '@/components/common/ImportDialog'
 
 export default function Receivables() {
-  const { receivables, updateReceivable, deleteReceivable } = useCashFlowStore()
+  const {
+    receivables,
+    updateReceivable,
+    deleteReceivable,
+    addReceivable,
+    loading,
+    recalculateCashFlow,
+  } = useCashFlowStore()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'Aberto' | 'Liquidado'
@@ -75,11 +83,11 @@ export default function Receivables() {
     return receivables.filter((t) => {
       const term = searchTerm.toLowerCase()
       const matchesTerm =
-        t.customer.toLowerCase().includes(term) ||
-        t.invoice_number.toLowerCase().includes(term) ||
-        t.order_number.toLowerCase().includes(term) ||
-        t.company.toLowerCase().includes(term)
+        (t.customer || '').toLowerCase().includes(term) ||
+        (t.invoice_number || '').toLowerCase().includes(term) ||
+        (t.order_number || '').toLowerCase().includes(term)
 
+      // Filter logic: Only show matches
       const matchesStatus =
         statusFilter === 'all' || t.title_status === statusFilter
 
@@ -95,10 +103,10 @@ export default function Receivables() {
   const sumValues = (items: Receivable[]) =>
     items.reduce(
       (acc, curr) => ({
-        principal: acc.principal + curr.principal_value,
-        fine: acc.fine + curr.fine,
-        interest: acc.interest + curr.interest,
-        total: acc.total + curr.updated_value,
+        principal: acc.principal + (curr.principal_value || 0),
+        fine: acc.fine + (curr.fine || 0),
+        interest: acc.interest + (curr.interest || 0),
+        total: acc.total + (curr.updated_value || 0),
       }),
       { principal: 0, fine: 0, interest: 0, total: 0 },
     )
@@ -113,22 +121,26 @@ export default function Receivables() {
     total: openStats.total + liquidatedStats.total,
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (deletingId) {
-      deleteReceivable(deletingId)
-      toast.success('Título removido (marcado como inativo) com sucesso.')
+      await deleteReceivable(deletingId)
+      toast.success('Título removido com sucesso.')
       setDeletingId(null)
     }
   }
 
-  const handleSaveEdit = (updated: Receivable) => {
-    updateReceivable(updated)
+  const handleSaveEdit = async (updated: Receivable) => {
+    if (updated.id) {
+      await updateReceivable(updated)
+      toast.success('Título atualizado com sucesso!')
+    } else {
+      await addReceivable(updated)
+    }
     setEditingItem(null)
-    toast.success('Título atualizado com sucesso!')
   }
 
   const formatCurrency = (val: number) =>
-    val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -142,6 +154,17 @@ export default function Receivables() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => recalculateCashFlow()}
+            disabled={loading}
+          >
+            <RefreshCcw
+              className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+            />
+          </Button>
+
           <Button variant="outline" onClick={() => setIsImportDialogOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
             Importar Títulos
@@ -242,7 +265,6 @@ export default function Receivables() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Empresa</TableHead>
                   <TableHead>NF</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Cliente</TableHead>
@@ -259,16 +281,13 @@ export default function Receivables() {
               <TableBody>
                 {filteredData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8">
-                      Nenhum título encontrado.
+                    <TableCell colSpan={9} className="text-center py-8">
+                      {loading ? 'Carregando...' : 'Nenhum título encontrado.'}
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredData.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50">
-                      <TableCell className="font-medium text-xs">
-                        {item.company}
-                      </TableCell>
                       <TableCell className="text-xs">
                         {item.invoice_number}
                       </TableCell>
@@ -309,7 +328,9 @@ export default function Receivables() {
                         {formatCurrency(item.interest)}
                       </TableCell>
                       <TableCell className="text-right font-bold text-xs">
-                        {formatCurrency(item.updated_value)}
+                        {formatCurrency(
+                          item.updated_value || item.principal_value,
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -386,7 +407,9 @@ export default function Receivables() {
                 <span>{formatCurrency(viewingItem.principal_value)}</span>
                 <span className="font-semibold">Valor Atualizado:</span>
                 <span className="font-bold">
-                  {formatCurrency(viewingItem.updated_value)}
+                  {formatCurrency(
+                    viewingItem.updated_value || viewingItem.principal_value,
+                  )}
                 </span>
                 <span className="font-semibold">Status:</span>
                 <span>{viewingItem.title_status}</span>
@@ -404,8 +427,7 @@ export default function Receivables() {
           <AlertDialogHeader>
             <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação marcará o título como excluído e o removerá da
-              visualização principal.
+              Esta ação excluirá permanentemente o título do sistema.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

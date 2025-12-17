@@ -19,8 +19,11 @@ import {
 import { isSameDay, parseISO } from 'date-fns'
 
 export default function Dashboard() {
-  const { cashFlowEntries, recalculateCashFlow } = useCashFlowStore()
-  const [loading, setLoading] = useState(false)
+  const {
+    cashFlowEntries,
+    recalculateCashFlow,
+    loading: storeLoading,
+  } = useCashFlowStore()
   const [data, setData] = useState<DailyBalance[]>([])
   const [timeframe, setTimeframe] = useState('30')
 
@@ -34,11 +37,11 @@ export default function Dashboard() {
       isSameDay(parseISO(entry.date), today),
     )
 
-    // Fallback to 0 if today is not found (should be covered by mock data generation)
+    // Fallback to 0 if today is not found
     const startIndex = todayIndex >= 0 ? todayIndex : 0
 
     const mappedData = cashFlowEntries
-      .slice(startIndex, startIndex + days) // Slice starting from today
+      .slice(startIndex, startIndex + days)
       .map((entry) => ({
         date: entry.date,
         closing_balance: entry.accumulated_balance,
@@ -52,19 +55,13 @@ export default function Dashboard() {
   }, [cashFlowEntries, timeframe])
 
   const handleRefresh = () => {
-    setLoading(true)
+    recalculateCashFlow()
     toast.info('Atualizando dados...')
-    setTimeout(() => {
-      recalculateCashFlow()
-      setLoading(false)
-      toast.success('Dados atualizados com sucesso!')
-    }, 1000)
   }
 
   // The first item in data corresponds to Today (because of slicing above)
   const currentBalance = data[0]?.closing_balance || 0
 
-  // Mock previous balance for now, could be derived from cashFlowEntries[todayIndex - 1] if needed
   const prevBalance = 48000
   const trendData = data.slice(0, 7).map((d) => ({ value: d.closing_balance }))
 
@@ -97,10 +94,10 @@ export default function Dashboard() {
             variant="outline"
             size="icon"
             onClick={handleRefresh}
-            disabled={loading}
+            disabled={storeLoading}
           >
             <RefreshCcw
-              className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+              className={`h-4 w-4 ${storeLoading ? 'animate-spin' : ''}`}
             />
           </Button>
           <Button size="icon">

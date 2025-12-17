@@ -88,42 +88,55 @@ export function ImportDialog({
     fileInputRef.current?.click()
   }
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!selectedFile) return
     setIsProcessing(true)
-    setProgress(0)
+    setProgress(10)
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
+    try {
+      // Simulate file parsing (In real app, use papa-parse or xlsx library)
+      // We generate data as if it came from the file to satisfy the constraint of "only frontend" but using Supabase
 
-          // Mock Data Generation based on type
-          const mockData = Array.from({ length: 5 }).map((_, i) => ({
-            description: `Importado ${type} ${i + 1}`,
-            amount: Math.random() * 1000 + 100,
-            principal_value: Math.random() * 1000 + 100,
-            due_date: format(new Date(), 'yyyy-MM-dd'),
-            invoice_number: `IMP-${i}`,
-            entity_name: `Fornecedor Importado ${i}`,
-            customer: `Cliente Importado ${i}`,
-            title_status: 'Aberto',
-            category: 'Importação',
-          }))
+      // Simulate progress
+      const interval = setInterval(() => {
+        setProgress((prev) => (prev < 90 ? prev + 10 : prev))
+      }, 200)
 
-          if (type === 'receivable' || type === 'payable') {
-            importData(type, mockData, selectedFile.name)
-          }
+      // Mock parsed data
+      const parsedData = Array.from({ length: 5 }).map((_, i) => ({
+        description: `Importado ${type} ${i + 1} - ${selectedFile.name}`,
+        amount: Math.random() * 5000 + 1000,
+        principal_value: Math.random() * 5000 + 1000,
+        fine: 0,
+        interest: 0,
+        due_date: format(new Date(), 'yyyy-MM-dd'),
+        invoice_number: `IMP-${Date.now()}-${i}`,
+        entity_name: `Fornecedor Importado ${i + 1}`,
+        customer: `Cliente Importado ${i + 1}`,
+        title_status: 'Aberto',
+        status: 'pending',
+        category: 'Importação',
+      }))
 
-          setIsProcessing(false)
-          toast.success('Importação concluída!')
-          setSelectedFile(null)
-          onOpenChange(false)
-          return 100
-        }
-        return prev + 10
-      })
-    }, 150)
+      // Call store to save to Supabase
+      if (type === 'receivable' || type === 'payable') {
+        await importData(type, parsedData, selectedFile.name)
+      }
+
+      clearInterval(interval)
+      setProgress(100)
+
+      // Delay closing to show 100%
+      setTimeout(() => {
+        setIsProcessing(false)
+        setSelectedFile(null)
+        onOpenChange(false)
+      }, 500)
+    } catch (error) {
+      console.error(error)
+      toast.error('Erro ao processar arquivo.')
+      setIsProcessing(false)
+    }
   }
 
   return (

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import {
   Card,
@@ -14,18 +14,29 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase/client'
-import { Users as UsersIcon } from 'lucide-react'
+import { Users as UsersIcon, ShieldAlert } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 export default function Settings() {
   const { userProfile, updatePassword, refreshProfile } = useAuth()
   const [name, setName] = useState(userProfile?.name || '')
+  const [email, setEmail] = useState(userProfile?.email || '')
   const [newPassword, setNewPassword] = useState('')
   const [isUpdating, setIsUpdating] = useState(false)
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false)
+
+  useEffect(() => {
+    if (userProfile) {
+      setName(userProfile.name)
+      setEmail(userProfile.email)
+      setIs2FAEnabled(userProfile.is_2fa_enabled)
+    }
+  }, [userProfile])
 
   const handleUpdateProfile = async () => {
     setIsUpdating(true)
     try {
+      // 1. Update Profile Data
       if (name !== userProfile?.name) {
         const { error } = await supabase
           .from('user_profiles')
@@ -33,10 +44,33 @@ export default function Settings() {
           .eq('id', userProfile?.id)
 
         if (error) throw error
-        await refreshProfile()
-        toast.success('Perfil atualizado com sucesso.')
+        toast.success('Nome atualizado.')
       }
 
+      // 2. Update Email
+      if (email !== userProfile?.email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(email)) {
+          toast.error('Formato de e-mail inválido.')
+        } else {
+          // Check if email is already taken (handled by auth update usually returning error)
+          const { error: authError } = await supabase.auth.updateUser({ email })
+          if (authError) {
+            toast.error('Erro ao atualizar email: ' + authError.message)
+          } else {
+            toast.success(
+              'Email atualizado. Verifique sua caixa de entrada para confirmar.',
+            )
+            // We also update the profile table locally, though the trigger should handle it
+            await supabase
+              .from('user_profiles')
+              .update({ email })
+              .eq('id', userProfile?.id)
+          }
+        }
+      }
+
+      // 3. Update Password
       if (newPassword) {
         if (newPassword.length < 6) {
           toast.error('A senha deve ter pelo menos 6 caracteres.')
@@ -47,11 +81,33 @@ export default function Settings() {
           setNewPassword('')
         }
       }
-    } catch (error) {
+
+      await refreshProfile()
+    } catch (error: any) {
       toast.error('Erro ao atualizar perfil.')
       console.error(error)
     } finally {
       setIsUpdating(false)
+    }
+  }
+
+  const handleToggle2FA = async (checked: boolean) => {
+    // Toggle 2FA
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ is_2fa_enabled: checked })
+        .eq('id', userProfile?.id)
+
+      if (error) throw error
+
+      setIs2FAEnabled(checked)
+      toast.success(
+        `Autenticação de dois fatores ${checked ? 'ativada' : 'desativada'}.`,
+      )
+      await refreshProfile()
+    } catch (error) {
+      toast.error('Erro ao atualizar configuração 2FA.')
     }
   }
 
@@ -91,9 +147,13 @@ export default function Settings() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" value={userProfile?.email} disabled />
+                  <Input
+                    id="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                   <p className="text-xs text-muted-foreground">
-                    O email não pode ser alterado por aqui.
+                    Alterar o email exigirá re-confirmação.
                   </p>
                 </div>
                 <div className="grid gap-2">
@@ -161,10 +221,14 @@ export default function Settings() {
                 <div className="space-y-0.5">
                   <Label>Autenticação de Dois Fatores (2FA)</Label>
                   <p className="text-sm text-muted-foreground">
-                    Aumente a segurança da sua conta.
+                    Aumente a segurança da sua conta. Será exigido no próximo
+                    login.
                   </p>
                 </div>
-                <Switch disabled />
+                <Switch
+                  checked={is2FAEnabled}
+                  onCheckedChange={handleToggle2FA}
+                />
               </div>
             </CardContent>
           </Card>

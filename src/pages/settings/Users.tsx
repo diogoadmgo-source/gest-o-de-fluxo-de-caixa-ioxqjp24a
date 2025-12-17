@@ -11,7 +11,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-// Note: imports fixed from original file to use Card components correctly from ui/card
 import {
   Card as CardComponent,
   CardContent as CardContentComponent,
@@ -57,14 +56,13 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
-import { UserProfile, Company } from '@/lib/types'
+import { UserProfile } from '@/lib/types'
 import { toast } from 'sonner'
-import { format, parseISO } from 'date-fns'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 
 export default function Users() {
   const { userProfile } = useAuth()
-  const { companies } = useCashFlowStore() // All companies available to admin
+  const { companies } = useCashFlowStore()
   const [users, setUsers] = useState<UserProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -139,7 +137,7 @@ export default function Users() {
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('manage-users', {
+      const { error } = await supabase.functions.invoke('manage-users', {
         body: {
           action: 'invite',
           email: inviteData.email,

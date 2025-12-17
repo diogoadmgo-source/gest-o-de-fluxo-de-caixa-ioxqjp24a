@@ -178,12 +178,49 @@ export type Database = {
           },
         ]
       }
+      user_companies: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'user_companies_company_id_fkey'
+            columns: ['company_id']
+            isOneToOne: false
+            referencedRelation: 'companies'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'user_companies_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       user_profiles: {
         Row: {
           company_id: string | null
           created_at: string | null
           email: string
           id: string
+          is_2fa_enabled: boolean
           last_access: string | null
           name: string
           profile: Database['public']['Enums']['user_role']
@@ -195,6 +232,7 @@ export type Database = {
           created_at?: string | null
           email: string
           id: string
+          is_2fa_enabled?: boolean
           last_access?: string | null
           name: string
           profile?: Database['public']['Enums']['user_role']
@@ -206,6 +244,7 @@ export type Database = {
           created_at?: string | null
           email?: string
           id?: string
+          is_2fa_enabled?: boolean
           last_access?: string | null
           name?: string
           profile?: Database['public']['Enums']['user_role']

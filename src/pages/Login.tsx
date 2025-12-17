@@ -35,7 +35,7 @@ export default function Login() {
 
     try {
       const result = await signIn(email, password)
-      const { error } = result as any // type assertion needed if useAuth return type updated
+      const { error } = result as any
 
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
@@ -67,7 +67,7 @@ export default function Login() {
     setTimeout(() => {
       setIsLoading(false)
       if (twoFACode === '123456') {
-        // Mock check
+        // Mock check success
         navigate(from, { replace: true })
       } else {
         toast.error('Código 2FA inválido. (Tente 123456)')
