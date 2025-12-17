@@ -76,7 +76,6 @@ import { FinancialStats } from '@/components/financial/FinancialStats'
 import { ReceivableForm } from '@/components/financial/ReceivableForm'
 import { ImportDialog } from '@/components/common/ImportDialog'
 import { ReceivableFilters } from '@/components/financial/ReceivableFilters'
-import { ReceivablesQualityDashboard } from '@/components/financial/ReceivablesQualityDashboard'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -515,8 +514,6 @@ export default function Receivables() {
           </Button>
         </div>
       </div>
-
-      <ReceivablesQualityDashboard data={filteredData} />
 
       <FinancialStats
         stats={[

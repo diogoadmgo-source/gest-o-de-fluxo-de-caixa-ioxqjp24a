@@ -273,6 +273,7 @@ export type Database = {
         Row: {
           company_id: string
           created_at: string
+          deleted_count: number | null
           error_count: number | null
           error_details: Json | null
           filename: string
@@ -285,6 +286,7 @@ export type Database = {
         Insert: {
           company_id: string
           created_at?: string
+          deleted_count?: number | null
           error_count?: number | null
           error_details?: Json | null
           filename: string
@@ -297,6 +299,7 @@ export type Database = {
         Update: {
           company_id?: string
           created_at?: string
+          deleted_count?: number | null
           error_count?: number | null
           error_details?: Json | null
           filename?: string
@@ -806,6 +809,10 @@ export type Database = {
         Returns: string
       }
       is_admin: { Args: never; Returns: boolean }
+      replace_receivables_for_company: {
+        Args: { p_company_id: string; p_rows: Json }
+        Returns: Json
+      }
     }
     Enums: {
       user_role: 'Administrator' | 'User'
