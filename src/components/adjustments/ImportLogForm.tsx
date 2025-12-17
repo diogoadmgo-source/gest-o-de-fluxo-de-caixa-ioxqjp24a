@@ -1,3 +1,4 @@
+/* This file is kept but no longer used in the main flow, preserving structure if needed for future features */
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -94,75 +95,7 @@ export function ImportLogForm({
           />
         </div>
       </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="status">Status</Label>
-          <Select
-            value={formData.status}
-            onValueChange={(val) => handleChange('status', val)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="success">Sucesso</SelectItem>
-              <SelectItem value="error">Erro</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="total">Total Registros</Label>
-          <Input
-            id="total"
-            type="number"
-            value={formData.total_records}
-            onChange={(e) =>
-              handleChange('total_records', parseInt(e.target.value))
-            }
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="success_count">Sucessos</Label>
-          <Input
-            id="success_count"
-            type="number"
-            value={formData.success_count}
-            onChange={(e) =>
-              handleChange('success_count', parseInt(e.target.value))
-            }
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="error_count">Erros</Label>
-          <Input
-            id="error_count"
-            type="number"
-            value={formData.error_count}
-            onChange={(e) =>
-              handleChange('error_count', parseInt(e.target.value))
-            }
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="details">Detalhes do Erro (JSON ou Texto)</Label>
-        <Textarea
-          id="details"
-          value={
-            typeof formData.error_details === 'string'
-              ? formData.error_details
-              : JSON.stringify(formData.error_details, null, 2)
-          }
-          onChange={(e) => handleChange('error_details', e.target.value)}
-          rows={3}
-        />
-      </div>
-
+      {/* ... keeping minimal structure for valid file ... */}
       <div className="flex justify-end gap-2 pt-4">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar

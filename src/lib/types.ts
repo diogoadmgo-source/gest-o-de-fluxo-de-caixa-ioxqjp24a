@@ -13,17 +13,17 @@ export interface Company {
 
 export interface Transaction {
   id: string
-  company_id: string // Enforced
+  company_id: string
   document_number: string
-  entity_name: string // customer or supplier
+  entity_name: string
   entity_document?: string
   issue_date: string
   due_date: string
-  amount: number // This represents the TOTAL (Updated Value)
-  principal_value?: number // New
-  fine?: number // New
-  interest?: number // New
-  net_amount?: number // for receivables
+  amount: number
+  principal_value?: number
+  fine?: number
+  interest?: number
+  net_amount?: number
   category: string
   status: TransactionStatus
   type: 'receivable' | 'payable'
@@ -32,41 +32,40 @@ export interface Transaction {
   description?: string
 }
 
-// Updated Receivable type with new fields from User Story
 export interface Receivable {
   id: string
-  company_id: string // Enforced
-  company: string // Empresa Name (Legacy/Display)
-  issue_date: string // Data de Emissão
-  order_number: string // Nr do Pedido
-  invoice_number: string // NF
-  title_status: string // Status do Título
-  code?: string // Código (Mapped to customer_code)
-  customer_code?: string // Database field
-  customer: string // Cliente
-  customer_doc: string // CNPJ/CPF
-  state?: string // UF (Mapped to uf)
-  uf?: string // Database field
-  regional?: string // Regional
-  salesperson?: string // Vendedor (Mapped to seller)
-  seller?: string // Database field
-  installment?: string // Parcela
-  due_date: string // Dt. Vencimento
-  days_overdue?: number // Dias
-  principal_value: number // Vlr Principal
-  fine: number // Multa
-  interest: number // Juros
-  updated_value: number // Vlr Atualizado
-  utilization?: string // Utilização (Changed to string/text per requirement)
-  is_negative?: boolean // Negativado (Legacy boolean)
-  negativado?: string // Negativado (Database field text)
-  payment_prediction: string // Previsão de Pgto.
+  company_id: string
+  company: string
+  issue_date: string
+  order_number: string
+  invoice_number: string
+  title_status: string
+  code?: string
+  customer_code?: string
+  customer: string
+  customer_doc: string
+  state?: string
+  uf?: string
+  regional?: string
+  salesperson?: string
+  seller?: string
+  installment?: string
+  due_date: string
+  days_overdue?: number
+  principal_value: number
+  fine: number
+  interest: number
+  updated_value: number
+  utilization?: string
+  is_negative?: boolean
+  negativado?: string
+  payment_prediction: string
   description?: string
 }
 
 export interface FinancialAdjustment {
   id: string
-  company_id: string // Enforced
+  company_id: string
   type: 'credit' | 'debit'
   amount: number
   date: string
@@ -95,14 +94,14 @@ export interface DailyBalance {
 export interface CashFlowEntry {
   date: string
   opening_balance: number
-  total_receivables: number // Total a Receber
-  total_payables: number // Total a Pagar
-  imports: number // Importações
-  other_expenses: number // Outras Despesas (Automated)
-  adjustments_credit: number // Ajustes Manuais (Entrada)
-  adjustments_debit: number // Ajustes Manuais (Saída)
-  daily_balance: number // Saldo do Dia
-  accumulated_balance: number // Saldo Acumulado
+  total_receivables: number
+  total_payables: number
+  imports: number
+  other_expenses: number
+  adjustments_credit: number
+  adjustments_debit: number
+  daily_balance: number
+  accumulated_balance: number
   notes?: string
   has_alert?: boolean
   alert_message?: string
@@ -112,10 +111,10 @@ export interface CashFlowEntry {
 
 export interface Bank {
   id: string
-  company_id: string // Enforced
-  name: string // Display Name (e.g. "Itaú Principal")
-  code: string // Bank Code (e.g. "341") - Mandatory
-  institution: string // Bank Name (e.g. "Banco Itaú")
+  company_id: string
+  name: string
+  code: string
+  institution: string
   agency?: string
   account_number: string
   account_digit?: string
@@ -125,10 +124,10 @@ export interface Bank {
 
 export interface BankBalance {
   id: string
-  company_id: string // Enforced
+  company_id: string
   date: string
-  bank_name: string // This should ideally be bank_id, but keeping for compatibility
-  bank_id?: string // Optional link to Bank entity
+  bank_name: string
+  bank_id?: string
   account_number: string
   balance: number
   status: 'draft' | 'saved' | 'locked'
@@ -166,7 +165,7 @@ export interface UserProfile {
   profile: 'Administrator' | 'User'
   status: 'Pending' | 'Active' | 'Inactive' | 'Blocked'
   last_access?: string
-  company_id?: string // Deprecated in favor of user_companies, but kept for legacy
+  company_id?: string
   is_2fa_enabled: boolean
   created_at: string
 }
@@ -206,4 +205,25 @@ export interface ImportHistoryEntry {
   error_count?: number
   error_details?: any
   created_at?: string
+}
+
+export interface ProductImport {
+  id: string
+  company_id: string
+  user_id: string
+  process_number?: string
+  description: string
+  international_supplier: string
+  foreign_currency_value: number
+  foreign_currency_code: string
+  exchange_rate: number
+  logistics_costs: number
+  taxes: number
+  nationalization_costs: number
+  status: string
+  start_date: string
+  expected_arrival_date?: string
+  actual_arrival_date?: string
+  created_at?: string
+  updated_at?: string
 }

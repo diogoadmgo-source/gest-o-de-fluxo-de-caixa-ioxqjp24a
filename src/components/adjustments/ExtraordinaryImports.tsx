@@ -33,39 +33,37 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
 import { Plus, Search, Edit, Trash2 } from 'lucide-react'
-import { ImportLogForm } from '@/components/adjustments/ImportLogForm'
-import useCashFlowStore from '@/stores/useCashFlowStore'
-import { ImportHistoryEntry } from '@/lib/types'
-import { toast } from 'sonner'
+import { ProductImportForm } from '@/components/imports/ProductImportForm'
+import useProductImportStore from '@/stores/useProductImportStore'
+import { ProductImport } from '@/lib/types'
 import { format, parseISO } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 
 export function ExtraordinaryImports() {
-  const { importHistory, addImportLog, updateImportLog, deleteImportLog } =
-    useCashFlowStore()
+  const { imports, addImport, updateImport, deleteImport } =
+    useProductImportStore()
   const [searchTerm, setSearchTerm] = useState('')
-  const [editingItem, setEditingItem] = useState<ImportHistoryEntry | null>(
+  const [editingItem, setEditingItem] = useState<Partial<ProductImport> | null>(
     null,
   )
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const filteredData = importHistory.filter((t) =>
-    t.filename.toLowerCase().includes(searchTerm.toLowerCase()),
+  const filteredData = imports.filter((t) =>
+    t.description.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const handleSave = async (data: ImportHistoryEntry) => {
+  const handleSave = async (data: Partial<ProductImport>) => {
     if (data.id) {
-      await updateImportLog(data)
+      await updateImport(data)
     } else {
-      await addImportLog(data)
+      await addImport(data)
     }
     setEditingItem(null)
   }
 
   const handleDelete = async () => {
     if (deletingId) {
-      await deleteImportLog(deletingId)
-      toast.success('Log excluído com sucesso.')
+      await deleteImport(deletingId)
       setDeletingId(null)
     }
   }
@@ -76,32 +74,32 @@ export function ExtraordinaryImports() {
         <div className="relative w-72">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por arquivo..."
+            placeholder="Buscar por descrição..."
             className="pl-9"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button onClick={() => setEditingItem({} as ImportHistoryEntry)}>
-          <Plus className="mr-2 h-4 w-4" /> Novo Log Manual
+        <Button onClick={() => setEditingItem({} as ProductImport)}>
+          <Plus className="mr-2 h-4 w-4" /> Nova Importação
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Histórico de Importações</CardTitle>
+          <CardTitle>Lançamentos de Importação</CardTitle>
           <CardDescription>
-            Gerencie manualmente os registros de importação.
+            Gerencie manualmente os registros de importação de produtos.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Arquivo</TableHead>
-                <TableHead>Data</TableHead>
+                <TableHead>Processo</TableHead>
+                <TableHead>Fornecedor</TableHead>
+                <TableHead>Data Início</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Registros</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -118,26 +116,13 @@ export function ExtraordinaryImports() {
               ) : (
                 filteredData.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell>{item.filename}</TableCell>
+                    <TableCell>{item.process_number || '-'}</TableCell>
+                    <TableCell>{item.international_supplier}</TableCell>
                     <TableCell>
-                      {item.created_at
-                        ? format(parseISO(item.created_at), 'dd/MM/yyyy HH:mm')
-                        : '-'}
+                      {format(parseISO(item.start_date), 'dd/MM/yyyy')}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          item.status === 'success' ? 'default' : 'destructive'
-                        }
-                        className={
-                          item.status === 'success' ? 'bg-success' : ''
-                        }
-                      >
-                        {item.status === 'success' ? 'Sucesso' : 'Erro'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {item.records_count}
+                      <Badge variant="outline">{item.status}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
@@ -170,14 +155,14 @@ export function ExtraordinaryImports() {
         open={!!editingItem}
         onOpenChange={(open) => !open && setEditingItem(null)}
       >
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle>
-              {editingItem?.id ? 'Editar Log' : 'Novo Log Manual'}
+              {editingItem?.id ? 'Editar Importação' : 'Nova Importação'}
             </DialogTitle>
           </DialogHeader>
           {editingItem && (
-            <ImportLogForm
+            <ProductImportForm
               initialData={editingItem}
               onSave={handleSave}
               onCancel={() => setEditingItem(null)}

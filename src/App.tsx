@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { CashFlowProvider } from '@/stores/useCashFlowStore'
+import { ProductImportProvider } from '@/stores/useProductImportStore'
 import { AuthProvider } from '@/hooks/use-auth'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
@@ -29,29 +30,31 @@ const App = () => (
     <TooltipProvider>
       <AuthProvider>
         <CashFlowProvider>
-          <Toaster />
-          <Sonner />
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+          <ProductImportProvider>
+            <Toaster />
+            <Sonner />
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
 
-            <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/fluxo-de-caixa" element={<CashFlow />} />
-              <Route path="/saldos" element={<Balances />} />
-              <Route path="/recebiveis" element={<Receivables />} />
-              <Route path="/pagaveis" element={<Payables />} />
-              <Route path="/importacoes" element={<Imports />} />
-              <Route path="/relatorios" element={<Reports />} />
-              <Route path="/fechamento" element={<PeriodClosing />} />
-              <Route path="/configuracoes" element={<Settings />} />
-              <Route path="/configuracoes/usuarios" element={<Users />} />
-              <Route path="/auditoria" element={<Audit />} />
-              <Route path="/ajustes" element={<Adjustments />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+              <Route element={<Layout />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/fluxo-de-caixa" element={<CashFlow />} />
+                <Route path="/saldos" element={<Balances />} />
+                <Route path="/recebiveis" element={<Receivables />} />
+                <Route path="/pagaveis" element={<Payables />} />
+                <Route path="/importacoes" element={<Imports />} />
+                <Route path="/relatorios" element={<Reports />} />
+                <Route path="/fechamento" element={<PeriodClosing />} />
+                <Route path="/configuracoes" element={<Settings />} />
+                <Route path="/configuracoes/usuarios" element={<Users />} />
+                <Route path="/auditoria" element={<Audit />} />
+                <Route path="/ajustes" element={<Adjustments />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </ProductImportProvider>
         </CashFlowProvider>
       </AuthProvider>
     </TooltipProvider>
