@@ -117,11 +117,6 @@ export function BankListManager() {
     }
 
     // Construct Payload
-    // If new company, pass company_name in a way that services can handle,
-    // or we construct a payload with 'company' key instead of 'company_id' if needed.
-    // addBank calls salvarBankManual which looks for company_id OR company OR company_name.
-    // So we can pass { ...formData, company_name: newCompanyName }
-
     const payload = {
       ...formData,
       company_name: isNewCompany ? newCompanyName : undefined,

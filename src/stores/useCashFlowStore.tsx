@@ -101,10 +101,20 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   // --- Fetch Data ---
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [selectedCompanyId, user])
 
   const fetchData = async () => {
+    if (!user) return
+
     setLoading(true)
+    // Clear data to avoid ghosts
+    setReceivables([])
+    setPayables([])
+    setBanks([])
+    setBankBalances([])
+    setAdjustments([])
+    setCashFlowEntries([])
+
     try {
       // Fetch Companies
       const { data: companiesData } = await supabase
@@ -112,42 +122,67 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .select('*')
       if (companiesData) setCompanies(companiesData)
 
+      // Define filter
+      const targetIds = selectedCompanyId
+        ? [selectedCompanyId]
+        : userProfile?.profile === 'Administrator'
+          ? [] // Admin sees all if no specific selected, usually handled by checking nothing or all
+          : allowedCompanyIds
+
+      const applyFilter = (query: any) => {
+        if (selectedCompanyId) {
+          return query.eq('company_id', selectedCompanyId)
+        }
+        if (userProfile?.profile !== 'Administrator') {
+          return query.in('company_id', allowedCompanyIds)
+        }
+        return query
+      }
+
       // Fetch Receivables
-      const { data: receivablesData } = await supabase
-        .from('receivables')
-        .select('*')
+      let rQuery = supabase.from('receivables').select('*')
+      rQuery = applyFilter(rQuery)
+      const { data: receivablesData } = await rQuery
       if (receivablesData) setReceivables(receivablesData as any)
 
-      // Fetch Payables (Transactions)
-      const { data: payablesData } = await supabase
+      // Fetch Payables
+      let pQuery = supabase
         .from('transactions')
         .select('*')
         .eq('type', 'payable')
+      pQuery = applyFilter(pQuery)
+      const { data: payablesData } = await pQuery
       if (payablesData) setPayables(payablesData as any)
 
       // Fetch Banks
-      const { data: banksData } = await supabase.from('banks').select('*')
+      let bQuery = supabase.from('banks').select('*')
+      bQuery = applyFilter(bQuery)
+      const { data: banksData } = await bQuery
       if (banksData) setBanks(banksData as any)
 
       // Fetch Bank Balances
-      const { data: balancesData } = await supabase
-        .from('bank_balances')
-        .select('*')
+      let bbQuery = supabase.from('bank_balances').select('*')
+      bbQuery = applyFilter(bbQuery)
+      const { data: balancesData } = await bbQuery
       if (balancesData) setBankBalances(balancesData as any)
 
       // Fetch Adjustments
-      const { data: adjustmentsData } = await supabase
-        .from('financial_adjustments')
-        .select('*')
+      let aQuery = supabase.from('financial_adjustments').select('*')
+      aQuery = applyFilter(aQuery)
+      const { data: adjustmentsData } = await aQuery
       if (adjustmentsData) setAdjustments(adjustmentsData as any)
 
-      // Fetch Import Logs (Recent)
+      // Fetch Import Logs (Recent) - Also filtered
+      let lQuery = supabase
+        .from('import_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      lQuery = applyFilter(lQuery)
+
       if (user) {
-        const { data: logsData } = await supabase
-          .from('import_logs')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(10)
+        const { data: logsData } = await lQuery
 
         if (logsData) {
           setImportHistory(
@@ -157,10 +192,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
               filename: log.filename,
               type: 'receivable', // Default fallback
               status: log.status === 'success' ? 'success' : 'error',
-              records_count: log.total_records,
+              records_count: log.total_records || 0,
               user_name: userProfile?.name || 'Usuário',
-              success_count: log.success_count,
-              error_count: log.error_count,
+              company_id: log.company_id,
+              success_count: log.success_count || 0,
+              error_count: log.error_count || 0,
               error_details: log.error_details,
             })),
           )
@@ -199,19 +235,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [selectedCompanyId])
 
-  // --- Derived State (Filtering by Company) ---
-  const filterByCompany = (item: { company_id?: string | null }) => {
-    if (selectedCompanyId) return item.company_id === selectedCompanyId
-    if (userProfile?.profile === 'Administrator') return true
-    return item.company_id ? allowedCompanyIds.includes(item.company_id) : false
-  }
-
-  const filteredReceivables = receivables.filter(filterByCompany)
-  const filteredPayables = payables.filter(filterByCompany)
-  const filteredBankBalances = bankBalances.filter(filterByCompany)
-  const filteredBanks = banks.filter(filterByCompany)
-  const filteredAdjustments = adjustments.filter(filterByCompany)
-
   // --- Recalculation ---
   useEffect(() => {
     performRecalculation()
@@ -225,7 +248,18 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   ])
 
   const performRecalculation = () => {
-    const baseEntries = generateCashFlowData(90)
+    // If no data, empty state
+    if (
+      receivables.length === 0 &&
+      payables.length === 0 &&
+      bankBalances.length === 0 &&
+      adjustments.length === 0
+    ) {
+      setCashFlowEntries([])
+      return
+    }
+
+    const baseEntries = generateCashFlowData(90) // Mock base dates structure but values will be overridden
 
     const sortedEntries = [...baseEntries].sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
@@ -236,7 +270,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     const newEntries = sortedEntries.map((entry, index) => {
       const entryDate = parseISO(entry.date)
 
-      const dayReceivables = filteredReceivables
+      // Data is already filtered by company in fetchData, so we iterate over state directly
+      // But we must double check if we are in 'All Companies' mode and the fetch actually fetched all allowed
+
+      const dayReceivables = receivables
         .filter(
           (r) =>
             isSameDay(parseISO(r.due_date), entryDate) &&
@@ -247,7 +284,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           0,
         )
 
-      const dayPayables = filteredPayables
+      const dayPayables = payables
         .filter(
           (p) =>
             isSameDay(parseISO(p.due_date), entryDate) &&
@@ -256,7 +293,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         )
         .reduce((sum, p) => sum + (p.amount || 0), 0)
 
-      const dayAdjustments = filteredAdjustments.filter((a) =>
+      const dayAdjustments = adjustments.filter((a) =>
         isSameDay(parseISO(a.date), entryDate),
       )
       const adjustmentsCredit = dayAdjustments
@@ -267,7 +304,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .filter((a) => a.type === 'debit' && a.status === 'approved')
         .reduce((sum, a) => sum + a.amount, 0)
 
-      const dayBalances = filteredBankBalances.filter((b) =>
+      const dayBalances = bankBalances.filter((b) =>
         isSameDay(parseISO(b.date), entryDate),
       )
 
@@ -279,20 +316,14 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       let openingBalance = 0
       if (index === 0) {
-        openingBalance = hasManualBalance
-          ? manualBalanceSum
-          : entry.opening_balance
+        openingBalance = hasManualBalance ? manualBalanceSum : 0 // If no manual balance, start 0, not mock
       } else {
         openingBalance = currentAccumulated
       }
 
+      // We remove mock "imports" and "other_expenses" logic to be "Real Data-Driven"
       const dailyBalance =
-        dayReceivables -
-        dayPayables -
-        entry.imports -
-        entry.other_expenses +
-        adjustmentsCredit -
-        adjustmentsDebit
+        dayReceivables - dayPayables + adjustmentsCredit - adjustmentsDebit
 
       let accumulatedBalance = openingBalance + dailyBalance
 
@@ -307,6 +338,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         opening_balance: openingBalance,
         total_receivables: dayReceivables,
         total_payables: dayPayables,
+        imports: 0, // No random mock data
+        other_expenses: 0, // No random mock data
         adjustments_credit: adjustmentsCredit,
         adjustments_debit: adjustmentsDebit,
         daily_balance: dailyBalance,
@@ -390,8 +423,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       toast.error('Erro ao salvar saldos: ' + error.message)
       return
     }
-    const { data } = await supabase.from('bank_balances').select('*')
-    if (data) setBankBalances(data as any)
+    await fetchData()
   }
 
   const resetBalanceHistory = async () => {
@@ -405,16 +437,13 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         await supabase.from('bank_balances').delete().neq('id', '0')
       }
     }
-    const { data } = await supabase.from('bank_balances').select('*')
-    if (data) setBankBalances(data as any)
+    await fetchData()
   }
 
   const addBank = async (bank: Bank) => {
     try {
       if (!user) throw new Error('Usuário não autenticado')
       const data = await salvarBankManual(bank, user.id)
-      setBanks((prev) => [...prev, data as any])
-      // Refresh to get any updated links or IDs
       await fetchData()
       return { error: null }
     } catch (error: any) {
@@ -425,10 +454,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const updateBank = async (updated: Bank) => {
     try {
       if (!user) throw new Error('Usuário não autenticado')
-      const data = await salvarBankManual(updated, user.id)
-      setBanks((prev) =>
-        prev.map((b) => (b.id === updated.id ? (data as any) : b)),
-      )
+      await salvarBankManual(updated, user.id)
       await fetchData()
     } catch (error: any) {
       toast.error('Erro ao atualizar banco: ' + error.message)
@@ -448,12 +474,15 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   const addAdjustment = async (adjustment: FinancialAdjustment) => {
     const { id, ...data } = adjustment
+    if (!data.company_id) {
+      toast.error('Erro: Empresa obrigatória para ajuste.')
+      return
+    }
     const { data: newAdj, error } = await supabase
       .from('financial_adjustments')
       .insert([
         {
           ...data,
-          company_id: adjustment.company_id || selectedCompanyId,
           user_id: user?.id,
         },
       ])
@@ -479,7 +508,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true)
     let successCount = 0
     let errorCount = 0
-    let importResults: any = { success: false, errors: [], total: 0 }
+    let importResults: any = {
+      success: 0,
+      errors: [],
+      total: 0,
+      lastCompanyId: '',
+    }
 
     try {
       if (!user) throw new Error('Usuário não autenticado.')
@@ -495,16 +529,24 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       // Log import
       if (user) {
-        await supabase.from('import_logs').insert({
-          user_id: user.id,
-          filename: filename,
-          status: errorCount === 0 && successCount > 0 ? 'success' : 'failure',
-          total_records: data.length,
-          success_count: successCount,
-          error_count: errorCount,
-          error_details:
-            importResults.errors.length > 0 ? importResults.errors : null,
-        })
+        // We use lastCompanyId as the logged company, or fallback to selectedCompanyId
+        // This is a best effort mapping since imports can contain multiple companies
+        const logCompanyId = importResults.lastCompanyId || selectedCompanyId
+
+        if (logCompanyId) {
+          await supabase.from('import_logs').insert({
+            user_id: user.id,
+            filename: filename,
+            status:
+              errorCount === 0 && successCount > 0 ? 'success' : 'failure',
+            total_records: data.length,
+            success_count: successCount,
+            error_count: errorCount,
+            error_details:
+              importResults.errors.length > 0 ? importResults.errors : null,
+            company_id: logCompanyId,
+          })
+        }
       }
 
       // If any success, refresh data
@@ -534,18 +576,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error: any) {
       console.error('Import error:', error)
-      if (user) {
-        await supabase.from('import_logs').insert({
-          user_id: user.id,
-          filename: filename,
-          status: 'failure',
-          total_records: data.length,
-          success_count: successCount,
-          error_count: data.length,
-          error_details: [{ error: `Critical: ${error.message}` }],
-        })
-      }
-
       return {
         success: false,
         message: `Falha crítica: ${error.message}`,
@@ -560,7 +590,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const recalculateCashFlow = () => {
-    performRecalculation()
+    fetchData() // Re-fetch to ensure clean state
   }
 
   return (
@@ -569,12 +599,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         companies: visibleCompanies,
         selectedCompanyId,
         setSelectedCompanyId,
-        receivables: filteredReceivables,
-        payables: filteredPayables,
-        bankBalances: filteredBankBalances,
-        adjustments: filteredAdjustments,
+        receivables: receivables, // Already filtered
+        payables: payables, // Already filtered
+        bankBalances: bankBalances, // Already filtered
+        adjustments: adjustments, // Already filtered
         cashFlowEntries,
-        banks: filteredBanks,
+        banks: banks, // Already filtered
         importHistory,
         addReceivable,
         updateReceivable,

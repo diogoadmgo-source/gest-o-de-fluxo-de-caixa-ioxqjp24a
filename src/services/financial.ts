@@ -12,8 +12,6 @@ export function n(value: any): number {
   if (typeof value === 'number') return value
   if (!value) return 0
   const str = String(value).trim()
-  // BR format: 1.234,56 -> 1234.56
-  // Remove dots (thousand separators) and replace comma with dot (decimal)
   const cleanStr = str.replace(/\./g, '').replace(',', '.')
   const num = parseFloat(cleanStr)
   return isNaN(num) ? 0 : num
@@ -22,98 +20,22 @@ export function n(value: any): number {
 export function d(value: any): string | null {
   if (!value) return null
   if (value instanceof Date) return value.toISOString().split('T')[0]
-
-  // Handle Excel serial date (numbers like 45000)
   if (typeof value === 'number') {
-    // Excel base date usually Dec 30 1899
     const excelDate = new Date((value - 25569) * 86400 * 1000)
     if (isValid(excelDate)) return excelDate.toISOString().split('T')[0]
   }
-
   const str = String(value).trim()
-
-  // Try ISO yyyy-MM-dd
   let parsed = parse(str, 'yyyy-MM-dd', new Date())
   if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
-
-  // Try BR dd/MM/yyyy
   parsed = parse(str, 'dd/MM/yyyy', new Date())
   if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
-
-  // Try simple ISO-like start
-  if (str.match(/^\d{4}-\d{2}-\d{2}/)) {
-    return str.substring(0, 10)
-  }
-
+  if (str.match(/^\d{4}-\d{2}-\d{2}/)) return str.substring(0, 10)
   return null
 }
 
 // --- Company & User Linking Logic ---
 
-export async function getOrCreateEmpresaId(name: string): Promise<string> {
-  const normalizedName = s(name)
-  if (!normalizedName) throw new Error('Nome da empresa é obrigatório')
-
-  // 1. Check if exists
-  const { data: existing } = await supabase
-    .from('companies')
-    .select('id')
-    .ilike('name', normalizedName)
-    .maybeSingle()
-
-  if (existing) {
-    return existing.id
-  }
-
-  // 2. Create if not exists
-  const { data: newCompany, error } = await supabase
-    .from('companies')
-    .insert({ name: normalizedName, origin: 'Import/Manual' })
-    .select('id')
-    .single()
-
-  if (error) {
-    // Handle race condition if created in parallel
-    if (error.code === '23505') {
-      // Unique violation
-      const { data: retry } = await supabase
-        .from('companies')
-        .select('id')
-        .ilike('name', normalizedName)
-        .maybeSingle()
-      if (retry) return retry.id
-    }
-    throw new Error(
-      `Falha ao criar empresa ${normalizedName}: ${error.message}`,
-    )
-  }
-
-  return newCompany.id
-}
-
-export async function ensureUserCompanyLink(userId: string, companyId: string) {
-  // Check if link exists
-  const { data: link } = await supabase
-    .from('user_companies')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('company_id', companyId)
-    .maybeSingle()
-
-  if (!link) {
-    const { error } = await supabase
-      .from('user_companies')
-      .insert({ user_id: userId, company_id: companyId })
-
-    if (error && error.code !== '23505') {
-      // Ignore duplicate key error
-      console.error(`Falha ao vincular usuário à empresa: ${error.message}`)
-      // Not throwing here allows the process to continue
-    }
-  }
-}
-
-export async function ensureEmpresaAndLink(
+export async function ensureCompanyAndLink(
   userId: string,
   companyIdOrName: string,
 ): Promise<string> {
@@ -126,26 +48,77 @@ export async function ensureEmpresaAndLink(
   let finalCompanyId = ''
 
   if (isUuid) {
-    // Verify existence (optional but good for integrity)
     const { data } = await supabase
       .from('companies')
       .select('id')
       .eq('id', val)
       .maybeSingle()
+
     if (data) {
       finalCompanyId = data.id
     } else {
-      // If provided ID is not found, treat as an error rather than creating a company with that UUID as name
       throw new Error(`Empresa com ID ${val} não encontrada.`)
     }
   } else {
-    // It's a name
-    finalCompanyId = await getOrCreateEmpresaId(val)
+    // It's a name, lookup or create
+    const { data: existing } = await supabase
+      .from('companies')
+      .select('id')
+      .ilike('name', val)
+      .maybeSingle()
+
+    if (existing) {
+      finalCompanyId = existing.id
+    } else {
+      const { data: newCompany, error } = await supabase
+        .from('companies')
+        .insert({ name: val, origin: 'Import/Manual' })
+        .select('id')
+        .single()
+
+      if (error) {
+        if (error.code === '23505') {
+          // Race condition fallback
+          const { data: retry } = await supabase
+            .from('companies')
+            .select('id')
+            .ilike('name', val)
+            .maybeSingle()
+          if (retry) finalCompanyId = retry.id
+          else
+            throw new Error(`Falha ao criar empresa ${val}: ${error.message}`)
+        } else {
+          throw new Error(`Falha ao criar empresa ${val}: ${error.message}`)
+        }
+      } else {
+        finalCompanyId = newCompany.id
+      }
+    }
   }
 
-  await ensureUserCompanyLink(userId, finalCompanyId)
+  // Ensure link exists
+  const { data: link } = await supabase
+    .from('user_companies')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('company_id', finalCompanyId)
+    .maybeSingle()
+
+  if (!link) {
+    await supabase
+      .from('user_companies')
+      .insert({ user_id: userId, company_id: finalCompanyId })
+  }
+
   return finalCompanyId
 }
+
+// Kept for backward compatibility if needed, but redirects to new function
+export const getOrCreateEmpresaId = async (name: string) => {
+  // This logic is now inside ensureCompanyAndLink
+  return name
+}
+export const ensureEmpresaAndLink = ensureCompanyAndLink
 
 // --- Manual Saving ---
 
@@ -156,7 +129,7 @@ export async function salvarReceivableManual(payload: any, userId: string) {
     throw new Error('Selecione/Informe a empresa')
   }
 
-  const companyId = await ensureEmpresaAndLink(userId, companyInput)
+  const companyId = await ensureCompanyAndLink(userId, companyInput)
 
   const dbPayload = {
     company_id: companyId,
@@ -213,7 +186,7 @@ export async function salvarPayableManual(payload: any, userId: string) {
     throw new Error('Selecione/Informe a empresa')
   }
 
-  const companyId = await ensureEmpresaAndLink(userId, companyInput)
+  const companyId = await ensureCompanyAndLink(userId, companyInput)
 
   const dbPayload = {
     company_id: companyId,
@@ -260,7 +233,7 @@ export async function salvarBankManual(payload: any, userId: string) {
     throw new Error('Selecione/Informe a empresa')
   }
 
-  const companyId = await ensureEmpresaAndLink(userId, companyInput)
+  const companyId = await ensureCompanyAndLink(userId, companyInput)
 
   const dbPayload = {
     company_id: companyId,
@@ -308,7 +281,7 @@ export async function salvarBankManual(payload: any, userId: string) {
   }
 }
 
-// --- Import Logic ---
+// --- Import Logic with Batching ---
 
 let lastCompany: string = ''
 
@@ -330,6 +303,7 @@ export async function importarReceivables(
     total: rows.length,
     success: 0,
     errors: [] as string[],
+    lastCompanyId: '' as string, // To store in logs
   }
 
   if (rows.length === 0) {
@@ -337,107 +311,134 @@ export async function importarReceivables(
   }
 
   const companyCache = new Map<string, string>()
+  const BATCH_SIZE = 50
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]
-    try {
-      // 1. Resolve Company
-      let companyName = s(
-        row['Empresa'] || row['company'] || row['id_da_empresa'],
-      )
-      companyName = forwardFill(companyName)
-
-      if (!companyName) {
-        throw new Error(
-          'Empresa não identificada (Linha sem empresa e sem anterior).',
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = rows.slice(i, i + BATCH_SIZE)
+    const promises = batch.map(async (row, idx) => {
+      try {
+        const rowIndex = i + idx
+        // 1. Resolve Company
+        let companyName = s(
+          row['Empresa'] || row['company'] || row['id_da_empresa'],
         )
+
+        // Handling Forward Fill in a batched context is tricky if batches are parallel.
+        // However, we are running batches sequentially in the loop, but processing items in batch parallel.
+        // Forward fill logic strictly depends on sequential order.
+        // If row['Empresa'] is empty, it needs previous row.
+        // We must process sequentially for forward fill logic to work correctly or pre-process.
+        // Let's pre-process company names sequentially first or just run sequentially inside loop.
+        // Given forwardFill is simple state, we must run it sequentially.
+
+        // Wait, if I do `batch.map`, `lastCompany` might be raced if async.
+        // But `forwardFill` is sync. The problem is `ensureCompanyAndLink` is async.
+        // So we need to resolve companyName sequentially first, then we can parallelize DB inserts.
+
+        companyName = forwardFill(companyName)
+
+        if (!companyName) {
+          throw new Error('Empresa não identificada (Linha sem empresa).')
+        }
+
+        let companyId = companyCache.get(companyName)
+        if (!companyId) {
+          // We must await here to cache it correctly, avoiding multiple creations
+          companyId = await ensureCompanyAndLink(userId, companyName)
+          companyCache.set(companyName, companyId)
+        }
+
+        // Keep track of last used company ID for log purposes
+        results.lastCompanyId = companyId
+
+        const dbItem = {
+          company_id: companyId,
+          invoice_number: s(
+            row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
+          ),
+          order_number: s(
+            row['Nr do Pedido'] ||
+              row['order_number'] ||
+              row['numero_do_pedido'],
+          ),
+          customer: s(
+            row['Cliente'] ||
+              row['customer'] ||
+              row['cliente'] ||
+              'Consumidor Final',
+          ),
+          customer_doc: s(
+            row['CNPJ/CPF'] || row['customer_doc'] || row['documento'],
+          ),
+          issue_date:
+            d(
+              row['Data de Emissão'] ||
+                row['issue_date'] ||
+                row['data_de_emissao'],
+            ) || new Date().toISOString(),
+          due_date: d(
+            row['Dt. Vencimento'] ||
+              row['due_date'] ||
+              row['data_de_vencimento'],
+          ),
+          payment_prediction: d(
+            row['Previsão de Pgto.'] ||
+              row['payment_prediction'] ||
+              row['previsao_de_pagamento'],
+          ),
+          principal_value: n(
+            row['Vlr Principal'] ||
+              row['principal_value'] ||
+              row['valor_principal'],
+          ),
+          fine: n(row['Multa'] || row['fine'] || row['multa']),
+          interest: n(row['Juros'] || row['interest'] || row['juros']),
+          updated_value: n(
+            row['Vlr Atualizado'] ||
+              row['updated_value'] ||
+              row['valor_atualizado'] ||
+              row['Vlr Principal'],
+          ),
+          title_status: s(
+            row['Status do Título'] ||
+              row['title_status'] ||
+              row['status_do_titulo'] ||
+              'Aberto',
+          ),
+          seller: s(row['Vendedor'] || row['seller'] || row['vendedor']),
+          customer_code: s(row['Código'] || row['customer_code']),
+          uf: s(row['UF'] || row['uf']),
+          regional: s(row['Regional'] || row['regional']),
+          installment: s(row['Parcela'] || row['installment']),
+          days_overdue: n(row['Dias'] || row['days_overdue']),
+          utilization: s(row['Utilização'] || row['utilization']),
+          negativado: s(row['Negativado'] || row['negativado']),
+          description: 'Importado via Planilha',
+        }
+
+        if (!dbItem.due_date) {
+          throw new Error('Data de vencimento inválida.')
+        }
+
+        await supabase.from('receivables').insert(dbItem)
+        results.success++
+      } catch (err: any) {
+        results.errors.push(`Linha ${rowIndex + 2}: ${err.message}`)
       }
+    })
 
-      // Check cache first to avoid DB calls
-      let companyId = companyCache.get(companyName)
-      if (!companyId) {
-        companyId = await ensureEmpresaAndLink(userId, companyName)
-        companyCache.set(companyName, companyId)
-      }
+    // Wait for batch to complete
+    await Promise.all(promises)
 
-      const dbItem = {
-        company_id: companyId,
-        invoice_number: s(
-          row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
-        ),
-        order_number: s(
-          row['Nr do Pedido'] || row['order_number'] || row['numero_do_pedido'],
-        ),
-        customer: s(
-          row['Cliente'] ||
-            row['customer'] ||
-            row['cliente'] ||
-            'Consumidor Final',
-        ),
-        customer_doc: s(
-          row['CNPJ/CPF'] || row['customer_doc'] || row['documento'],
-        ),
-        issue_date:
-          d(
-            row['Data de Emissão'] ||
-              row['issue_date'] ||
-              row['data_de_emissao'],
-          ) || new Date().toISOString(),
-        due_date: d(
-          row['Dt. Vencimento'] || row['due_date'] || row['data_de_vencimento'],
-        ),
-        payment_prediction: d(
-          row['Previsão de Pgto.'] ||
-            row['payment_prediction'] ||
-            row['previsao_de_pagamento'],
-        ),
-        principal_value: n(
-          row['Vlr Principal'] ||
-            row['principal_value'] ||
-            row['valor_principal'],
-        ),
-        fine: n(row['Multa'] || row['fine'] || row['multa']),
-        interest: n(row['Juros'] || row['interest'] || row['juros']),
-        updated_value: n(
-          row['Vlr Atualizado'] ||
-            row['updated_value'] ||
-            row['valor_atualizado'] ||
-            row['Vlr Principal'],
-        ),
-        title_status: s(
-          row['Status do Título'] ||
-            row['title_status'] ||
-            row['status_do_titulo'] ||
-            'Aberto',
-        ),
-        seller: s(row['Vendedor'] || row['seller'] || row['vendedor']),
-        customer_code: s(row['Código'] || row['customer_code']),
-        uf: s(row['UF'] || row['uf']),
-        regional: s(row['Regional'] || row['regional']),
-        installment: s(row['Parcela'] || row['installment']),
-        days_overdue: n(row['Dias'] || row['days_overdue']),
-        utilization: s(row['Utilização'] || row['utilization']),
-        negativado: s(row['Negativado'] || row['negativado']),
-        description: 'Importado via Planilha',
-      }
-
-      if (!dbItem.due_date) {
-        throw new Error('Data de vencimento inválida.')
-      }
-
-      await supabase.from('receivables').insert(dbItem)
-      results.success++
-    } catch (err: any) {
-      results.errors.push(`Linha ${i + 2}: ${err.message}`)
-    }
-
+    // Update progress
     if (onProgress) {
-      // Yield to main thread every 10 rows to prevent freezing
-      if (i % 10 === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 0))
-        onProgress(Math.round(((i + 1) / rows.length) * 100))
-      }
+      const processed = Math.min(i + BATCH_SIZE, rows.length)
+      const percent = Math.round((processed / rows.length) * 100)
+      onProgress(percent)
     }
+
+    // Small delay to allow UI to update
+    await new Promise((resolve) => setTimeout(resolve, 0))
   }
 
   return results
@@ -453,6 +454,7 @@ export async function importarPayables(
     total: rows.length,
     success: 0,
     errors: [] as string[],
+    lastCompanyId: '' as string,
   }
 
   if (rows.length === 0) {
@@ -460,61 +462,70 @@ export async function importarPayables(
   }
 
   const companyCache = new Map<string, string>()
+  const BATCH_SIZE = 50
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]
-    try {
-      // 1. Resolve Company
-      let companyName = s(row['Empresa'] || row['company'])
-      companyName = forwardFill(companyName)
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = rows.slice(i, i + BATCH_SIZE)
+    const promises = batch.map(async (row, idx) => {
+      try {
+        const rowIndex = i + idx
+        // 1. Resolve Company
+        let companyName = s(row['Empresa'] || row['company'])
+        companyName = forwardFill(companyName)
 
-      if (!companyName) {
-        throw new Error('Empresa não identificada.')
+        if (!companyName) {
+          throw new Error('Empresa não identificada.')
+        }
+
+        let companyId = companyCache.get(companyName)
+        if (!companyId) {
+          companyId = await ensureCompanyAndLink(userId, companyName)
+          companyCache.set(companyName, companyId)
+        }
+
+        results.lastCompanyId = companyId
+
+        // 2. Map Payload
+        const payload = {
+          company_id: companyId,
+          entity_name: s(
+            row['Fornecedor'] || row['entity_name'] || row['supplier'],
+          ),
+          document_number: s(row['Documento'] || row['document_number']),
+          issue_date:
+            d(row['Emissao'] || row['issue_date']) || new Date().toISOString(),
+          due_date: d(row['Vencimento'] || row['due_date']),
+          principal_value: n(
+            row['Valor'] || row['amount'] || row['principal_value'],
+          ),
+          fine: n(row['Multa'] || row['fine']),
+          interest: n(row['Juros'] || row['interest']),
+          amount: n(row['Total'] || row['amount'] || row['Valor']),
+          status: s(row['Status'] || 'pending'),
+          category: s(row['Categoria'] || row['category']),
+          description: s(row['Descrição'] || 'Importado via Planilha'),
+          type: 'payable',
+        }
+
+        if (!payload.due_date) throw new Error('Vencimento inválido')
+        if (!payload.entity_name) throw new Error('Fornecedor obrigatório')
+
+        await supabase.from('transactions').insert(payload)
+        results.success++
+      } catch (err: any) {
+        results.errors.push(`Linha ${rowIndex + 2}: ${err.message}`)
       }
+    })
 
-      let companyId = companyCache.get(companyName)
-      if (!companyId) {
-        companyId = await ensureEmpresaAndLink(userId, companyName)
-        companyCache.set(companyName, companyId)
-      }
-
-      // 2. Map Payload
-      const payload = {
-        company_id: companyId,
-        entity_name: s(
-          row['Fornecedor'] || row['entity_name'] || row['supplier'],
-        ),
-        document_number: s(row['Documento'] || row['document_number']),
-        issue_date:
-          d(row['Emissao'] || row['issue_date']) || new Date().toISOString(),
-        due_date: d(row['Vencimento'] || row['due_date']),
-        principal_value: n(
-          row['Valor'] || row['amount'] || row['principal_value'],
-        ),
-        fine: n(row['Multa'] || row['fine']),
-        interest: n(row['Juros'] || row['interest']),
-        amount: n(row['Total'] || row['amount'] || row['Valor']),
-        status: s(row['Status'] || 'pending'),
-        category: s(row['Categoria'] || row['category']),
-        description: s(row['Descrição'] || 'Importado via Planilha'),
-        type: 'payable',
-      }
-
-      if (!payload.due_date) throw new Error('Vencimento inválido')
-      if (!payload.entity_name) throw new Error('Fornecedor obrigatório')
-
-      await supabase.from('transactions').insert(payload)
-      results.success++
-    } catch (err: any) {
-      results.errors.push(`Linha ${i + 2}: ${err.message}`)
-    }
+    await Promise.all(promises)
 
     if (onProgress) {
-      if (i % 10 === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 0))
-        onProgress(Math.round(((i + 1) / rows.length) * 100))
-      }
+      const processed = Math.min(i + BATCH_SIZE, rows.length)
+      const percent = Math.round((processed / rows.length) * 100)
+      onProgress(percent)
     }
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
   }
 
   return results

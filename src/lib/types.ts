@@ -13,7 +13,7 @@ export interface Company {
 
 export interface Transaction {
   id: string
-  company_id?: string // Global Filter
+  company_id: string // Enforced
   document_number: string
   entity_name: string // customer or supplier
   entity_document?: string
@@ -29,12 +29,13 @@ export interface Transaction {
   type: 'receivable' | 'payable'
   payment_method?: string
   notes?: string
+  description?: string
 }
 
 // Updated Receivable type with new fields from User Story
 export interface Receivable {
   id: string
-  company_id?: string // Global Filter
+  company_id: string // Enforced
   company: string // Empresa Name (Legacy/Display)
   issue_date: string // Data de Emissão
   order_number: string // Nr do Pedido
@@ -65,7 +66,7 @@ export interface Receivable {
 
 export interface FinancialAdjustment {
   id: string
-  company_id?: string
+  company_id: string // Enforced
   type: 'credit' | 'debit'
   amount: number
   date: string
@@ -111,7 +112,7 @@ export interface CashFlowEntry {
 
 export interface Bank {
   id: string
-  company_id?: string // Global Filter
+  company_id: string // Enforced
   name: string // Display Name (e.g. "Itaú Principal")
   code: string // Bank Code (e.g. "341") - Mandatory
   institution: string // Bank Name (e.g. "Banco Itaú")
@@ -124,7 +125,7 @@ export interface Bank {
 
 export interface BankBalance {
   id: string
-  company_id?: string // Global Filter
+  company_id: string // Enforced
   date: string
   bank_name: string // This should ideally be bank_id, but keeping for compatibility
   bank_id?: string // Optional link to Bank entity
@@ -200,6 +201,7 @@ export interface ImportHistoryEntry {
   status: 'success' | 'error'
   records_count: number
   user_name: string
+  company_id: string
   success_count?: number
   error_count?: number
   error_details?: any

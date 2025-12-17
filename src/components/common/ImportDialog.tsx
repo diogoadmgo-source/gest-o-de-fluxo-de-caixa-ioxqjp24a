@@ -70,8 +70,15 @@ export function ImportDialog({
   }
 
   const validateAndSetFile = (file: File) => {
+    if (file.name.endsWith('.xlsx')) {
+      toast.error(
+        'Funcionalidade XLSX temporariamente indisponível (biblioteca ausente). Por favor use CSV.',
+      )
+      return
+    }
+
     if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
-      toast.error('Por favor, utilize arquivos CSV para importação.')
+      toast.error('Por favor, utilize arquivos CSV.')
       return
     }
 
@@ -101,15 +108,16 @@ export function ImportDialog({
   const handleImport = async () => {
     if (!selectedFile) return
     setIsProcessing(true)
-    setProgress(10)
+    setProgress(0)
     setResult(null)
 
     try {
       const text = await selectedFile.text()
-      setProgress(30)
+      // Initial progress for reading
+      setProgress(5)
 
       const parsedData = parseCSV(text)
-      setProgress(50)
+      setProgress(10)
 
       if (type === 'receivable' || type === 'payable') {
         const res = await importData(
@@ -117,9 +125,8 @@ export function ImportDialog({
           parsedData,
           selectedFile.name,
           (percent) => {
-            // Map 0-100% from import process to 50-95% of total progress bar
-            // We leave the last 5% for finalization/refresh
-            const overallProgress = 50 + Math.round((percent * 45) / 100)
+            // Map 0-100% from import process to 10-100% of total progress bar
+            const overallProgress = 10 + Math.round((percent * 90) / 100)
             setProgress(overallProgress)
           },
         )
@@ -137,7 +144,7 @@ export function ImportDialog({
       console.error(error)
       setResult({
         success: false,
-        message: 'Erro ao ler arquivo: ' + error.message,
+        message: 'Erro ao processar arquivo: ' + error.message,
       })
       toast.error('Erro ao processar arquivo.')
     } finally {
@@ -150,9 +157,7 @@ export function ImportDialog({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            Faça upload de arquivo CSV seguindo o layout padrão.
-          </DialogDescription>
+          <DialogDescription>Faça upload de arquivo CSV.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           {!selectedFile ? (
@@ -172,15 +177,15 @@ export function ImportDialog({
                 type="file"
                 ref={fileInputRef}
                 className="hidden"
-                accept=".csv,.txt"
+                accept=".csv,.xlsx"
                 onChange={handleFileSelect}
               />
               <Upload className="h-10 w-10 text-muted-foreground mb-4" />
               <p className="text-sm font-medium">
-                Arraste seu arquivo CSV aqui ou clique para selecionar
+                Arraste seu arquivo aqui ou clique para selecionar
               </p>
               <p className="text-xs text-muted-foreground mt-2">
-                Suporta apenas arquivos CSV
+                Suporta CSV e XLSX (requer lib)
               </p>
             </div>
           ) : (

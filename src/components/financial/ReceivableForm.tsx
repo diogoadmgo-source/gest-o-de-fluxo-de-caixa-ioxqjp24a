@@ -28,7 +28,7 @@ export function ReceivableForm({
 
   const [formData, setFormData] = useState<Partial<Receivable>>({
     company_id: selectedCompanyId || undefined,
-    company: 'Hospcom Matriz',
+    company: '',
     customer: '',
     invoice_number: '',
     principal_value: 0,
@@ -70,7 +70,7 @@ export function ReceivableForm({
     e.preventDefault()
 
     // Front-end Validation as per Acceptance Criteria
-    if (!formData.company_id) {
+    if (!formData.company_id || formData.company_id === 'none') {
       toast.error('Selecione/Informe a empresa')
       return
     }
@@ -84,7 +84,9 @@ export function ReceivableForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="company">Empresa</Label>
+          <Label htmlFor="company">
+            Empresa <span className="text-destructive">*</span>
+          </Label>
           <Select
             value={formData.company_id || 'none'}
             onValueChange={(val) =>
@@ -92,7 +94,7 @@ export function ReceivableForm({
             }
           >
             <SelectTrigger>
-              <SelectValue placeholder="Selecione" />
+              <SelectValue placeholder="Selecione..." />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">Selecione...</SelectItem>
