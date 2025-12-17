@@ -204,6 +204,7 @@ export interface ImportHistoryEntry {
   company_id: string
   success_count?: number
   error_count?: number
+  deleted_count?: number
   error_details?: any
   created_at?: string
 }

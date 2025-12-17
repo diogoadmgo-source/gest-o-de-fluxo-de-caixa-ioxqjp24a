@@ -50,9 +50,6 @@ export function normalizeInstallment(value: any): string {
   if (/^\d+$/.test(str)) return str
 
   // Handle Excel Date conversions (e.g., "01-Jan", "1-fev")
-  // Excel converts fractions like 1/12 to dates (1st of December)
-  // Logic: Day = Numerator, Month = Denominator
-
   const ptMonths = [
     'jan',
     'fev',
@@ -94,24 +91,18 @@ export function normalizeInstallment(value: any): string {
   }
 
   if (monthIndex > 0) {
-    // Extract the numeric part (Day)
     const match = lower.match(/(\d+)/)
     if (match) {
       const numerator = parseInt(match[1], 10)
-      // Reconstruct as Numerator/Denominator
       return `${numerator}/${monthIndex}`
     }
   }
 
-  // Fallback: return as is if no pattern matches
   return str
 }
 
 // --- Fetching Helpers ---
 
-/**
- * Fetches all records from a table with pagination to bypass default limits.
- */
 export async function fetchAllRecords(
   supabaseClient: any,
   table: string,
@@ -120,10 +111,8 @@ export async function fetchAllRecords(
 ) {
   let allData: any[] = []
   let page = 0
-  const pageSize = 1000 // Optimized page size
+  const pageSize = 1000
   let hasMore = true
-
-  // Safety limit to prevent infinite loops
   const MAX_PAGES = 100
 
   while (hasMore && page < MAX_PAGES) {
@@ -200,7 +189,6 @@ export async function ensureCompanyAndLink(
   const val = normalizeText(companyIdOrName)
   if (!val) throw new Error('ID ou Nome da empresa é obrigatório')
 
-  // Use Database Function for Atomic Resolution
   const { data, error } = await supabase.rpc('ensure_company_and_link_user', {
     p_user_id: userId,
     p_company_name: val,
@@ -325,7 +313,6 @@ export async function salvarReceivableManual(payload: any, userId: string) {
     description: normalizeText(payload.description),
   }
 
-  // Use Upsert logic for manual save as well if id is not provided
   if (payload.id) {
     const { data, error } = await supabase
       .from('receivables')
@@ -336,7 +323,6 @@ export async function salvarReceivableManual(payload: any, userId: string) {
     if (error) throw error
     return data
   } else {
-    // Check if we should use upsert here too to prevent duplicates on manual entry
     const { data, error } = await supabase
       .from('receivables')
       .upsert(dbPayload, {
@@ -459,7 +445,6 @@ export async function salvarImportLogManual(payload: any, userId: string) {
     throw new Error('Selecione/Informe a empresa')
   }
 
-  // Ensure existence before logging
   const companyId = await ensureCompanyAndLink(userId, companyInput)
 
   const dbPayload = {
@@ -470,6 +455,7 @@ export async function salvarImportLogManual(payload: any, userId: string) {
     total_records: n(payload.total_records),
     success_count: n(payload.success_count),
     error_count: n(payload.error_count),
+    deleted_count: n(payload.deleted_count),
     error_details: payload.error_details || null,
   }
 
@@ -493,7 +479,7 @@ export async function salvarImportLogManual(payload: any, userId: string) {
   }
 }
 
-// --- Import Logic with Batching ---
+// --- Import Logic with Overwrite Strategy ---
 
 export async function importarReceivables(
   rows: any[],
@@ -504,6 +490,7 @@ export async function importarReceivables(
   const results = {
     total: rows.length,
     success: 0,
+    deleted: 0,
     errors: [] as string[],
     lastCompanyId: '' as string,
   }
@@ -512,150 +499,173 @@ export async function importarReceivables(
     return { ...results, message: 'Arquivo vazio.' }
   }
 
-  // Pre-process Rows (Forward Fill Company if not fallback)
-  let lastCompanyName = ''
-  const preProcessedRows = rows.map((row, index) => {
-    let companyName = ''
-    if (!fallbackCompanyId) {
-      companyName = normalizeText(
+  // 1. Resolve Company and Prepare Data
+  const companiesMap = new Map<string, any[]>()
+  const companyIdCache = new Map<string, string>()
+
+  // Pre-load fallback if available
+  if (fallbackCompanyId) {
+    // Assuming fallback is a valid UUID already resolved by caller
+    // But we don't have the name easily here. We'll use the ID as key.
+    companyIdCache.set('__fallback__', fallbackCompanyId)
+  }
+
+  // Set to track unique keys to avoid duplicates within the file sending to DB
+  const uniqueKeys = new Set<string>()
+
+  let processedCount = 0
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    try {
+      // Determine Company
+      let companyId = fallbackCompanyId
+      const companyNameInRow = normalizeText(
         row['Empresa'] || row['company'] || row['id_da_empresa'],
       )
-      if (!companyName && lastCompanyName) {
-        companyName = lastCompanyName
+
+      if (companyNameInRow) {
+        if (companyIdCache.has(companyNameInRow)) {
+          companyId = companyIdCache.get(companyNameInRow)!
+        } else {
+          companyId = await ensureCompanyAndLink(userId, companyNameInRow)
+          companyIdCache.set(companyNameInRow, companyId)
+        }
       }
-      if (companyName) {
-        lastCompanyName = companyName
+
+      if (!companyId) {
+        throw new Error(
+          'Empresa não identificada. Selecione uma empresa ou inclua a coluna "Empresa".',
+        )
       }
+
+      results.lastCompanyId = companyId
+
+      // Prepare DB Item
+      const dbItem = {
+        invoice_number: normalizeText(
+          row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
+        ),
+        order_number: normalizeText(
+          row['Nr do Pedido'] || row['order_number'] || row['numero_do_pedido'],
+        ),
+        customer: normalizeText(
+          row['Cliente'] ||
+            row['customer'] ||
+            row['cliente'] ||
+            'Consumidor Final',
+        ),
+        customer_doc: normalizeText(
+          row['CNPJ/CPF'] || row['customer_doc'] || row['documento'],
+        ),
+        issue_date:
+          d(
+            row['Data de Emissão'] ||
+              row['issue_date'] ||
+              row['data_de_emissao'],
+          ) || new Date().toISOString(),
+        due_date: d(
+          row['Dt. Vencimento'] || row['due_date'] || row['data_de_vencimento'],
+        ),
+        payment_prediction: d(
+          row['Previsão de Pgto.'] ||
+            row['payment_prediction'] ||
+            row['previsao_de_pagamento'],
+        ),
+        principal_value: n(
+          row['Vlr Principal'] ||
+            row['principal_value'] ||
+            row['valor_principal'],
+        ),
+        fine: n(row['Multa'] || row['fine'] || row['multa']),
+        interest: n(row['Juros'] || row['interest'] || row['juros']),
+        updated_value: n(
+          row['Vlr Atualizado'] ||
+            row['updated_value'] ||
+            row['valor_atualizado'] ||
+            row['Vlr Principal'],
+        ),
+        title_status: normalizeText(
+          row['Status do Título'] ||
+            row['title_status'] ||
+            row['status_do_titulo'] ||
+            'Aberto',
+        ),
+        seller: normalizeText(
+          row['Vendedor'] || row['seller'] || row['vendedor'],
+        ),
+        customer_code: normalizeText(row['Código'] || row['customer_code']),
+        uf: normalizeText(row['UF'] || row['uf']),
+        regional: normalizeText(row['Regional'] || row['regional']),
+        installment: normalizeInstallment(row['Parcela'] || row['installment']),
+        days_overdue: n(row['Dias'] || row['days_overdue']),
+        utilization: normalizeText(row['Utilização'] || row['utilization']),
+        negativado: normalizeText(row['Negativado'] || row['negativado']),
+        description: 'Importado via Planilha (Overwrite)',
+      }
+
+      if (!dbItem.due_date) {
+        throw new Error('Data de vencimento inválida.')
+      }
+
+      // Deduplication check within the file
+      const key = `${companyId}|${dbItem.invoice_number}|${dbItem.order_number}|${dbItem.installment}`
+      if (uniqueKeys.has(key)) {
+        // Skip duplicate in file
+        continue
+      }
+      uniqueKeys.add(key)
+
+      // Add to map
+      if (!companiesMap.has(companyId)) {
+        companiesMap.set(companyId, [])
+      }
+      companiesMap.get(companyId)!.push(dbItem)
+    } catch (err: any) {
+      results.errors.push(`Linha ${i + 2}: ${err.message}`)
     }
-    return {
-      ...row,
-      __companyNameResolved: companyName,
-      __originalIndex: index,
-    }
-  })
 
-  // Cache resolved company IDs to avoid RPC calls for every row
-  const companyCache = new Map<string, string>()
-  const BATCH_SIZE = 50
-
-  for (let i = 0; i < preProcessedRows.length; i += BATCH_SIZE) {
-    const batch = preProcessedRows.slice(i, i + BATCH_SIZE)
-    const promises = batch.map(async (row) => {
-      const rowIndex = row.__originalIndex
-      try {
-        let companyId = fallbackCompanyId
-
-        if (!companyId) {
-          const companyName = row.__companyNameResolved
-          if (!companyName) {
-            throw new Error('Empresa não identificada (Linha sem empresa).')
-          }
-          companyId = companyCache.get(companyName)
-          if (!companyId) {
-            // New RPC call handles existence check, creation, and linking atomically
-            companyId = await ensureCompanyAndLink(userId, companyName)
-            companyCache.set(companyName, companyId)
-          }
-        }
-
-        results.lastCompanyId = companyId!
-
-        const dbItem = {
-          company_id: companyId,
-          invoice_number: normalizeText(
-            row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
-          ),
-          order_number: normalizeText(
-            row['Nr do Pedido'] ||
-              row['order_number'] ||
-              row['numero_do_pedido'],
-          ),
-          customer: normalizeText(
-            row['Cliente'] ||
-              row['customer'] ||
-              row['cliente'] ||
-              'Consumidor Final',
-          ),
-          customer_doc: normalizeText(
-            row['CNPJ/CPF'] || row['customer_doc'] || row['documento'],
-          ),
-          issue_date:
-            d(
-              row['Data de Emissão'] ||
-                row['issue_date'] ||
-                row['data_de_emissao'],
-            ) || new Date().toISOString(),
-          due_date: d(
-            row['Dt. Vencimento'] ||
-              row['due_date'] ||
-              row['data_de_vencimento'],
-          ),
-          payment_prediction: d(
-            row['Previsão de Pgto.'] ||
-              row['payment_prediction'] ||
-              row['previsao_de_pagamento'],
-          ),
-          principal_value: n(
-            row['Vlr Principal'] ||
-              row['principal_value'] ||
-              row['valor_principal'],
-          ),
-          fine: n(row['Multa'] || row['fine'] || row['multa']),
-          interest: n(row['Juros'] || row['interest'] || row['juros']),
-          updated_value: n(
-            row['Vlr Atualizado'] ||
-              row['updated_value'] ||
-              row['valor_atualizado'] ||
-              row['Vlr Principal'],
-          ),
-          title_status: normalizeText(
-            row['Status do Título'] ||
-              row['title_status'] ||
-              row['status_do_titulo'] ||
-              'Aberto',
-          ),
-          seller: normalizeText(
-            row['Vendedor'] || row['seller'] || row['vendedor'],
-          ),
-          customer_code: normalizeText(row['Código'] || row['customer_code']),
-          uf: normalizeText(row['UF'] || row['uf']),
-          regional: normalizeText(row['Regional'] || row['regional']),
-          installment: normalizeInstallment(
-            row['Parcela'] || row['installment'],
-          ), // Apply normalization here
-          days_overdue: n(row['Dias'] || row['days_overdue']),
-          utilization: normalizeText(row['Utilização'] || row['utilization']),
-          negativado: normalizeText(row['Negativado'] || row['negativado']),
-          description: 'Importado via Planilha',
-        }
-
-        if (!dbItem.due_date) {
-          throw new Error('Data de vencimento inválida.')
-        }
-
-        // Changed from insert to upsert to support duplicate prevention logic
-        const { error } = await supabase.from('receivables').upsert(dbItem, {
-          onConflict: 'company_id,invoice_number,order_number,installment',
-          ignoreDuplicates: false, // Update existing records
-        })
-
-        if (error) throw error
-        results.success++
-      } catch (err: any) {
-        results.errors.push(`Linha ${rowIndex + 2}: ${err.message}`)
-      }
-    })
-
-    await Promise.all(promises)
-
-    if (onProgress) {
-      const processed = Math.min(i + BATCH_SIZE, rows.length)
-      const percent = Math.round((processed / rows.length) * 100)
+    processedCount++
+    if (onProgress && processedCount % 50 === 0) {
+      const percent = Math.round((processedCount / rows.length) * 50) // 0-50% for preparation
       onProgress(percent)
     }
+  }
 
-    // Small delay to prevent blocking UI thread completely
-    await new Promise((resolve) => setTimeout(resolve, 0))
+  // 2. Perform Atomic Overwrite per Company
+  let companiesProcessed = 0
+  const totalCompanies = companiesMap.size
+
+  for (const [companyId, companyRows] of companiesMap.entries()) {
+    try {
+      const { data, error } = await supabase.rpc(
+        'replace_receivables_for_company',
+        {
+          p_company_id: companyId,
+          p_rows: companyRows,
+        },
+      )
+
+      if (error) throw error
+
+      if (data && data.success) {
+        results.success += data.inserted
+        results.deleted += data.deleted
+      } else {
+        throw new Error(data?.error || 'Erro desconhecido ao substituir dados.')
+      }
+    } catch (err: any) {
+      results.errors.push(
+        `Erro crítico ao salvar dados da empresa ${companyId}: ${err.message}`,
+      )
+    }
+
+    companiesProcessed++
+    if (onProgress) {
+      const percent =
+        50 + Math.round((companiesProcessed / totalCompanies) * 50) // 50-100% for saving
+      onProgress(percent)
+    }
   }
 
   return results

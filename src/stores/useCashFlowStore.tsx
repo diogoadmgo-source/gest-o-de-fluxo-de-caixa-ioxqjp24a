@@ -255,6 +255,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
             company_id: log.company_id,
             success_count: log.success_count || 0,
             error_count: log.error_count || 0,
+            deleted_count: log.deleted_count || 0,
             error_details: log.error_details,
             created_at: log.created_at,
           })),
@@ -493,8 +494,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updateBankBalances = async (newBalances: BankBalance[]) => {
-    // This function is kept for backward compatibility but might be less used now
-    // that we perform upserts directly in the component.
     await fetchData()
   }
 
@@ -626,9 +625,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true)
     let successCount = 0
     let errorCount = 0
+    let deletedCount = 0
     let importResults: any = {
       success: 0,
       errors: [],
+      deleted: 0,
       total: 0,
       lastCompanyId: '',
     }
@@ -656,6 +657,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       successCount = importResults.success
       errorCount = importResults.errors.length
+      deletedCount = importResults.deleted || 0
 
       if (user) {
         const logCompanyId =
@@ -672,6 +674,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
               total_records: data.length,
               success_count: successCount,
               error_count: errorCount,
+              deleted_count: deletedCount,
               error_details:
                 importResults.errors.length > 0 ? importResults.errors : null,
               company_id: logCompanyId,
@@ -683,6 +686,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
             await logAudit('Import', 'DataImport', logData.id, {
               type,
               count: successCount,
+              deleted: deletedCount,
             })
           }
         }

@@ -14,6 +14,7 @@ import {
   Play,
   AlertCircle,
   CheckCircle,
+  AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
@@ -111,10 +112,6 @@ export function ImportDialog({
 
     try {
       if (selectedFile.name.endsWith('.xlsx')) {
-        // Since we cannot install 'read-excel-file' or 'xlsx' per instructions constraint,
-        // we can't parse XLSX in browser efficiently.
-        // For the sake of the requirement "The file upload component will be updated to accept both",
-        // we enable the UI. If a user tries, we show a friendly message or fallback if it's actually CSV.
         toast.error(
           'A leitura de arquivos .xlsx requer processamento adicional não disponível neste ambiente. Converta para CSV.',
         )
@@ -182,7 +179,22 @@ export function ImportDialog({
             Faça upload de arquivo CSV ou XLSX.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+
+        {type === 'receivable' && (
+          <Alert variant="destructive" className="py-2">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle className="text-sm font-semibold">
+              Atenção: Sobrescrita de Dados
+            </AlertTitle>
+            <AlertDescription className="text-xs">
+              A importação de contas a receber substituirá TODOS os títulos
+              existentes para as empresas identificadas no arquivo.
+              Certifique-se de que o arquivo contém a base completa.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="grid gap-4 py-2">
           {!selectedFile ? (
             <div
               className={cn(
@@ -284,8 +296,13 @@ export function ImportDialog({
             disabled={
               !selectedFile || isProcessing || (!!result && result.success)
             }
+            variant={type === 'receivable' ? 'destructive' : 'default'}
           >
-            {isProcessing ? 'Processando...' : 'Importar Arquivo'}
+            {isProcessing
+              ? 'Processando...'
+              : type === 'receivable'
+                ? 'Sobrescrever e Importar'
+                : 'Importar Arquivo'}
             {!isProcessing && <Play className="ml-2 h-4 w-4" />}
           </Button>
         </div>
