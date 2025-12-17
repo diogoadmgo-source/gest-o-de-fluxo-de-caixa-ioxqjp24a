@@ -19,6 +19,7 @@ interface AuthContextType {
   signOut: () => Promise<{ error: any }>
   resetPassword: (email: string) => Promise<{ error: any }>
   updatePassword: (password: string) => Promise<{ error: any }>
+  updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: any }>
   loading: boolean
   refreshProfile: () => Promise<void>
 }
@@ -138,13 +139,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // Check for 2FA requirement
         if (profile?.is_2fa_enabled) {
-          // We can't really "pause" the login here easily without real MFA flow.
-          // For this implementation, we will pass a signal back to the UI
-          // but we won't sign out immediately, effectively allowing access but UI should block.
-          // Or we can return a specific error code that the UI handles.
-
-          // Note: In a real app with Supabase MFA, signInWithPassword would require MFA
-          // if configured. Since we are using a custom flag, we handle it in UI.
           return { error: null, requires2FA: true }
         }
 
@@ -211,6 +205,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error }
   }
 
+  const updateProfile = async (updates: Partial<UserProfile>) => {
+    if (!user) return { error: 'No user logged in' }
+
+    const { error } = await supabase
+      .from('user_profiles')
+      .update(updates)
+      .eq('id', user.id)
+
+    if (!error) {
+      await refreshProfile()
+      toast.success('Perfil atualizado com sucesso!')
+    } else {
+      toast.error('Erro ao atualizar perfil')
+      console.error(error)
+    }
+    return { error }
+  }
+
   const refreshProfile = async () => {
     if (user) {
       const profile = await fetchProfile(user.id)
@@ -227,6 +239,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     signOut,
     resetPassword,
     updatePassword,
+    updateProfile,
     loading,
     refreshProfile,
   }
