@@ -314,6 +314,45 @@ export async function salvarBankManual(payload: any, userId: string) {
   }
 }
 
+export async function salvarImportLogManual(payload: any, userId: string) {
+  const companyInput = payload.company_id
+  if (!companyInput) {
+    throw new Error('Selecione/Informe a empresa')
+  }
+
+  const companyId = await ensureCompanyAndLink(userId, companyInput)
+
+  const dbPayload = {
+    company_id: companyId,
+    user_id: userId,
+    filename: s(payload.filename),
+    status: s(payload.status),
+    total_records: n(payload.total_records),
+    success_count: n(payload.success_count),
+    error_count: n(payload.error_count),
+    error_details: payload.error_details || null,
+  }
+
+  if (payload.id) {
+    const { data, error } = await supabase
+      .from('import_logs')
+      .update(dbPayload)
+      .eq('id', payload.id)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  } else {
+    const { data, error } = await supabase
+      .from('import_logs')
+      .insert(dbPayload)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  }
+}
+
 // --- Import Logic with Batching ---
 
 export async function importarReceivables(

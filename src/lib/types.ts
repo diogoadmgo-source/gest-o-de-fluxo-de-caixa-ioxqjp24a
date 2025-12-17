@@ -205,4 +205,5 @@ export interface ImportHistoryEntry {
   success_count?: number
   error_count?: number
   error_details?: any
+  created_at?: string
 }

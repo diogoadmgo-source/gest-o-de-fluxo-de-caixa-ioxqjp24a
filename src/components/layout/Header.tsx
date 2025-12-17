@@ -52,7 +52,7 @@ const getPageTitle = (pathname: string) => {
     case '/auditoria':
       return 'Auditoria'
     case '/ajustes':
-      return 'Correções e Lançamentos'
+      return 'Lançamentos extraordinários'
     default:
       return 'HospCash'
   }

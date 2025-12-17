@@ -12,6 +12,7 @@ import {
   Landmark,
   Users,
   FileSpreadsheet,
+  UploadCloud,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,9 +31,10 @@ const baseMenuItems = [
   { icon: Landmark, label: 'Saldos', path: '/saldos' },
   { icon: ArrowDownToLine, label: 'Contas a Receber', path: '/recebiveis' },
   { icon: ArrowUpFromLine, label: 'Contas a Pagar', path: '/pagaveis' },
+  { icon: UploadCloud, label: 'Importações', path: '/importacoes' },
   {
     icon: FileSpreadsheet,
-    label: 'Correções e Lançamentos Extraordinários',
+    label: 'Lançamentos extraordinários',
     path: '/ajustes',
   },
   { icon: BarChart3, label: 'Relatórios', path: '/relatorios' },

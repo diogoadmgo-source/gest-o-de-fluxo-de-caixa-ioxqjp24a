@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -39,6 +40,7 @@ export function PayableForm({
     due_date: new Date().toISOString().split('T')[0],
     issue_date: new Date().toISOString().split('T')[0],
     category: 'Geral',
+    description: '',
     ...initialData,
   })
 
@@ -60,20 +62,27 @@ export function PayableForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Front-end Validation as per Acceptance Criteria
     if (!formData.company_id || formData.company_id === 'none') {
       toast.error('Selecione/Informe a empresa')
       return
     }
 
-    if (formData.entity_name && formData.principal_value !== undefined) {
-      onSave(formData as Transaction)
+    if (!formData.entity_name) {
+      toast.error('Fornecedor é obrigatório')
+      return
     }
+
+    if (formData.principal_value === undefined) {
+      toast.error('Valor principal é obrigatório')
+      return
+    }
+
+    onSave(formData as Transaction)
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="company">
             Empresa <span className="text-destructive">*</span>
@@ -98,28 +107,6 @@ export function PayableForm({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="doc">Documento</Label>
-          <Input
-            id="doc"
-            value={formData.document_number}
-            onChange={(e) => handleChange('document_number', e.target.value)}
-            required
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="supplier">Fornecedor</Label>
-        <Input
-          id="supplier"
-          value={formData.entity_name}
-          onChange={(e) => handleChange('entity_name', e.target.value)}
-          required
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
           <Label htmlFor="status">Status</Label>
           <Select
             value={formData.status}
@@ -132,21 +119,65 @@ export function PayableForm({
               <SelectItem value="pending">Pendente</SelectItem>
               <SelectItem value="paid">Pago</SelectItem>
               <SelectItem value="overdue">Vencido</SelectItem>
+              <SelectItem value="cancelled">Cancelado</SelectItem>
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="dueDate">Vencimento</Label>
+          <Label htmlFor="supplier">
+            Fornecedor <span className="text-destructive">*</span>
+          </Label>
           <Input
-            id="dueDate"
+            id="supplier"
+            value={formData.entity_name}
+            onChange={(e) => handleChange('entity_name', e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="doc">Documento / NF</Label>
+          <Input
+            id="doc"
+            value={formData.document_number}
+            onChange={(e) => handleChange('document_number', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="issue_date">Emissão</Label>
+          <Input
+            id="issue_date"
+            type="date"
+            value={formData.issue_date}
+            onChange={(e) => handleChange('issue_date', e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="due_date">Vencimento</Label>
+          <Input
+            id="due_date"
             type="date"
             value={formData.due_date}
             onChange={(e) => handleChange('due_date', e.target.value)}
           />
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="category">Categoria</Label>
+          <Input
+            id="category"
+            value={formData.category}
+            onChange={(e) => handleChange('category', e.target.value)}
+            placeholder="Geral"
+          />
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-md bg-muted/10">
         <div className="space-y-2">
           <Label htmlFor="principal">Principal (R$)</Label>
           <Input
@@ -182,18 +213,27 @@ export function PayableForm({
             }
           />
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="total">Total (R$)</Label>
+          <Input
+            id="total"
+            value={formData.amount?.toLocaleString('pt-BR', {
+              style: 'currency',
+              currency: 'BRL',
+            })}
+            disabled
+            className="bg-muted font-bold"
+          />
+        </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="total">Valor Total (Calculado)</Label>
-        <Input
-          id="total"
-          value={formData.amount?.toLocaleString('pt-BR', {
-            style: 'currency',
-            currency: 'BRL',
-          })}
-          disabled
-          className="bg-muted font-bold"
+        <Label htmlFor="description">Descrição</Label>
+        <Textarea
+          id="description"
+          value={formData.description}
+          onChange={(e) => handleChange('description', e.target.value)}
+          rows={3}
         />
       </div>
 

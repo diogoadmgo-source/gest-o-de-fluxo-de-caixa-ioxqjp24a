@@ -24,6 +24,7 @@ import {
   salvarReceivableManual,
   salvarPayableManual,
   salvarBankManual,
+  salvarImportLogManual,
   importarReceivables,
   importarPayables,
   getVisibleCompanyIds,
@@ -59,6 +60,10 @@ interface CashFlowContextType {
   deleteBank: (id: string) => Promise<void>
 
   addAdjustment: (adjustment: FinancialAdjustment) => Promise<void>
+
+  addImportLog: (log: ImportHistoryEntry) => Promise<void>
+  updateImportLog: (log: ImportHistoryEntry) => Promise<void>
+  deleteImportLog: (id: string) => Promise<void>
 
   importData: (
     type: 'receivable' | 'payable',
@@ -115,6 +120,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     setBankBalances([])
     setAdjustments([])
     setCashFlowEntries([])
+    setImportHistory([])
 
     try {
       // 1. Fetch Visible Companies (Single or All allowed)
@@ -154,7 +160,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       if (payablesData) setPayables(payablesData as any)
 
       // 4. Fetch Banks (Active Only, Ordered by created_at desc)
-      // Selecting specific columns as per requirements + created_at for sorting
       const { data: banksData } = await supabase
         .from('banks')
         .select(
@@ -188,7 +193,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .select('*')
         .in('company_id', visibleIds)
         .order('created_at', { ascending: false })
-        .limit(10)
 
       if (logsData) {
         setImportHistory(
@@ -204,6 +208,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
             success_count: log.success_count || 0,
             error_count: log.error_count || 0,
             error_details: log.error_details,
+            created_at: log.created_at,
           })),
         )
       }
@@ -354,11 +359,30 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     setCashFlowEntries(newEntries)
   }
 
+  const logAudit = async (
+    action: string,
+    entity: string,
+    entityId: string,
+    details: any,
+  ) => {
+    if (!user) return
+    await supabase.from('audit_logs').insert({
+      action,
+      entity,
+      entity_id: entityId,
+      user_id: user.id,
+      details,
+    })
+  }
+
   // --- Actions ---
   const addReceivable = async (receivable: Receivable) => {
     try {
       if (!user) throw new Error('Usuário não autenticado')
-      await salvarReceivableManual(receivable, user.id)
+      const data = await salvarReceivableManual(receivable, user.id)
+      await logAudit('Create', 'Receivables', data.id, {
+        invoice: data.invoice_number,
+      })
       toast.success('Recebível adicionado com sucesso!')
       await fetchData() // Reload data
     } catch (error: any) {
@@ -370,7 +394,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const updateReceivable = async (receivable: Receivable) => {
     try {
       if (!user) throw new Error('Usuário não autenticado')
-      await salvarReceivableManual(receivable, user.id)
+      const data = await salvarReceivableManual(receivable, user.id)
+      await logAudit('Update', 'Receivables', data.id, {
+        invoice: data.invoice_number,
+      })
       toast.success('Recebível atualizado com sucesso!')
       await fetchData()
     } catch (error: any) {
@@ -379,18 +406,23 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const deleteReceivable = async (id: string) => {
+    if (!user) return
     const { error } = await supabase.from('receivables').delete().eq('id', id)
     if (error) {
       toast.error('Erro ao excluir recebível')
       return
     }
+    await logAudit('Delete', 'Receivables', id, {})
     setReceivables((prev) => prev.filter((r) => r.id !== id))
   }
 
   const addPayable = async (payable: Transaction) => {
     try {
       if (!user) throw new Error('Usuário não autenticado')
-      await salvarPayableManual(payable, user.id)
+      const data = await salvarPayableManual(payable, user.id)
+      await logAudit('Create', 'Payables', data.id, {
+        document: data.document_number,
+      })
       toast.success('Conta a pagar adicionada com sucesso!')
       await fetchData()
     } catch (error: any) {
@@ -401,7 +433,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const updatePayable = async (payable: Transaction) => {
     try {
       if (!user) throw new Error('Usuário não autenticado')
-      await salvarPayableManual(payable, user.id)
+      const data = await salvarPayableManual(payable, user.id)
+      await logAudit('Update', 'Payables', data.id, {
+        document: data.document_number,
+      })
       toast.success('Conta atualizada com sucesso!')
       await fetchData()
     } catch (error: any) {
@@ -410,11 +445,13 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const deletePayable = async (id: string) => {
+    if (!user) return
     const { error } = await supabase.from('transactions').delete().eq('id', id)
     if (error) {
       toast.error('Erro ao excluir conta')
       return
     }
+    await logAudit('Delete', 'Payables', id, {})
     setPayables((prev) => prev.filter((p) => p.id !== id))
   }
 
@@ -442,7 +479,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const addBank = async (bank: Bank) => {
     try {
       if (!user) throw new Error('Usuário não autenticado')
-      await salvarBankManual(bank, user.id)
+      const data = await salvarBankManual(bank, user.id)
+      await logAudit('Create', 'Banks', data.id, { name: data.name })
       await fetchData()
       return { error: null }
     } catch (error: any) {
@@ -453,7 +491,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const updateBank = async (updated: Bank) => {
     try {
       if (!user) throw new Error('Usuário não autenticado')
-      await salvarBankManual(updated, user.id)
+      const data = await salvarBankManual(updated, user.id)
+      await logAudit('Update', 'Banks', data.id, { name: data.name })
       await fetchData()
     } catch (error: any) {
       toast.error('Erro ao atualizar banco: ' + error.message)
@@ -461,6 +500,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const deleteBank = async (id: string) => {
+    if (!user) return
     const { error } = await supabase
       .from('banks')
       .update({ active: false })
@@ -469,6 +509,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       toast.error('Erro ao inativar banco: ' + error.message)
       return
     }
+    await logAudit('Delete', 'Banks', id, { status: 'inactive' })
     // Remove from the list since the store only keeps active banks
     setBanks((prev) => prev.filter((b) => b.id !== id))
   }
@@ -495,9 +536,52 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       console.error(error)
       return
     }
+    await logAudit('Create', 'Adjustments', newAdj.id, {
+      amount: newAdj.amount,
+      type: newAdj.type,
+    })
 
     setAdjustments((prev) => [newAdj as any, ...prev])
     toast.success('Ajuste registrado com sucesso!')
+  }
+
+  const addImportLog = async (log: ImportHistoryEntry) => {
+    try {
+      if (!user) throw new Error('Usuário não autenticado')
+      const data = await salvarImportLogManual(log, user.id)
+      await logAudit('Create', 'ImportLogs', data.id, {
+        filename: data.filename,
+      })
+      toast.success('Log de importação adicionado!')
+      await fetchData()
+    } catch (error: any) {
+      toast.error('Erro ao adicionar log: ' + error.message)
+    }
+  }
+
+  const updateImportLog = async (log: ImportHistoryEntry) => {
+    try {
+      if (!user) throw new Error('Usuário não autenticado')
+      const data = await salvarImportLogManual(log, user.id)
+      await logAudit('Update', 'ImportLogs', data.id, {
+        filename: data.filename,
+      })
+      toast.success('Log de importação atualizado!')
+      await fetchData()
+    } catch (error: any) {
+      toast.error('Erro ao atualizar log: ' + error.message)
+    }
+  }
+
+  const deleteImportLog = async (id: string) => {
+    if (!user) return
+    const { error } = await supabase.from('import_logs').delete().eq('id', id)
+    if (error) {
+      toast.error('Erro ao excluir log de importação')
+      return
+    }
+    await logAudit('Delete', 'ImportLogs', id, {})
+    setImportHistory((prev) => prev.filter((i) => i.id !== id))
   }
 
   const importData = async (
@@ -533,18 +617,29 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         const logCompanyId = importResults.lastCompanyId || selectedCompanyId
 
         if (logCompanyId && logCompanyId !== 'all') {
-          await supabase.from('import_logs').insert({
-            user_id: user.id,
-            filename: filename,
-            status:
-              errorCount === 0 && successCount > 0 ? 'success' : 'failure',
-            total_records: data.length,
-            success_count: successCount,
-            error_count: errorCount,
-            error_details:
-              importResults.errors.length > 0 ? importResults.errors : null,
-            company_id: logCompanyId,
-          })
+          const { data: logData, error: logError } = await supabase
+            .from('import_logs')
+            .insert({
+              user_id: user.id,
+              filename: filename,
+              status:
+                errorCount === 0 && successCount > 0 ? 'success' : 'failure',
+              total_records: data.length,
+              success_count: successCount,
+              error_count: errorCount,
+              error_details:
+                importResults.errors.length > 0 ? importResults.errors : null,
+              company_id: logCompanyId,
+            })
+            .select()
+            .single()
+
+          if (logData) {
+            await logAudit('Import', 'DataImport', logData.id, {
+              type,
+              count: successCount,
+            })
+          }
         }
       }
 
@@ -617,6 +712,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         updateBank,
         deleteBank,
         addAdjustment,
+        addImportLog,
+        updateImportLog,
+        deleteImportLog,
         importData,
         clearImportHistory,
         recalculateCashFlow,

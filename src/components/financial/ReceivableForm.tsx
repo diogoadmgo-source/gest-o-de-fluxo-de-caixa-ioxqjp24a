@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -30,13 +31,26 @@ export function ReceivableForm({
     company_id: selectedCompanyId || undefined,
     company: '',
     customer: '',
+    customer_code: '',
+    customer_doc: '',
     invoice_number: '',
+    order_number: '',
+    description: '',
     principal_value: 0,
     fine: 0,
     interest: 0,
     updated_value: 0,
     title_status: 'Aberto',
     due_date: new Date().toISOString().split('T')[0],
+    issue_date: new Date().toISOString().split('T')[0],
+    payment_prediction: '',
+    regional: '',
+    seller: '',
+    uf: '',
+    installment: '',
+    utilization: '',
+    days_overdue: 0,
+    negativado: 'Não',
     ...initialData,
   })
 
@@ -75,14 +89,25 @@ export function ReceivableForm({
       return
     }
 
-    if (formData.customer && formData.principal_value !== undefined) {
-      onSave(formData as Receivable)
+    if (!formData.customer) {
+      toast.error('O campo Cliente é obrigatório')
+      return
     }
+
+    if (formData.principal_value === undefined) {
+      toast.error('O valor principal é obrigatório')
+      return
+    }
+
+    onSave(formData as Receivable)
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-4 max-h-[80vh] overflow-y-auto px-1"
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="company">
             Empresa <span className="text-destructive">*</span>
@@ -107,29 +132,7 @@ export function ReceivableForm({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="invoice">Nota Fiscal</Label>
-          <Input
-            id="invoice"
-            value={formData.invoice_number}
-            onChange={(e) => handleChange('invoice_number', e.target.value)}
-            required
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="customer">Cliente</Label>
-        <Input
-          id="customer"
-          value={formData.customer}
-          onChange={(e) => handleChange('customer', e.target.value)}
-          required
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="status">Status</Label>
+          <Label htmlFor="title_status">Status</Label>
           <Select
             value={formData.title_status}
             onValueChange={(val) => handleChange('title_status', val)}
@@ -144,18 +147,116 @@ export function ReceivableForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="dueDate">Vencimento</Label>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-2 md:col-span-2">
+          <Label htmlFor="customer">
+            Cliente <span className="text-destructive">*</span>
+          </Label>
           <Input
-            id="dueDate"
+            id="customer"
+            value={formData.customer}
+            onChange={(e) => handleChange('customer', e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="customer_code">Cód. Cliente</Label>
+          <Input
+            id="customer_code"
+            value={formData.customer_code}
+            onChange={(e) => handleChange('customer_code', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="customer_doc">CPF/CNPJ</Label>
+          <Input
+            id="customer_doc"
+            value={formData.customer_doc}
+            onChange={(e) => handleChange('customer_doc', e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="uf">UF</Label>
+          <Input
+            id="uf"
+            value={formData.uf}
+            onChange={(e) => handleChange('uf', e.target.value)}
+            maxLength={2}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="regional">Regional</Label>
+          <Input
+            id="regional"
+            value={formData.regional}
+            onChange={(e) => handleChange('regional', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="invoice">Nota Fiscal</Label>
+          <Input
+            id="invoice"
+            value={formData.invoice_number}
+            onChange={(e) => handleChange('invoice_number', e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="order">Pedido</Label>
+          <Input
+            id="order"
+            value={formData.order_number}
+            onChange={(e) => handleChange('order_number', e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="installment">Parcela</Label>
+          <Input
+            id="installment"
+            value={formData.installment}
+            onChange={(e) => handleChange('installment', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="issue_date">Emissão</Label>
+          <Input
+            id="issue_date"
+            type="date"
+            value={formData.issue_date}
+            onChange={(e) => handleChange('issue_date', e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="due_date">Vencimento</Label>
+          <Input
+            id="due_date"
             type="date"
             value={formData.due_date}
             onChange={(e) => handleChange('due_date', e.target.value)}
           />
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="payment_prediction">Previsão Pagto.</Label>
+          <Input
+            id="payment_prediction"
+            type="date"
+            value={formData.payment_prediction || ''}
+            onChange={(e) => handleChange('payment_prediction', e.target.value)}
+          />
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-md bg-muted/10">
         <div className="space-y-2">
           <Label htmlFor="principal">Principal (R$)</Label>
           <Input
@@ -191,18 +292,73 @@ export function ReceivableForm({
             }
           />
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="total">Atualizado (R$)</Label>
+          <Input
+            id="total"
+            value={formData.updated_value?.toLocaleString('pt-BR', {
+              style: 'currency',
+              currency: 'BRL',
+            })}
+            disabled
+            className="bg-muted font-bold"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="seller">Vendedor</Label>
+          <Input
+            id="seller"
+            value={formData.seller}
+            onChange={(e) => handleChange('seller', e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="negativado">Negativado?</Label>
+          <Select
+            value={formData.negativado || 'Não'}
+            onValueChange={(val) => handleChange('negativado', val)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Sim">Sim</SelectItem>
+              <SelectItem value="Não">Não</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="days_overdue">Dias em Atraso</Label>
+          <Input
+            id="days_overdue"
+            type="number"
+            value={formData.days_overdue}
+            onChange={(e) =>
+              handleChange('days_overdue', parseInt(e.target.value))
+            }
+          />
+        </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="total">Valor Atualizado (Calculado)</Label>
+        <Label htmlFor="utilization">Utilização</Label>
         <Input
-          id="total"
-          value={formData.updated_value?.toLocaleString('pt-BR', {
-            style: 'currency',
-            currency: 'BRL',
-          })}
-          disabled
-          className="bg-muted font-bold"
+          id="utilization"
+          value={formData.utilization}
+          onChange={(e) => handleChange('utilization', e.target.value)}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="description">Descrição / Observações</Label>
+        <Textarea
+          id="description"
+          value={formData.description}
+          onChange={(e) => handleChange('description', e.target.value)}
+          rows={3}
         />
       </div>
 

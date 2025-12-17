@@ -20,6 +20,7 @@ import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Users from './pages/settings/Users'
 import Adjustments from './pages/Adjustments'
+import Imports from './pages/Imports'
 
 const App = () => (
   <BrowserRouter
@@ -41,6 +42,7 @@ const App = () => (
               <Route path="/saldos" element={<Balances />} />
               <Route path="/recebiveis" element={<Receivables />} />
               <Route path="/pagaveis" element={<Payables />} />
+              <Route path="/importacoes" element={<Imports />} />
               <Route path="/relatorios" element={<Reports />} />
               <Route path="/fechamento" element={<PeriodClosing />} />
               <Route path="/configuracoes" element={<Settings />} />
