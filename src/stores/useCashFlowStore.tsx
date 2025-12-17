@@ -288,7 +288,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         dayPayables -
         entry.imports -
         entry.other_expenses +
-        adjustments_credit -
+        adjustmentsCredit -
         adjustmentsDebit
 
       let accumulatedBalance = openingBalance + dailyBalance
