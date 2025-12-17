@@ -28,6 +28,7 @@ import {
   importarReceivables,
   importarPayables,
   getVisibleCompanyIds,
+  fetchAllRecords,
 } from '@/services/financial'
 import { normalizeCompanyId } from '@/lib/utils'
 
@@ -125,7 +126,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return
 
     setLoading(true)
-    // Clear data to avoid ghosts
     setReceivables([])
     setPayables([])
     setBanks([])
@@ -135,14 +135,13 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     setImportHistory([])
 
     try {
-      // 1. Fetch Visible Companies (Single or All allowed)
       const visibleIds = await getVisibleCompanyIds(
         supabase,
         user.id,
         selectedCompanyId,
       )
 
-      // Fetch Companies List for Dropdown
+      // Fetch Companies List
       const { data: userCompaniesData } = await supabase
         .from('user_companies')
         .select('company_id')
@@ -163,44 +162,24 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         setCompanies([])
       }
 
-      // 2. Fetch Receivables with increased limit
-      let receivablesQuery = supabase
-        .from('receivables')
-        .select('*')
-        .range(0, 49999) // Fetch up to 50k rows to avoid default 1000 row limit
+      // 2. Fetch ALL Receivables
+      const allReceivables = await fetchAllRecords(
+        supabase,
+        'receivables',
+        visibleIds,
+      )
+      setReceivables(allReceivables as any)
 
-      if (visibleIds.length > 0) {
-        receivablesQuery = receivablesQuery.in('company_id', visibleIds)
-      }
-      const { data: receivablesData, error: receivablesError } =
-        await receivablesQuery
+      // 3. Fetch ALL Payables
+      const allPayables = await fetchAllRecords(
+        supabase,
+        'transactions',
+        visibleIds,
+        (q) => q.eq('type', 'payable'),
+      )
+      setPayables(allPayables as any)
 
-      if (receivablesError) {
-        console.error('Error fetching receivables:', receivablesError)
-        toast.error('Erro ao buscar recebíveis: ' + receivablesError.message)
-      } else if (receivablesData) {
-        setReceivables(receivablesData as any)
-      }
-
-      // 3. Fetch Payables with increased limit
-      let payablesQuery = supabase
-        .from('transactions')
-        .select('*')
-        .eq('type', 'payable')
-        .range(0, 49999) // Fetch up to 50k rows
-
-      if (visibleIds.length > 0) {
-        payablesQuery = payablesQuery.in('company_id', visibleIds)
-      }
-      const { data: payablesData, error: payablesError } = await payablesQuery
-
-      if (payablesError) {
-        console.error('Error fetching payables:', payablesError)
-      } else if (payablesData) {
-        setPayables(payablesData as any)
-      }
-
-      // 4. Fetch Banks (Active Only, Ordered by created_at desc)
+      // 4. Fetch Banks (Active Only)
       let banksQuery = supabase
         .from('banks')
         .select(
@@ -239,7 +218,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .from('import_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(100) // Keep logs limited to most recent
+        .limit(100)
 
       if (visibleIds.length > 0) {
         logsQuery = logsQuery.in('company_id', visibleIds)
@@ -252,7 +231,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
             id: log.id,
             date: log.created_at,
             filename: log.filename,
-            type: 'receivable', // Default fallback
+            type: 'receivable',
             status: log.status === 'success' ? 'success' : 'error',
             records_count: log.total_records || 0,
             user_name: userProfile?.name || 'Usuário',
@@ -272,13 +251,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
-  // Filter companies based on user access
   const visibleCompanies =
     userProfile?.profile === 'Administrator'
       ? companies
       : companies.filter((c) => allowedCompanyIds.includes(c.id))
 
-  // Validate selected company
   useEffect(() => {
     if (
       selectedCompanyId &&
@@ -291,7 +268,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [selectedCompanyId, allowedCompanyIds, userProfile])
 
-  // --- Recalculation ---
   useEffect(() => {
     performRecalculation()
   }, [
@@ -304,7 +280,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   ])
 
   const performRecalculation = () => {
-    // If no data, empty state
     if (
       receivables.length === 0 &&
       payables.length === 0 &&
@@ -421,7 +396,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     })
   }
 
-  // --- Actions ---
   const addReceivable = async (receivable: Receivable) => {
     try {
       if (!user) throw new Error('Usuário não autenticado')
@@ -430,7 +404,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         invoice: data.invoice_number,
       })
       toast.success('Recebível adicionado com sucesso!')
-      await fetchData() // Reload data
+      await fetchData()
     } catch (error: any) {
       toast.error('Erro ao adicionar recebível: ' + error.message)
       console.error(error)

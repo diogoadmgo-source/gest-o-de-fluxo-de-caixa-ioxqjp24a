@@ -35,6 +35,58 @@ export function d(value: any): string | null {
   return null
 }
 
+// --- Fetching Helpers ---
+
+/**
+ * Fetches all records from a table with pagination to bypass default limits.
+ */
+export async function fetchAllRecords(
+  supabaseClient: any,
+  table: string,
+  companyIds: string[],
+  extraFilter?: (query: any) => any,
+) {
+  let allData: any[] = []
+  let page = 0
+  const pageSize = 2000 // Optimized page size
+  let hasMore = true
+
+  // Safety limit to prevent infinite loops (e.g., 200k records max for client-side)
+  const MAX_PAGES = 100
+
+  while (hasMore && page < MAX_PAGES) {
+    let query = supabaseClient.from(table).select('*')
+
+    if (companyIds.length > 0) {
+      query = query.in('company_id', companyIds)
+    }
+
+    if (extraFilter) {
+      query = extraFilter(query)
+    }
+
+    const { data, error } = await query.range(
+      page * pageSize,
+      (page + 1) * pageSize - 1,
+    )
+
+    if (error) throw error
+
+    if (data) {
+      allData = [...allData, ...data]
+      if (data.length < pageSize) {
+        hasMore = false
+      } else {
+        page++
+      }
+    } else {
+      hasMore = false
+    }
+  }
+
+  return allData
+}
+
 // --- Company Visibility Logic ---
 
 export async function getVisibleCompanyIds(
