@@ -15,12 +15,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   Plus,
-  Search,
-  Filter,
   MoreHorizontal,
   Upload,
   Trash2,
@@ -54,12 +51,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, isSameDay, startOfDay, endOfDay } from 'date-fns'
+import { DateRange } from 'react-day-picker'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Receivable } from '@/lib/types'
 import { FinancialStats } from '@/components/financial/FinancialStats'
 import { ReceivableForm } from '@/components/financial/ReceivableForm'
 import { ImportDialog } from '@/components/common/ImportDialog'
+import { ReceivableFilters } from '@/components/financial/ReceivableFilters'
 
 export default function Receivables() {
   const {
@@ -70,17 +69,41 @@ export default function Receivables() {
     loading,
     recalculateCashFlow,
   } = useCashFlowStore()
+
+  // --- Filter States ---
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<
-    'all' | 'Aberto' | 'Liquidado'
-  >('all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [dueDateRange, setDueDateRange] = useState<DateRange | undefined>()
+  const [issueDateRange, setIssueDateRange] = useState<DateRange | undefined>()
+  const [minValue, setMinValue] = useState('')
+  const [maxValue, setMaxValue] = useState('')
+
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<Receivable | null>(null)
   const [viewingItem, setViewingItem] = useState<Receivable | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  const hasActiveFilters =
+    searchTerm !== '' ||
+    statusFilter !== 'all' ||
+    dueDateRange !== undefined ||
+    issueDateRange !== undefined ||
+    minValue !== '' ||
+    maxValue !== ''
+
+  const handleClearFilters = () => {
+    setSearchTerm('')
+    setStatusFilter('all')
+    setDueDateRange(undefined)
+    setIssueDateRange(undefined)
+    setMinValue('')
+    setMaxValue('')
+    toast.info('Filtros limpos.')
+  }
+
   const filteredData = useMemo(() => {
     return receivables.filter((t) => {
+      // 1. Search Term
       const term = searchTerm.toLowerCase()
       const matchesTerm =
         (t.customer || '').toLowerCase().includes(term) ||
@@ -88,18 +111,65 @@ export default function Receivables() {
         (t.order_number || '').toLowerCase().includes(term) ||
         (t.customer_code || '').toLowerCase().includes(term)
 
-      // Filter logic: Only show matches
+      if (!matchesTerm) return false
+
+      // 2. Status
       const matchesStatus =
         statusFilter === 'all' || t.title_status === statusFilter
+      if (!matchesStatus) return false
 
-      return matchesTerm && matchesStatus
+      // 3. Due Date
+      if (dueDateRange?.from) {
+        if (!t.due_date) return false
+        const itemDate = parseISO(t.due_date)
+        if (dueDateRange.to) {
+          if (
+            itemDate < startOfDay(dueDateRange.from) ||
+            itemDate > endOfDay(dueDateRange.to)
+          ) {
+            return false
+          }
+        } else {
+          if (!isSameDay(itemDate, dueDateRange.from)) {
+            return false
+          }
+        }
+      }
+
+      // 4. Issue Date
+      if (issueDateRange?.from) {
+        if (!t.issue_date) return false
+        const itemDate = parseISO(t.issue_date)
+        if (issueDateRange.to) {
+          if (
+            itemDate < startOfDay(issueDateRange.from) ||
+            itemDate > endOfDay(issueDateRange.to)
+          ) {
+            return false
+          }
+        } else {
+          if (!isSameDay(itemDate, issueDateRange.from)) {
+            return false
+          }
+        }
+      }
+
+      // 5. Value
+      const val = t.principal_value || 0
+      if (minValue && val < parseFloat(minValue)) return false
+      if (maxValue && val > parseFloat(maxValue)) return false
+
+      return true
     })
-  }, [receivables, searchTerm, statusFilter])
-
-  // Calculation needs to depend on filteredData if we want totals to reflect search?
-  // User story says: "Totals values ... must sum correctly ... for filtered period"
-  // Assuming 'filteredData' here respects the company filters from store and status filters from UI.
-  // The 'receivables' from store are already filtered by visible companies.
+  }, [
+    receivables,
+    searchTerm,
+    statusFilter,
+    dueDateRange,
+    issueDateRange,
+    minValue,
+    maxValue,
+  ])
 
   const openReceivables = filteredData.filter(
     (r) => r.title_status === 'Aberto',
@@ -151,7 +221,7 @@ export default function Receivables() {
     (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in pb-10">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">
@@ -195,7 +265,7 @@ export default function Receivables() {
       <FinancialStats
         stats={[
           {
-            label: 'Total Geral',
+            label: 'Total Geral (Filtrado)',
             ...totalStats,
             color: 'primary',
             icon: Briefcase,
@@ -205,7 +275,7 @@ export default function Receivables() {
             },
           },
           {
-            label: 'Total Aberto',
+            label: 'Total Aberto (Filtrado)',
             ...openStats,
             color: 'custom-red',
             icon: AlertCircle,
@@ -215,7 +285,7 @@ export default function Receivables() {
             },
           },
           {
-            label: 'Total Liquidado',
+            label: 'Total Liquidado (Filtrado)',
             ...liquidatedStats,
             color: 'custom-green',
             icon: CheckCircle2,
@@ -227,76 +297,69 @@ export default function Receivables() {
         ]}
       />
 
-      {statusFilter !== 'all' && (
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="px-3 py-1">
-            Filtro Ativo: {statusFilter}
-          </Badge>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setStatusFilter('all')}
-            className="text-xs h-6"
-          >
-            Limpar Filtro
-          </Button>
-        </div>
-      )}
+      <ReceivableFilters
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        status={statusFilter}
+        setStatus={setStatusFilter}
+        dueDateRange={dueDateRange}
+        setDueDateRange={setDueDateRange}
+        issueDateRange={issueDateRange}
+        setIssueDateRange={setIssueDateRange}
+        minValue={minValue}
+        setMinValue={setMinValue}
+        maxValue={maxValue}
+        setMaxValue={setMaxValue}
+        onClearFilters={handleClearFilters}
+        hasActiveFilters={hasActiveFilters}
+      />
 
       <Card>
-        <CardHeader>
+        <CardHeader className="py-4">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Listagem de Títulos</CardTitle>
               <CardDescription>
-                Visualização consolidada de recebíveis.
+                Exibindo {filteredData.length} registros
               </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar cliente, NF ou pedido..."
-                  className="pl-9 w-[300px]"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <Button variant="outline" size="icon">
-                <Filter className="h-4 w-4" />
-              </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>NF</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="w-[100px]">NF</TableHead>
+                  <TableHead className="w-[100px]">Status</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead>UF</TableHead>
-                  <TableHead>Vencimento</TableHead>
-                  <TableHead className="text-right">Principal</TableHead>
-                  <TableHead className="text-right">Multa/Juros</TableHead>
-                  <TableHead className="text-right font-bold">
+                  <TableHead className="w-[50px]">UF</TableHead>
+                  <TableHead className="w-[100px]">Vencimento</TableHead>
+                  <TableHead className="text-right w-[120px]">
+                    Principal
+                  </TableHead>
+                  <TableHead className="text-right w-[120px]">
+                    Multa/Juros
+                  </TableHead>
+                  <TableHead className="text-right font-bold w-[120px]">
                     Atualizado
                   </TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  <TableHead className="text-right w-[50px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-8">
-                      {loading ? 'Carregando...' : 'Nenhum título encontrado.'}
+                      {loading
+                        ? 'Carregando...'
+                        : 'Nenhum título encontrado com os filtros atuais.'}
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredData.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50">
-                      <TableCell className="text-xs">
+                      <TableCell className="text-xs font-medium">
                         {item.invoice_number}
                       </TableCell>
                       <TableCell>
@@ -308,8 +371,8 @@ export default function Receivables() {
                           }
                           className={
                             item.title_status === 'Liquidado'
-                              ? 'bg-success hover:bg-success/80 text-[10px]'
-                              : 'text-[10px]'
+                              ? 'bg-success hover:bg-success/80 text-[10px] px-1.5 py-0'
+                              : 'text-[10px] px-1.5 py-0'
                           }
                         >
                           {item.title_status}
@@ -422,6 +485,18 @@ export default function Receivables() {
                 <span>{viewingItem.invoice_number}</span>
                 <span className="font-semibold">Pedido:</span>
                 <span>{viewingItem.order_number || '-'}</span>
+                <span className="font-semibold">Emissão:</span>
+                <span>
+                  {viewingItem.issue_date
+                    ? format(parseISO(viewingItem.issue_date), 'dd/MM/yyyy')
+                    : '-'}
+                </span>
+                <span className="font-semibold">Vencimento:</span>
+                <span>
+                  {viewingItem.due_date
+                    ? format(parseISO(viewingItem.due_date), 'dd/MM/yyyy')
+                    : '-'}
+                </span>
                 <span className="font-semibold">UF:</span>
                 <span>{viewingItem.uf || '-'}</span>
                 <span className="font-semibold">Valor Principal:</span>
