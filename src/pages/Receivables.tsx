@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import {
   Card,
   CardContent,
@@ -100,6 +100,10 @@ export default function Receivables() {
     setMaxValue('')
     toast.info('Filtros limpos.')
   }
+
+  const reloadReceivables = useCallback(() => {
+    recalculateCashFlow()
+  }, [recalculateCashFlow])
 
   const filteredData = useMemo(() => {
     return receivables.filter((t) => {
@@ -270,6 +274,7 @@ export default function Receivables() {
             onOpenChange={setIsImportDialogOpen}
             type="receivable"
             title="Importar Contas a Receber"
+            onImported={reloadReceivables}
           />
 
           <Button onClick={() => setEditingItem({} as Receivable)}>

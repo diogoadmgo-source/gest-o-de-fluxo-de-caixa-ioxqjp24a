@@ -29,6 +29,7 @@ import {
   importarPayables,
   getVisibleCompanyIds,
 } from '@/services/financial'
+import { normalizeCompanyId } from '@/lib/utils'
 
 interface CashFlowContextType {
   companies: Company[]
@@ -90,11 +91,22 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   // --- State ---
   const [companies, setCompanies] = useState<Company[]>([])
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(
-    () => {
-      return localStorage.getItem(STORAGE_KEYS.SELECTED_COMPANY) || null
-    },
-  )
+  const [selectedCompanyId, setInternalSelectedCompanyId] = useState<
+    string | null
+  >(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.SELECTED_COMPANY)
+    return normalizeCompanyId(stored)
+  })
+
+  const setSelectedCompanyId = (id: string | null) => {
+    const normalized = normalizeCompanyId(id)
+    setInternalSelectedCompanyId(normalized)
+    if (normalized) {
+      localStorage.setItem(STORAGE_KEYS.SELECTED_COMPANY, normalized)
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.SELECTED_COMPANY)
+    }
+  }
 
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [payables, setPayables] = useState<Transaction[]>([])
@@ -153,63 +165,79 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         setCompanies([])
       }
 
-      // If no visible companies for current view (e.g. user has no companies), stop
-      if (visibleIds.length === 0) {
-        setLoading(false)
-        return
-      }
+      // 2. Fetch Receivables
+      // Logic:
+      // If selectedCompanyId is present, visibleIds = [selectedCompanyId] (handled by getVisibleCompanyIds)
+      // If selectedCompanyId is null, visibleIds = all user companies.
+      // Filter Logic:
+      // - If visibleIds is not empty, filter using .in('company_id', visibleIds).
+      // - If visibleIds is empty (and selectedCompanyId is null), do NOT filter by company_id (return all).
 
-      // 2. Fetch Receivables using visibleIds and company_id field
-      const { data: receivablesData } = await supabase
-        .from('receivables')
-        .select('*')
-        .in('company_id', visibleIds)
+      let receivablesQuery = supabase.from('receivables').select('*')
+      if (visibleIds.length > 0) {
+        receivablesQuery = receivablesQuery.in('company_id', visibleIds)
+      }
+      const { data: receivablesData } = await receivablesQuery
 
       if (receivablesData) setReceivables(receivablesData as any)
 
       // 3. Fetch Payables
-      const { data: payablesData } = await supabase
+      let payablesQuery = supabase
         .from('transactions')
         .select('*')
         .eq('type', 'payable')
-        .in('company_id', visibleIds)
+
+      if (visibleIds.length > 0) {
+        payablesQuery = payablesQuery.in('company_id', visibleIds)
+      }
+      const { data: payablesData } = await payablesQuery
 
       if (payablesData) setPayables(payablesData as any)
 
       // 4. Fetch Banks (Active Only, Ordered by created_at desc)
-      const { data: banksData } = await supabase
+      let banksQuery = supabase
         .from('banks')
         .select(
           'id, name, code, type, institution, agency, account_number, account_digit, company_id, active, created_at',
         )
         .eq('active', true)
-        .in('company_id', visibleIds)
         .order('created_at', { ascending: false })
+
+      if (visibleIds.length > 0) {
+        banksQuery = banksQuery.in('company_id', visibleIds)
+      }
+      const { data: banksData } = await banksQuery
 
       if (banksData) setBanks(banksData as any)
 
       // 5. Fetch Bank Balances
-      const { data: balancesData } = await supabase
-        .from('bank_balances')
-        .select('*')
-        .in('company_id', visibleIds)
+      let balancesQuery = supabase.from('bank_balances').select('*')
+      if (visibleIds.length > 0) {
+        balancesQuery = balancesQuery.in('company_id', visibleIds)
+      }
+      const { data: balancesData } = await balancesQuery
 
       if (balancesData) setBankBalances(balancesData as any)
 
       // 6. Fetch Adjustments
-      const { data: adjustmentsData } = await supabase
-        .from('financial_adjustments')
-        .select('*')
-        .in('company_id', visibleIds)
+      let adjustmentsQuery = supabase.from('financial_adjustments').select('*')
+      if (visibleIds.length > 0) {
+        adjustmentsQuery = adjustmentsQuery.in('company_id', visibleIds)
+      }
+      const { data: adjustmentsData } = await adjustmentsQuery
 
       if (adjustmentsData) setAdjustments(adjustmentsData as any)
 
       // 7. Fetch Import Logs (Recent)
-      const { data: logsData } = await supabase
+      let logsQuery = supabase
         .from('import_logs')
         .select('*')
-        .in('company_id', visibleIds)
         .order('created_at', { ascending: false })
+
+      if (visibleIds.length > 0) {
+        logsQuery = logsQuery.in('company_id', visibleIds)
+      }
+      const { data: logsData } = await logsQuery
 
       if (logsData) {
         setImportHistory(
@@ -250,17 +278,13 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       userProfile?.profile !== 'Administrator' &&
       !allowedCompanyIds.includes(selectedCompanyId)
     ) {
-      setSelectedCompanyId(null)
+      // If the stored selected company is not allowed anymore, reset.
+      // But verify against the latest allowedCompanyIds
+      if (allowedCompanyIds.length > 0) {
+        setSelectedCompanyId(null)
+      }
     }
   }, [selectedCompanyId, allowedCompanyIds, userProfile])
-
-  useEffect(() => {
-    if (selectedCompanyId) {
-      localStorage.setItem(STORAGE_KEYS.SELECTED_COMPANY, selectedCompanyId)
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.SELECTED_COMPANY)
-    }
-  }, [selectedCompanyId])
 
   // --- Recalculation ---
   useEffect(() => {
@@ -622,10 +646,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       if (!user) throw new Error('Usuário não autenticado.')
 
       // Determine fallback company ID from global state
-      const fallbackCompanyId =
-        selectedCompanyId && selectedCompanyId !== 'all'
-          ? selectedCompanyId
-          : null
+      const fallbackCompanyId = normalizeCompanyId(selectedCompanyId)
 
       if (type === 'receivable') {
         importResults = await importarReceivables(

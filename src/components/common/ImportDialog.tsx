@@ -26,6 +26,7 @@ interface ImportDialogProps {
   onOpenChange: (open: boolean) => void
   type: 'receivable' | 'payable' | 'general'
   title: string
+  onImported?: () => void
 }
 
 export function ImportDialog({
@@ -33,6 +34,7 @@ export function ImportDialog({
   onOpenChange,
   type,
   title,
+  onImported,
 }: ImportDialogProps) {
   const { importData } = useCashFlowStore()
   const [isDragging, setIsDragging] = useState(false)
@@ -141,9 +143,19 @@ export function ImportDialog({
         setResult(res)
 
         if (res.success) {
-          toast.success(res.message)
+          toast.success('Importação concluída com sucesso.')
+          // Auto close on success and trigger callback
+          onImported?.()
+
+          // Small delay to let the user see the progress bar hit 100%
+          setTimeout(() => {
+            onOpenChange(false)
+            removeFile()
+          }, 500)
         } else {
-          toast.warning(res.message)
+          toast.error(res.message || 'Falha na importação.')
+          // Clear input even on failure per requirements
+          removeFile()
         }
       }
 
@@ -154,7 +166,8 @@ export function ImportDialog({
         success: false,
         message: 'Erro ao processar arquivo: ' + error.message,
       })
-      toast.error('Erro ao processar arquivo.')
+      toast.error('Falha na importação.')
+      removeFile()
     } finally {
       setIsProcessing(false)
     }

@@ -43,3 +43,23 @@ export function parseCSV(content: string, delimiter: string = ';'): any[] {
 
   return result
 }
+
+/**
+ * Normalizes a company ID value.
+ * Treats null, undefined, empty strings, "null", and "undefined" as null.
+ * @param id - The company ID to normalize
+ * @returns The normalized company ID (string or null)
+ */
+export function normalizeCompanyId(
+  id: string | null | undefined,
+): string | null {
+  if (id === null || id === undefined) return null
+  if (typeof id === 'string') {
+    const trimmed = id.trim()
+    if (trimmed === '' || trimmed === 'null' || trimmed === 'undefined') {
+      return null
+    }
+    return trimmed
+  }
+  return null
+}
