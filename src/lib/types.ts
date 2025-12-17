@@ -127,7 +127,7 @@ export interface BankBalance {
   company_id: string
   date: string
   bank_name: string
-  bank_id?: string
+  bank_id: string
   account_number: string
   balance: number
   status: 'draft' | 'saved' | 'locked'

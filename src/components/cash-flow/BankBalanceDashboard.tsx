@@ -18,24 +18,14 @@ export function BankBalanceDashboard({
   const totalBankBalance = activeBanks
     .filter((b) => b.type === 'bank')
     .reduce((sum, bank) => {
-      const bankBalance = balances.find(
-        (b) =>
-          b.bank_id === bank.id ||
-          (b.bank_name === bank.name &&
-            b.account_number === bank.account_number),
-      )
+      const bankBalance = balances.find((b) => b.bank_id === bank.id)
       return sum + (bankBalance?.balance || 0)
     }, 0)
 
   const totalCashBalance = activeBanks
     .filter((b) => b.type === 'cash')
     .reduce((sum, bank) => {
-      const bankBalance = balances.find(
-        (b) =>
-          b.bank_id === bank.id ||
-          (b.bank_name === bank.name &&
-            b.account_number === bank.account_number),
-      )
+      const bankBalance = balances.find((b) => b.bank_id === bank.id)
       return sum + (bankBalance?.balance || 0)
     }, 0)
 
@@ -85,12 +75,7 @@ export function BankBalanceDashboard({
 
       {/* Individual Bank/Cash Cards */}
       {activeBanks.map((bank) => {
-        const bankBalance = balances.find(
-          (b) =>
-            b.bank_id === bank.id ||
-            (b.bank_name === bank.name &&
-              b.account_number === bank.account_number),
-        )
+        const bankBalance = balances.find((b) => b.bank_id === bank.id)
         const currentAmount = bankBalance ? bankBalance.balance : 0
         const hasBalance = !!bankBalance
 

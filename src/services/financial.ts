@@ -48,10 +48,10 @@ export async function fetchAllRecords(
 ) {
   let allData: any[] = []
   let page = 0
-  const pageSize = 1000 // Optimized page size (matches Supabase default limit to avoid premature loop termination)
+  const pageSize = 1000 // Optimized page size
   let hasMore = true
 
-  // Safety limit to prevent infinite loops (e.g., 100k records max for client-side)
+  // Safety limit to prevent infinite loops
   const MAX_PAGES = 100
 
   while (hasMore && page < MAX_PAGES) {
@@ -148,6 +148,64 @@ export async function ensureCompanyAndLink(
 
 export const resolveCompanyIdFromName = ensureCompanyAndLink
 export const ensureEmpresaAndLink = ensureCompanyAndLink
+
+// --- Bank Balances Helpers ---
+
+export async function getBankBalance(
+  companyId: string,
+  bankId: string,
+  date: string,
+) {
+  const { data, error } = await supabase
+    .from('bank_balances')
+    .select('amount, id')
+    .eq('company_id', companyId)
+    .eq('bank_id', bankId)
+    .eq('reference_date', date)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error fetching bank balance:', error)
+    return 0
+  }
+
+  return data?.amount || 0
+}
+
+export async function upsertBankBalance(payload: {
+  company_id: string
+  bank_id: string
+  reference_date: string
+  amount: number
+}) {
+  const { data, error } = await supabase
+    .from('bank_balances')
+    .upsert(
+      {
+        company_id: payload.company_id,
+        bank_id: payload.bank_id,
+        reference_date: payload.reference_date,
+        amount: payload.amount,
+      },
+      {
+        onConflict: 'company_id,bank_id,reference_date',
+      },
+    )
+    .select()
+    .single()
+
+  if (error) {
+    throw new Error(`Erro ao salvar saldo: ${error.message}`)
+  }
+  return data
+}
+
+export async function deleteBankBalance(id: string) {
+  const { error } = await supabase.from('bank_balances').delete().eq('id', id)
+  if (error) {
+    throw new Error(`Erro ao excluir saldo: ${error.message}`)
+  }
+}
 
 // --- Manual Saving ---
 

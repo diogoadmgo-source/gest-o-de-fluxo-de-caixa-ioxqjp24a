@@ -58,23 +58,81 @@ export type Database = {
       }
       bank_balances: {
         Row: {
+          amount: number
+          bank_id: string
           company_id: string
           created_at: string | null
           id: string
+          reference_date: string
         }
         Insert: {
+          amount?: number
+          bank_id: string
           company_id: string
           created_at?: string | null
           id?: string
+          reference_date: string
         }
         Update: {
+          amount?: number
+          bank_id?: string
           company_id?: string
           created_at?: string | null
           id?: string
+          reference_date?: string
         }
         Relationships: [
           {
+            foreignKeyName: 'bank_balances_bank_id_fkey'
+            columns: ['bank_id']
+            isOneToOne: false
+            referencedRelation: 'banks'
+            referencedColumns: ['id']
+          },
+          {
             foreignKeyName: 'bank_balances_company_id_fkey'
+            columns: ['company_id']
+            isOneToOne: false
+            referencedRelation: 'companies'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      bank_balances_v2: {
+        Row: {
+          amount: number
+          bank_id: string
+          company_id: string
+          created_at: string
+          id: string
+          reference_date: string
+        }
+        Insert: {
+          amount?: number
+          bank_id: string
+          company_id: string
+          created_at?: string
+          id?: string
+          reference_date: string
+        }
+        Update: {
+          amount?: number
+          bank_id?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          reference_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'bank_balances_v2_bank_id_fkey'
+            columns: ['bank_id']
+            isOneToOne: false
+            referencedRelation: 'banks'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'bank_balances_v2_company_id_fkey'
             columns: ['company_id']
             isOneToOne: false
             referencedRelation: 'companies'
@@ -123,6 +181,13 @@ export type Database = {
           type?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'banks_company_fk'
+            columns: ['company_id']
+            isOneToOne: false
+            referencedRelation: 'companies'
+            referencedColumns: ['id']
+          },
           {
             foreignKeyName: 'banks_company_id_fkey'
             columns: ['company_id']

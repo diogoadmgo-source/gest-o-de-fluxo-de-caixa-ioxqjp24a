@@ -9,7 +9,7 @@ import { ptBR } from 'date-fns/locale'
 import { isSameDay, parseISO } from 'date-fns'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { toast } from 'sonner'
-import { BankBalance, HistoricalBalance } from '@/lib/types'
+import { HistoricalBalance } from '@/lib/types'
 import { Settings2, Trash2 } from 'lucide-react'
 import {
   Dialog,
@@ -33,16 +33,15 @@ import {
 } from '@/components/ui/alert-dialog'
 
 export default function Balances() {
-  const { bankBalances, updateBankBalances, resetBalanceHistory, banks } =
-    useCashFlowStore()
+  const { bankBalances, resetBalanceHistory, banks } = useCashFlowStore()
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
 
-  // Memoize currentBalances to ensure it updates immediately when bankBalances changes in the store
+  // Memoize currentBalances for dashboard aggregation
   const currentBalances = useMemo(() => {
     return bankBalances.filter((b) => isSameDay(parseISO(b.date), selectedDate))
   }, [selectedDate, bankBalances])
 
-  // Derive history from bankBalances state
+  // Derive history from bankBalances state for the list sidebar
   const historyData: HistoricalBalance[] = useMemo(() => {
     const groupedByDate: { [date: string]: number } = {}
 
@@ -57,15 +56,10 @@ export default function Balances() {
       id: `HIST-${date}-${index}`,
       date: date,
       consolidated_balance: balance,
-      user_name: 'Usuário Atual',
-      timestamp: date, // Simplified timestamp
+      user_name: 'Sistema',
+      timestamp: date,
     }))
   }, [bankBalances])
-
-  const handleSaveBalances = (newBalances: BankBalance[]) => {
-    updateBankBalances(newBalances)
-    toast.success('Saldos salvos e fluxo recalculado com sucesso!')
-  }
 
   const handleResetHistory = () => {
     resetBalanceHistory()
@@ -137,6 +131,7 @@ export default function Balances() {
         </div>
       </div>
 
+      {/* Dashboard View */}
       <BankBalanceDashboard banks={banks} balances={currentBalances} />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -164,11 +159,8 @@ export default function Balances() {
         </div>
 
         <div className="lg:col-span-3">
-          <BankBalanceManager
-            selectedDate={selectedDate}
-            initialBalances={currentBalances}
-            onSave={handleSaveBalances}
-          />
+          {/* Main Manager Component */}
+          <BankBalanceManager selectedDate={selectedDate} />
         </div>
       </div>
     </div>

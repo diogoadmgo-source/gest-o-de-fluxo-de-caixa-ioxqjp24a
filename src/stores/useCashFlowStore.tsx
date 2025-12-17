@@ -196,13 +196,30 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       if (banksData) setBanks(banksData as any)
 
       // 5. Fetch Bank Balances
-      let balancesQuery = supabase.from('bank_balances').select('*')
+      // Modified to join with banks to get name
+      let balancesQuery = supabase
+        .from('bank_balances')
+        .select('*, banks(name, account_number)')
+        .order('reference_date', { ascending: false })
+
       if (visibleIds.length > 0) {
         balancesQuery = balancesQuery.in('company_id', visibleIds)
       }
       const { data: balancesData } = await balancesQuery
 
-      if (balancesData) setBankBalances(balancesData as any)
+      if (balancesData) {
+        const mappedBalances: BankBalance[] = balancesData.map((b: any) => ({
+          id: b.id,
+          company_id: b.company_id,
+          date: b.reference_date,
+          bank_name: b.banks?.name || 'Unknown',
+          bank_id: b.bank_id,
+          account_number: b.banks?.account_number || '',
+          balance: b.amount,
+          status: 'saved',
+        }))
+        setBankBalances(mappedBalances)
+      }
 
       // 6. Fetch Adjustments
       let adjustmentsQuery = supabase.from('financial_adjustments').select('*')
@@ -476,11 +493,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updateBankBalances = async (newBalances: BankBalance[]) => {
-    const { error } = await supabase.from('bank_balances').upsert(newBalances)
-    if (error) {
-      toast.error('Erro ao salvar saldos: ' + error.message)
-      return
-    }
+    // This function is kept for backward compatibility but might be less used now
+    // that we perform upserts directly in the component.
     await fetchData()
   }
 
