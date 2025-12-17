@@ -8,6 +8,7 @@ export type TransactionStatus =
 export interface Company {
   id: string
   name: string
+  origin?: string
 }
 
 export interface Transaction {

@@ -67,7 +67,7 @@ const STORAGE_KEYS = {
 }
 
 export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
-  const { allowedCompanyIds, userProfile } = useAuth()
+  const { allowedCompanyIds, userProfile, user } = useAuth()
   const [loading, setLoading] = useState(false)
 
   // --- State ---
@@ -173,7 +173,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   const performRecalculation = () => {
     // Generate base dates entries (mocking 90 days range for projection)
-    // In a real app, this might come from a DB aggregation
     const baseEntries = generateCashFlowData(90)
 
     const sortedEntries = [...baseEntries].sort(
@@ -294,10 +293,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const deleteReceivable = async (id: string) => {
-    // Logical delete or actual delete? Let's do actual delete for now or status update
-    // User story says "marcado como inativo" in one part, but usually delete.
-    // Let's use status update to 'Cancelado' to be safe or delete.
-    // Acceptance criteria doesn't specify delete behavior deeply.
     const { error } = await supabase.from('receivables').delete().eq('id', id)
     if (error) {
       toast.error('Erro ao excluir recebível')
@@ -351,13 +346,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updateBankBalances = async (newBalances: BankBalance[]) => {
-    // This usually involves upserting
     const { error } = await supabase.from('bank_balances').upsert(newBalances)
     if (error) {
       toast.error('Erro ao salvar saldos')
       return
     }
-    // Refresh
     const { data } = await supabase.from('bank_balances').select('*')
     if (data) setBankBalances(data as any)
   }
@@ -369,9 +362,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .delete()
         .eq('company_id', selectedCompanyId)
     } else {
-      // Dangerous, maybe block or delete all
-      // For safety, only if admin?
-      // Just clear local state for now to not wipe everything if no company selected
       if (userProfile?.profile === 'Administrator') {
         await supabase.from('bank_balances').delete().neq('id', '0') // delete all
       }
@@ -405,7 +395,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const deleteBank = async (id: string) => {
-    // Set active = false
     const { error } = await supabase
       .from('banks')
       .update({ active: false })
@@ -423,31 +412,62 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   ) => {
     setLoading(true)
     try {
-      // Ensure companies exist
-      const uniqueCompanies = new Set(
+      // 1. Identify Unique Companies
+      const uniqueCompanies = new Set<string>(
         data.map((d: any) => d.company || d.empresa).filter(Boolean),
       )
 
-      // Simple check/create companies
+      // 2. Prioritized Company Validation & Creation
+      const companyMap = new Map<string, string>() // Name -> ID
+      const currentCompanies = await supabase.from('companies').select('*')
+      if (currentCompanies.data) {
+        currentCompanies.data.forEach((c) => companyMap.set(c.name, c.id))
+      }
+
       for (const compName of uniqueCompanies) {
-        const exists = companies.find((c) => c.name === compName)
-        if (!exists) {
-          const { data: newComp } = await supabase
+        if (!companyMap.has(compName)) {
+          // Create new company with origin 'Importação'
+          const { data: newComp, error: createError } = await supabase
             .from('companies')
-            .insert({ name: compName })
+            .insert({ name: compName, origin: 'Importação' })
             .select()
             .single()
-          if (newComp) setCompanies((prev) => [...prev, newComp])
+
+          if (createError) {
+            throw new Error(
+              `Falha crítica ao criar empresa "${compName}": ${createError.message}. Importação abortada.`,
+            )
+          }
+
+          if (newComp) {
+            companyMap.set(newComp.name, newComp.id)
+            setCompanies((prev) => [...prev, newComp])
+
+            // Audit Log for Company Creation
+            await supabase.from('audit_logs').insert({
+              action: 'Create Company (Import)',
+              entity: 'Companies',
+              entity_id: newComp.id,
+              user_id: user?.id,
+              details: { name: compName, origin: 'Importação' },
+            })
+          }
         }
       }
 
-      // Map data to DB structure
+      // 3. Map & Validate Data
       const records = data.map((d: any) => {
         const companyName = d.company || d.empresa
         const companyId = companyName
-          ? companies.find((c) => c.name === companyName)?.id ||
-            selectedCompanyId
+          ? companyMap.get(companyName) || selectedCompanyId
           : selectedCompanyId
+
+        // Strict Integrity Check: If we have a company name but no ID resolved, we must fail
+        if (companyName && !companyId) {
+          throw new Error(
+            `Erro de integridade: Empresa "${companyName}" não foi resolvida corretamente.`,
+          )
+        }
 
         if (type === 'receivable') {
           return {
@@ -479,14 +499,16 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         }
       })
 
+      // 4. Save Financial Records
       const table = type === 'receivable' ? 'receivables' : 'transactions'
       const { error } = await supabase.from(table).insert(records)
 
       if (error) throw error
 
-      // Refresh data
+      // 5. Refresh Data
       await fetchData()
 
+      // 6. Log History
       setImportHistory((prev) => [
         {
           id: Date.now().toString(),
@@ -500,10 +522,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         ...prev,
       ])
 
-      toast.success('Importação concluída com sucesso!')
+      toast.success('Importação e gestão de empresas concluídas com sucesso!')
     } catch (error: any) {
       console.error('Import error:', error)
-      toast.error('Erro na importação: ' + error.message)
+      toast.error('Erro crítico na importação: ' + error.message)
     } finally {
       setLoading(false)
     }

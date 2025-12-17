@@ -5,13 +5,13 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   BarChart3,
-  CalendarCheck,
   Settings,
   Search,
   Menu,
   Wallet,
   Landmark,
   Users,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,15 +24,15 @@ import {
 import { useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 
+// Removed CalendarCheck (Fechamento)
 const baseMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
   { icon: Wallet, label: 'Fluxo de Caixa', path: '/fluxo-de-caixa' },
   { icon: Landmark, label: 'Saldos', path: '/saldos' },
   { icon: ArrowDownToLine, label: 'Contas a Receber', path: '/recebiveis' },
   { icon: ArrowUpFromLine, label: 'Contas a Pagar', path: '/pagaveis' },
-  // Importações removed
   { icon: BarChart3, label: 'Relatórios', path: '/relatorios' },
-  { icon: CalendarCheck, label: 'Fechamento', path: '/fechamento' },
+  // Fechamento removed from here
   { icon: Settings, label: 'Configurações', path: '/configuracoes' },
   { icon: Search, label: 'Auditoria', path: '/auditoria' },
 ]
@@ -42,14 +42,35 @@ export function Sidebar() {
   const [open, setOpen] = useState(false)
   const { userProfile } = useAuth()
 
-  // Add Users menu for admins
   const menuItems = [...baseMenuItems]
+
+  // Add specific items for administrators
   if (userProfile?.profile === 'Administrator') {
     const settingsIndex = menuItems.findIndex(
       (i) => i.path === '/configuracoes',
     )
+
+    // Insert "Ajustes" before Settings if Settings exists, otherwise append
     if (settingsIndex !== -1) {
-      menuItems.splice(settingsIndex + 1, 0, {
+      menuItems.splice(settingsIndex, 0, {
+        icon: SlidersHorizontal,
+        label: 'Ajustes',
+        path: '/ajustes',
+      })
+
+      // Insert "Usuários" after Settings
+      menuItems.splice(settingsIndex + 2, 0, {
+        icon: Users,
+        label: 'Usuários',
+        path: '/configuracoes/usuarios',
+      })
+    } else {
+      menuItems.push({
+        icon: SlidersHorizontal,
+        label: 'Ajustes',
+        path: '/ajustes',
+      })
+      menuItems.push({
         icon: Users,
         label: 'Usuários',
         path: '/configuracoes/usuarios',

@@ -130,17 +130,56 @@ export type Database = {
         Row: {
           company_id: string | null
           created_at: string | null
+          customer: string | null
+          customer_doc: string | null
+          description: string | null
+          due_date: string | null
+          fine: number | null
           id: string
+          interest: number | null
+          invoice_number: string | null
+          issue_date: string | null
+          order_number: string | null
+          payment_prediction: string | null
+          principal_value: number | null
+          title_status: string | null
+          updated_value: number | null
         }
         Insert: {
           company_id?: string | null
           created_at?: string | null
+          customer?: string | null
+          customer_doc?: string | null
+          description?: string | null
+          due_date?: string | null
+          fine?: number | null
           id?: string
+          interest?: number | null
+          invoice_number?: string | null
+          issue_date?: string | null
+          order_number?: string | null
+          payment_prediction?: string | null
+          principal_value?: number | null
+          title_status?: string | null
+          updated_value?: number | null
         }
         Update: {
           company_id?: string | null
           created_at?: string | null
+          customer?: string | null
+          customer_doc?: string | null
+          description?: string | null
+          due_date?: string | null
+          fine?: number | null
           id?: string
+          interest?: number | null
+          invoice_number?: string | null
+          issue_date?: string | null
+          order_number?: string | null
+          payment_prediction?: string | null
+          principal_value?: number | null
+          title_status?: string | null
+          updated_value?: number | null
         }
         Relationships: [
           {
@@ -154,19 +193,55 @@ export type Database = {
       }
       transactions: {
         Row: {
+          amount: number | null
+          category: string | null
           company_id: string | null
           created_at: string | null
+          description: string | null
+          document_number: string | null
+          due_date: string | null
+          entity_name: string | null
+          fine: number | null
           id: string
+          interest: number | null
+          issue_date: string | null
+          principal_value: number | null
+          status: string | null
+          type: string | null
         }
         Insert: {
+          amount?: number | null
+          category?: string | null
           company_id?: string | null
           created_at?: string | null
+          description?: string | null
+          document_number?: string | null
+          due_date?: string | null
+          entity_name?: string | null
+          fine?: number | null
           id?: string
+          interest?: number | null
+          issue_date?: string | null
+          principal_value?: number | null
+          status?: string | null
+          type?: string | null
         }
         Update: {
+          amount?: number | null
+          category?: string | null
           company_id?: string | null
           created_at?: string | null
+          description?: string | null
+          document_number?: string | null
+          due_date?: string | null
+          entity_name?: string | null
+          fine?: number | null
           id?: string
+          interest?: number | null
+          issue_date?: string | null
+          principal_value?: number | null
+          status?: string | null
+          type?: string | null
         }
         Relationships: [
           {

@@ -31,9 +31,16 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-background font-sans antialiased flex">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 md:pl-64">
+      {/* 
+        Structure change:
+        - Flex column container for main area
+        - Header is now sticky within this container
+        - Removed pt-16 from main as Header is in flow
+        - Relative positioning context
+      */}
+      <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 md:pl-64 relative">
         <Header />
-        <main className="flex-1 pt-16 p-4 md:p-8 overflow-y-auto">
+        <main className="flex-1 p-4 md:p-8 overflow-y-auto w-full">
           <Outlet />
         </main>
       </div>

@@ -65,8 +65,9 @@ export function Header() {
     useCashFlowStore()
   const { userProfile, signOut } = useAuth()
 
+  // Changed to sticky to avoid overlapping content
   return (
-    <header className="h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 fixed top-0 right-0 left-0 md:left-64 z-20 px-6 flex items-center justify-between transition-all duration-300">
+    <header className="sticky top-0 z-20 w-full h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-6 transition-all duration-300">
       <div className="flex items-center gap-4 ml-8 md:ml-0">
         <h1 className="text-xl font-bold text-foreground">{title}</h1>
       </div>
@@ -133,12 +134,14 @@ export function Header() {
                 <span>Meu Perfil</span>
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to="/ajustes">
-                <SettingsIcon className="mr-2 h-4 w-4" />
-                <span>Ajustes Manuais</span>
-              </Link>
-            </DropdownMenuItem>
+            {userProfile?.profile === 'Administrator' && (
+              <DropdownMenuItem asChild>
+                <Link to="/ajustes">
+                  <SettingsIcon className="mr-2 h-4 w-4" />
+                  <span>Ajustes Manuais</span>
+                </Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
