@@ -143,8 +143,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       )
 
       // Fetch Companies List for Dropdown
-      // Always fetch all companies the user is linked to for the selector,
-      // regardless of the current 'visibleIds' filter which might be constrained to selectedCompanyId
       const { data: userCompaniesData } = await supabase
         .from('user_companies')
         .select('company_id')
@@ -165,34 +163,42 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         setCompanies([])
       }
 
-      // 2. Fetch Receivables
-      // Logic:
-      // If selectedCompanyId is present, visibleIds = [selectedCompanyId] (handled by getVisibleCompanyIds)
-      // If selectedCompanyId is null, visibleIds = all user companies.
-      // Filter Logic:
-      // - If visibleIds is not empty, filter using .in('company_id', visibleIds).
-      // - If visibleIds is empty (and selectedCompanyId is null), do NOT filter by company_id (return all).
+      // 2. Fetch Receivables with increased limit
+      let receivablesQuery = supabase
+        .from('receivables')
+        .select('*')
+        .range(0, 49999) // Fetch up to 50k rows to avoid default 1000 row limit
 
-      let receivablesQuery = supabase.from('receivables').select('*')
       if (visibleIds.length > 0) {
         receivablesQuery = receivablesQuery.in('company_id', visibleIds)
       }
-      const { data: receivablesData } = await receivablesQuery
+      const { data: receivablesData, error: receivablesError } =
+        await receivablesQuery
 
-      if (receivablesData) setReceivables(receivablesData as any)
+      if (receivablesError) {
+        console.error('Error fetching receivables:', receivablesError)
+        toast.error('Erro ao buscar recebíveis: ' + receivablesError.message)
+      } else if (receivablesData) {
+        setReceivables(receivablesData as any)
+      }
 
-      // 3. Fetch Payables
+      // 3. Fetch Payables with increased limit
       let payablesQuery = supabase
         .from('transactions')
         .select('*')
         .eq('type', 'payable')
+        .range(0, 49999) // Fetch up to 50k rows
 
       if (visibleIds.length > 0) {
         payablesQuery = payablesQuery.in('company_id', visibleIds)
       }
-      const { data: payablesData } = await payablesQuery
+      const { data: payablesData, error: payablesError } = await payablesQuery
 
-      if (payablesData) setPayables(payablesData as any)
+      if (payablesError) {
+        console.error('Error fetching payables:', payablesError)
+      } else if (payablesData) {
+        setPayables(payablesData as any)
+      }
 
       // 4. Fetch Banks (Active Only, Ordered by created_at desc)
       let banksQuery = supabase
@@ -233,6 +239,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .from('import_logs')
         .select('*')
         .order('created_at', { ascending: false })
+        .limit(100) // Keep logs limited to most recent
 
       if (visibleIds.length > 0) {
         logsQuery = logsQuery.in('company_id', visibleIds)
@@ -268,7 +275,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   // Filter companies based on user access
   const visibleCompanies =
     userProfile?.profile === 'Administrator'
-      ? companies // Admins might see all if we fetched all, but above we fetched only user linked ones. For true admin view, logic might differ.
+      ? companies
       : companies.filter((c) => allowedCompanyIds.includes(c.id))
 
   // Validate selected company
@@ -278,8 +285,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       userProfile?.profile !== 'Administrator' &&
       !allowedCompanyIds.includes(selectedCompanyId)
     ) {
-      // If the stored selected company is not allowed anymore, reset.
-      // But verify against the latest allowedCompanyIds
       if (allowedCompanyIds.length > 0) {
         setSelectedCompanyId(null)
       }
@@ -310,7 +315,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       return
     }
 
-    const baseEntries = generateCashFlowData(90) // Mock base dates structure but values will be overridden
+    const baseEntries = generateCashFlowData(90)
 
     const sortedEntries = [...baseEntries].sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
@@ -522,7 +527,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       if (!user) throw new Error('Usuário não autenticado')
       const data = await salvarBankManual(bank, user.id)
       await logAudit('Create', 'Banks', data.id, { name: data.name })
-      // Ensure the UI refreshes after bank creation
       await fetchData()
       return { error: null }
     } catch (error: any) {
@@ -552,7 +556,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       return
     }
     await logAudit('Delete', 'Banks', id, { status: 'inactive' })
-    // Remove from the list since the store only keeps active banks
     setBanks((prev) => prev.filter((b) => b.id !== id))
   }
 
@@ -645,7 +648,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     try {
       if (!user) throw new Error('Usuário não autenticado.')
 
-      // Determine fallback company ID from global state
       const fallbackCompanyId = normalizeCompanyId(selectedCompanyId)
 
       if (type === 'receivable') {
@@ -667,13 +669,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       successCount = importResults.success
       errorCount = importResults.errors.length
 
-      // Log import
       if (user) {
-        // Resolve company id for log: fallback > lastCompany > all/mixed
         const logCompanyId =
           fallbackCompanyId || importResults.lastCompanyId || selectedCompanyId
 
-        // Only log if we have a valid single company context, otherwise it might be mixed
         if (logCompanyId && logCompanyId !== 'all') {
           const { data: logData } = await supabase
             .from('import_logs')
@@ -701,11 +700,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Refresh data immediately to show new companies and data
       if (successCount > 0) {
-        // Refresh Auth Profile first to update 'allowedCompanyIds' if new companies were created
         await refreshProfile()
-        // Then refresh all store data (companies, receivables, etc.)
         await fetchData()
       }
 

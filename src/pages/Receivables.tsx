@@ -213,12 +213,9 @@ export default function Receivables() {
   const openStats = sumValues(openReceivables)
   const liquidatedStats = sumValues(liquidatedReceivables)
 
-  const totalStats = {
-    principal: openStats.principal + liquidatedStats.principal,
-    fine: openStats.fine + liquidatedStats.fine,
-    interest: openStats.interest + liquidatedStats.interest,
-    total: openStats.total + liquidatedStats.total,
-  }
+  // Calculate Total Stats from ALL filtered data to ensure accuracy regardless of status
+  // This resolves the discrepancy where items with non-standard statuses were excluded
+  const totalStats = sumValues(filteredData)
 
   const handleDelete = async () => {
     if (deletingId) {
