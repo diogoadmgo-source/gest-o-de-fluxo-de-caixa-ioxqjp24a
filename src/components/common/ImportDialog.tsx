@@ -189,6 +189,7 @@ export function ImportDialog({
 
       // Step 2: Send to Store/API
       if (type === 'receivable' || type === 'payable') {
+        // Enforce company ID usage from context
         const res = await importData(
           type,
           parsedData,

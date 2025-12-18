@@ -332,7 +332,7 @@ export type Database = {
           },
         ]
       }
-      import_logs_receivables: {
+      import_receivables_log: {
         Row: {
           company_id: string
           error_message: string | null
@@ -341,10 +341,12 @@ export type Database = {
           id: string
           imported_rows: number | null
           rejected_rows: number | null
+          rejected_value: number | null
           started_at: string | null
           status: string | null
           total_amount_imported: number | null
           total_rows: number | null
+          total_value: number | null
           user_id: string | null
         }
         Insert: {
@@ -355,10 +357,12 @@ export type Database = {
           id?: string
           imported_rows?: number | null
           rejected_rows?: number | null
+          rejected_value?: number | null
           started_at?: string | null
           status?: string | null
           total_amount_imported?: number | null
           total_rows?: number | null
+          total_value?: number | null
           user_id?: string | null
         }
         Update: {
@@ -369,10 +373,12 @@ export type Database = {
           id?: string
           imported_rows?: number | null
           rejected_rows?: number | null
+          rejected_value?: number | null
           started_at?: string | null
           status?: string | null
           total_amount_imported?: number | null
           total_rows?: number | null
+          total_value?: number | null
           user_id?: string | null
         }
         Relationships: [
@@ -388,6 +394,7 @@ export type Database = {
       import_receivables_rejects: {
         Row: {
           batch_id: string | null
+          company_id: string | null
           created_at: string | null
           id: string
           raw_data: Json | null
@@ -396,6 +403,7 @@ export type Database = {
         }
         Insert: {
           batch_id?: string | null
+          company_id?: string | null
           created_at?: string | null
           id?: string
           raw_data?: Json | null
@@ -404,6 +412,7 @@ export type Database = {
         }
         Update: {
           batch_id?: string | null
+          company_id?: string | null
           created_at?: string | null
           id?: string
           raw_data?: Json | null
@@ -415,7 +424,7 @@ export type Database = {
             foreignKeyName: 'import_receivables_rejects_batch_id_fkey'
             columns: ['batch_id']
             isOneToOne: false
-            referencedRelation: 'import_logs_receivables'
+            referencedRelation: 'import_receivables_log'
             referencedColumns: ['id']
           },
         ]

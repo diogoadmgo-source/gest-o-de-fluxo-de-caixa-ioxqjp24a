@@ -100,6 +100,11 @@ export interface KPI {
   pmp: number
   cash_gap: number
   days_until_zero: number
+  current_balance: number
+  receivables_amount_open: number // A Vencer
+  receivables_amount_overdue: number // Vencido
+  receivables_amount_received: number // Recebido
+  payables_amount_pending: number
 }
 
 export interface DailyBalance {

@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase/client'
 import { parse, isValid, format } from 'date-fns'
 import { performanceMonitor } from '@/lib/performance'
 import { isGarbageCompany } from '@/lib/utils'
-import { ImportBatchSummary, ImportReject } from '@/lib/types'
+import { ImportBatchSummary, ImportReject, KPI } from '@/lib/types'
 
 // --- Types ---
 export interface PaginatedResult<T> {
@@ -309,7 +309,7 @@ export async function getDashboardKPIs(companyId: string) {
         p_company_id: companyId,
       })
       if (error) throw error
-      return data
+      return data as KPI
     })(),
   )
 }
@@ -636,15 +636,16 @@ export async function fetchImportRejects(
   page: number = 1,
   pageSize: number = 20,
 ) {
-  const { data, error } = await supabase.rpc('get_receivables_rejects', {
-    p_batch_id: batchId,
-    p_page: page,
-    p_page_size: pageSize,
-  })
+  const { data, error } = await supabase
+    .from('import_receivables_rejects')
+    .select('*', { count: 'exact' })
+    .eq('batch_id', batchId)
+    .range((page - 1) * pageSize, page * pageSize - 1)
+
   if (error) throw error
   return {
     data: data as ImportReject[],
-    count: data && data.length > 0 ? (data[0] as any).total_count : 0,
+    count: count || 0,
   }
 }
 
@@ -698,7 +699,7 @@ export async function importarReceivables(
       totalInserted = summary.imported_rows
       totalInsertedAmount = summary.imported_amount
       totalDuplicatesSkipped = summary.rejected_rows
-      totalFileAmount = summary.total_value || 0 // New field from strict compliance RPC
+      totalFileAmount = summary.total_value || 0
       totalRejectedAmount = summary.rejected_value || 0
       lastBatchId = summary.batch_id
     } else {
