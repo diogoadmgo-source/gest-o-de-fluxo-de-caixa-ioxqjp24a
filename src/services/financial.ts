@@ -13,7 +13,17 @@ export const s = normalizeText
 export function n(value: any): number {
   if (typeof value === 'number') return value
   if (!value) return 0
-  const str = String(value).trim()
+  let str = String(value).trim()
+
+  // Remove currency symbols (e.g., R$, $) and any other non-numeric chars except digits, dot, comma, minus
+  // This helps cleaning "R$ 1.234,56" to "1.234,56"
+  str = str.replace(/[^\d.,-]/g, '')
+
+  if (!str) return 0
+
+  // Handle Brazilian format (dots as thousands separators, comma as decimal)
+  // "1.234,56" -> "1234.56"
+  // If we just remove dots and replace comma with dot, we cover most BR cases.
   const cleanStr = str.replace(/\./g, '').replace(',', '.')
   const num = parseFloat(cleanStr)
   return isNaN(num) ? 0 : num
@@ -23,14 +33,19 @@ export function d(value: any): string | null {
   if (!value) return null
   if (value instanceof Date) return value.toISOString().split('T')[0]
   if (typeof value === 'number') {
+    // Excel date handling
     const excelDate = new Date((value - 25569) * 86400 * 1000)
     if (isValid(excelDate)) return excelDate.toISOString().split('T')[0]
   }
   const str = String(value).trim()
+
+  // Try parsing various formats
   let parsed = parse(str, 'yyyy-MM-dd', new Date())
   if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
+
   parsed = parse(str, 'dd/MM/yyyy', new Date())
   if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
+
   if (str.match(/^\d{4}-\d{2}-\d{2}/)) return str.substring(0, 10)
   return null
 }
@@ -89,6 +104,52 @@ export function normalizeInstallment(value: any): string {
   }
 
   return str
+}
+
+export function normalizeReceivableStatus(status: string): string {
+  const s = normalizeText(status).toLowerCase()
+  if (
+    s.includes('pago') ||
+    s.includes('baixad') ||
+    s.includes('recebid') ||
+    s.includes('liquidado')
+  )
+    return 'Liquidado'
+  if (s.includes('estorn') || s.includes('anulad') || s.includes('cancelad'))
+    return 'Cancelado'
+  return 'Aberto'
+}
+
+export function normalizePayableStatus(
+  status: string,
+  dueDate: string | null,
+): string {
+  const s = normalizeText(status).toLowerCase()
+  if (
+    s.includes('pago') ||
+    s.includes('baixad') ||
+    s.includes('liquidado') ||
+    s.includes('paid')
+  )
+    return 'paid'
+  if (
+    s.includes('cancelad') ||
+    s.includes('anulad') ||
+    s.includes('estorn') ||
+    s.includes('cancelled')
+  )
+    return 'cancelled'
+
+  if (dueDate) {
+    const due = new Date(dueDate + 'T00:00:00')
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    // If due date is strictly before today (midnight)
+    if (due < today) return 'overdue'
+  }
+
+  return 'pending'
 }
 
 // --- Fetching Helpers ---
@@ -195,7 +256,7 @@ export async function ensureCompanyAndLink(
 export const resolveCompanyIdFromName = ensureCompanyAndLink
 export const ensureEmpresaAndLink = ensureCompanyAndLink
 
-// --- Bank Balances Helpers (Using bank_balances_v2) ---
+// --- Bank Balances Helpers ---
 
 export async function getBankBalance(
   companyId: string,
@@ -267,6 +328,11 @@ export async function salvarReceivableManual(payload: any, userId: string) {
 
   const companyId = await ensureCompanyAndLink(userId, companyInput)
 
+  const rawTitleStatus = normalizeText(
+    payload.status_do_titulo || payload.title_status || 'Aberto',
+  )
+  const titleStatus = normalizeReceivableStatus(rawTitleStatus)
+
   const dbPayload = {
     company_id: companyId,
     invoice_number: normalizeText(
@@ -286,9 +352,7 @@ export async function salvarReceivableManual(payload: any, userId: string) {
     fine: n(payload.multa || payload.fine),
     interest: n(payload.juros || payload.interest),
     updated_value: n(payload.valor_atualizado || payload.updated_value),
-    title_status: normalizeText(
-      payload.status_do_titulo || payload.title_status || 'Aberto',
-    ),
+    title_status: titleStatus,
     seller: normalizeText(
       payload.vendedor || payload.seller || payload.salesperson,
     ),
@@ -336,6 +400,9 @@ export async function salvarPayableManual(payload: any, userId: string) {
 
   const companyId = await ensureCompanyAndLink(userId, companyInput)
 
+  const dueDate = d(payload.due_date || payload.vencimento)
+  const status = normalizePayableStatus(payload.status || 'pending', dueDate)
+
   const dbPayload = {
     company_id: companyId,
     entity_name: normalizeText(
@@ -345,12 +412,12 @@ export async function salvarPayableManual(payload: any, userId: string) {
       payload.document_number || payload.documento,
     ),
     issue_date: d(payload.issue_date || payload.emissao),
-    due_date: d(payload.due_date || payload.vencimento),
+    due_date: dueDate,
     principal_value: n(payload.principal_value || payload.valor_principal),
     fine: n(payload.fine || payload.multa),
     interest: n(payload.interest || payload.juros),
     amount: n(payload.amount || payload.valor_total || payload.valor),
-    status: normalizeText(payload.status || 'pending'),
+    status: status,
     type: 'payable',
     category: normalizeText(payload.category || payload.categoria),
     description: normalizeText(payload.description || payload.descricao),
@@ -398,7 +465,6 @@ export async function salvarBankManual(payload: any, userId: string) {
     active: payload.active !== undefined ? payload.active : true,
   }
 
-  // Remove temporary IDs before saving
   const id =
     payload.id && !String(payload.id).startsWith('temp-')
       ? payload.id
@@ -478,7 +544,6 @@ export async function salvarImportLogManual(payload: any, userId: string) {
   }
 }
 
-// ... existing import functions remain unchanged
 export async function importarReceivables(
   rows: any[],
   userId: string,
@@ -532,6 +597,15 @@ export async function importarReceivables(
 
       results.lastCompanyId = companyId
 
+      // Normalize status using the new function
+      const rawStatus = normalizeText(
+        row['Status do Título'] ||
+          row['title_status'] ||
+          row['status_do_titulo'] ||
+          'Aberto',
+      )
+      const titleStatus = normalizeReceivableStatus(rawStatus)
+
       const dbItem = {
         invoice_number: normalizeText(
           row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
@@ -575,12 +649,7 @@ export async function importarReceivables(
             row['valor_atualizado'] ||
             row['Vlr Principal'],
         ),
-        title_status: normalizeText(
-          row['Status do Título'] ||
-            row['title_status'] ||
-            row['status_do_titulo'] ||
-            'Aberto',
-        ),
+        title_status: titleStatus,
         seller: normalizeText(
           row['Vendedor'] || row['seller'] || row['vendedor'],
         ),
@@ -670,6 +739,7 @@ export async function importarPayables(
   const results = {
     total: rows.length,
     success: 0,
+    deleted: 0,
     errors: [] as string[],
     lastCompanyId: '' as string,
   }
@@ -678,93 +748,156 @@ export async function importarPayables(
     return { ...results, message: 'Arquivo vazio.' }
   }
 
-  let lastCompanyName = ''
-  const preProcessedRows = rows.map((row, index) => {
-    let companyName = ''
-    if (!fallbackCompanyId) {
-      companyName = normalizeText(row['Empresa'] || row['company'])
-      if (!companyName && lastCompanyName) {
-        companyName = lastCompanyName
-      }
-      if (companyName) {
-        lastCompanyName = companyName
-      }
-    }
-    return {
-      ...row,
-      __companyNameResolved: companyName,
-      __originalIndex: index,
-    }
-  })
+  const companiesMap = new Map<string, any[]>()
+  const companyIdCache = new Map<string, string>()
+  const uniqueKeys = new Set<string>()
 
-  const companyCache = new Map<string, string>()
-  const BATCH_SIZE = 50
+  if (fallbackCompanyId) {
+    companyIdCache.set('__fallback__', fallbackCompanyId)
+  }
 
-  for (let i = 0; i < preProcessedRows.length; i += BATCH_SIZE) {
-    const batch = preProcessedRows.slice(i, i + BATCH_SIZE)
-    const promises = batch.map(async (row) => {
-      const rowIndex = row.__originalIndex
-      try {
-        let companyId = fallbackCompanyId
+  let processedCount = 0
 
-        if (!companyId) {
-          const companyName = row.__companyNameResolved
-          if (!companyName) {
-            throw new Error('Empresa não identificada.')
-          }
-          companyId = companyCache.get(companyName)
-          if (!companyId) {
-            companyId = await ensureCompanyAndLink(userId, companyName)
-            companyCache.set(companyName, companyId)
-          }
+  // 1. Process rows and group by company
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    try {
+      let companyId = fallbackCompanyId
+      const companyNameInRow = normalizeText(
+        row['Empresa'] || row['company'] || row['id_da_empresa'],
+      )
+
+      if (companyNameInRow) {
+        if (companyIdCache.has(companyNameInRow)) {
+          companyId = companyIdCache.get(companyNameInRow)!
+        } else {
+          companyId = await ensureCompanyAndLink(userId, companyNameInRow)
+          companyIdCache.set(companyNameInRow, companyId)
         }
-
-        results.lastCompanyId = companyId!
-
-        const payload = {
-          company_id: companyId,
-          entity_name: normalizeText(
-            row['Fornecedor'] || row['entity_name'] || row['supplier'],
-          ),
-          document_number: normalizeText(
-            row['Documento'] || row['document_number'],
-          ),
-          issue_date:
-            d(row['Emissao'] || row['issue_date']) || new Date().toISOString(),
-          due_date: d(row['Vencimento'] || row['due_date']),
-          principal_value: n(
-            row['Valor'] || row['amount'] || row['principal_value'],
-          ),
-          fine: n(row['Multa'] || row['fine']),
-          interest: n(row['Juros'] || row['interest']),
-          amount: n(row['Total'] || row['amount'] || row['Valor']),
-          status: normalizeText(row['Status'] || 'pending'),
-          category: normalizeText(row['Categoria'] || row['category']),
-          description: normalizeText(
-            row['Descrição'] || 'Importado via Planilha',
-          ),
-          type: 'payable',
-        }
-
-        if (!payload.due_date) throw new Error('Vencimento inválido')
-        if (!payload.entity_name) throw new Error('Fornecedor obrigatório')
-
-        await supabase.from('transactions').insert(payload)
-        results.success++
-      } catch (err: any) {
-        results.errors.push(`Linha ${rowIndex + 2}: ${err.message}`)
       }
-    })
 
-    await Promise.all(promises)
+      if (!companyId) {
+        throw new Error(
+          'Empresa não identificada. Selecione uma empresa ou inclua a coluna "Empresa".',
+        )
+      }
 
-    if (onProgress) {
-      const processed = Math.min(i + BATCH_SIZE, rows.length)
-      const percent = Math.round((processed / rows.length) * 100)
+      results.lastCompanyId = companyId
+
+      // Field Extraction & Normalization
+      const entityName = normalizeText(
+        row['Fornecedor'] || row['entity_name'] || row['supplier'],
+      )
+      if (!entityName) throw new Error('Fornecedor é obrigatório.')
+
+      const documentNumber = normalizeText(
+        row['Documento'] || row['document_number'] || row['nf'],
+      )
+      const issueDate =
+        d(row['Emissao'] || row['issue_date'] || row['data_emissao']) ||
+        new Date().toISOString()
+      const dueDate = d(
+        row['Vencimento'] || row['due_date'] || row['data_vencimento'],
+      )
+
+      if (!dueDate) throw new Error('Data de vencimento inválida.')
+
+      const principal = n(
+        row['Valor Principal'] || row['principal_value'] || row['Valor'],
+      )
+      const fine = n(row['Multa'] || row['fine'])
+      const interest = n(row['Juros'] || row['interest'])
+
+      // Calculate amount if not explicitly provided or sum up
+      let amount = n(row['Total'] || row['amount'] || row['valor_total'])
+      if (amount === 0 && principal > 0) {
+        amount = principal + fine + interest
+      }
+      if (amount === 0 && principal === 0) {
+        // Try to find any value column
+        amount = n(row['Valor'] || row['valor'])
+        if (amount > 0 && principal === 0) principal = amount
+      }
+
+      const statusRaw = normalizeText(
+        row['Status'] || row['status'] || 'pending',
+      )
+      const status = normalizePayableStatus(statusRaw, dueDate)
+
+      const category = normalizeText(
+        row['Categoria'] || row['category'] || 'Geral',
+      )
+      const description = normalizeText(
+        row['Descrição'] || row['description'] || 'Importado via Planilha',
+      )
+
+      // Deduplication Key
+      const key = `${companyId}|${entityName}|${documentNumber}|${dueDate}|${amount.toFixed(2)}`
+      if (uniqueKeys.has(key)) {
+        continue // Skip duplicate row
+      }
+      uniqueKeys.add(key)
+
+      const dbItem = {
+        entity_name: entityName,
+        document_number: documentNumber,
+        issue_date: issueDate,
+        due_date: dueDate,
+        principal_value: principal,
+        fine: fine,
+        interest: interest,
+        amount: amount,
+        status: status,
+        category: category,
+        description: description,
+      }
+
+      if (!companiesMap.has(companyId)) {
+        companiesMap.set(companyId, [])
+      }
+      companiesMap.get(companyId)!.push(dbItem)
+    } catch (err: any) {
+      results.errors.push(`Linha ${i + 2}: ${err.message}`)
+    }
+
+    processedCount++
+    if (onProgress && processedCount % 50 === 0) {
+      const percent = Math.round((processedCount / rows.length) * 50)
       onProgress(percent)
     }
+  }
 
-    await new Promise((resolve) => setTimeout(resolve, 0))
+  // 2. Bulk Replace per Company
+  let companiesProcessed = 0
+  const totalCompanies = companiesMap.size
+
+  for (const [companyId, companyRows] of companiesMap.entries()) {
+    try {
+      const { data, error } = await supabase.rpc('strict_replace_payables', {
+        p_company_id: companyId,
+        p_rows: companyRows,
+      })
+
+      if (error) throw error
+
+      if (data && data.success) {
+        results.success += data.inserted
+        results.deleted += data.deleted
+      } else {
+        throw new Error(data?.error || 'Erro desconhecido ao substituir dados.')
+      }
+    } catch (err: any) {
+      results.errors.push(
+        `Erro crítico ao salvar dados da empresa ${companyId}: ${err.message}`,
+      )
+    }
+
+    companiesProcessed++
+    if (onProgress) {
+      const percent =
+        50 + Math.round((companiesProcessed / totalCompanies) * 50)
+      onProgress(percent)
+    }
   }
 
   return results

@@ -170,6 +170,8 @@ export function ImportDialog({
     }
   }
 
+  const showWarning = type === 'receivable' || type === 'payable'
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
@@ -180,16 +182,18 @@ export function ImportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {type === 'receivable' && (
+        {showWarning && (
           <Alert variant="destructive" className="py-2">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle className="text-sm font-semibold">
               Atenção: Sobrescrita de Dados
             </AlertTitle>
             <AlertDescription className="text-xs">
-              A importação de contas a receber substituirá TODOS os títulos
-              existentes para as empresas identificadas no arquivo.
-              Certifique-se de que o arquivo contém a base completa.
+              A importação de{' '}
+              {type === 'receivable' ? 'contas a receber' : 'contas a pagar'}{' '}
+              substituirá TODOS os títulos existentes para as empresas
+              identificadas no arquivo. Certifique-se de que o arquivo contém a
+              base completa.
             </AlertDescription>
           </Alert>
         )}
@@ -296,11 +300,11 @@ export function ImportDialog({
             disabled={
               !selectedFile || isProcessing || (!!result && result.success)
             }
-            variant={type === 'receivable' ? 'destructive' : 'default'}
+            variant={showWarning ? 'destructive' : 'default'}
           >
             {isProcessing
               ? 'Processando...'
-              : type === 'receivable'
+              : showWarning
                 ? 'Sobrescrever e Importar'
                 : 'Importar Arquivo'}
             {!isProcessing && <Play className="ml-2 h-4 w-4" />}
