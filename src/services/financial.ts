@@ -38,9 +38,9 @@ export async function fetchPaginatedReceivables(
   filters: {
     status?: string
     search?: string
-    dateRange?: { from: Date; to: Date }
-    issueDateRange?: { from: Date; to: Date }
-    createdAtRange?: { from: Date; to: Date }
+    dateRange?: { from: Date; to?: Date }
+    issueDateRange?: { from: Date; to?: Date }
+    createdAtRange?: { from: Date; to?: Date }
     sortBy?: string
     sortOrder?: 'asc' | 'desc'
   },
@@ -63,11 +63,11 @@ export async function fetchPaginatedReceivables(
         if (filters.status === 'vencida') {
           query = query
             .eq('title_status', 'Aberto')
-            .lt('due_date', new Date().toISOString())
+            .lt('due_date', format(new Date(), 'yyyy-MM-dd'))
         } else if (filters.status === 'a_vencer') {
           query = query
             .eq('title_status', 'Aberto')
-            .gte('due_date', new Date().toISOString())
+            .gte('due_date', format(new Date(), 'yyyy-MM-dd'))
         } else {
           query = query.eq('title_status', filters.status)
         }
@@ -82,24 +82,39 @@ export async function fetchPaginatedReceivables(
       }
 
       // Due Date Range Filter
-      if (filters.dateRange?.from && filters.dateRange?.to) {
-        query = query
-          .gte('due_date', filters.dateRange.from.toISOString())
-          .lte('due_date', filters.dateRange.to.toISOString())
+      if (filters.dateRange?.from) {
+        const fromStr = format(filters.dateRange.from, 'yyyy-MM-dd')
+        const toStr = filters.dateRange.to
+          ? format(filters.dateRange.to, 'yyyy-MM-dd')
+          : fromStr
+        query = query.gte('due_date', fromStr).lte('due_date', toStr)
       }
 
       // Issue Date Range Filter
-      if (filters.issueDateRange?.from && filters.issueDateRange?.to) {
-        query = query
-          .gte('issue_date', filters.issueDateRange.from.toISOString())
-          .lte('issue_date', filters.issueDateRange.to.toISOString())
+      if (filters.issueDateRange?.from) {
+        const fromStr = format(filters.issueDateRange.from, 'yyyy-MM-dd')
+        const toStr = filters.issueDateRange.to
+          ? format(filters.issueDateRange.to, 'yyyy-MM-dd')
+          : fromStr
+        query = query.gte('issue_date', fromStr).lte('issue_date', toStr)
       }
 
       // Created At Range Filter
-      if (filters.createdAtRange?.from && filters.createdAtRange?.to) {
-        query = query
-          .gte('created_at', filters.createdAtRange.from.toISOString())
-          .lte('created_at', filters.createdAtRange.to.toISOString())
+      if (filters.createdAtRange?.from) {
+        // Created at is timestampz, so we need to handle full day range
+        const fromStr = filters.createdAtRange.from.toISOString()
+        const toDate = filters.createdAtRange.to || filters.createdAtRange.from
+        // Set to end of day for the 'to' date
+        const toStr = new Date(
+          toDate.getFullYear(),
+          toDate.getMonth(),
+          toDate.getDate(),
+          23,
+          59,
+          59,
+          999,
+        ).toISOString()
+        query = query.gte('created_at', fromStr).lte('created_at', toStr)
       }
 
       // Sorting
@@ -127,7 +142,7 @@ export async function fetchPaginatedPayables(
     status?: string
     search?: string
     supplier?: string
-    dateRange?: { from: Date; to: Date }
+    dateRange?: { from: Date; to?: Date }
   },
 ): Promise<PaginatedResult<any>> {
   return performanceMonitor.measurePromise(
@@ -144,16 +159,12 @@ export async function fetchPaginatedPayables(
         .eq('type', 'payable')
 
       if (filters.status && filters.status !== 'all') {
+        const today = format(new Date(), 'yyyy-MM-dd')
         if (filters.status === 'overdue') {
-          query = query
-            .eq('status', 'pending')
-            .lt('due_date', new Date().toISOString())
+          query = query.eq('status', 'pending').lt('due_date', today)
         } else if (filters.status === 'upcoming') {
-          query = query
-            .eq('status', 'pending')
-            .gte('due_date', new Date().toISOString())
+          query = query.eq('status', 'pending').gte('due_date', today)
         } else if (filters.status === 'due_today') {
-          const today = new Date().toISOString().split('T')[0]
           query = query.eq('due_date', today)
         } else {
           query = query.eq('status', filters.status)
@@ -168,10 +179,12 @@ export async function fetchPaginatedPayables(
         query = query.ilike('entity_name', `%${filters.supplier}%`)
       }
 
-      if (filters.dateRange?.from && filters.dateRange?.to) {
-        query = query
-          .gte('due_date', filters.dateRange.from.toISOString())
-          .lte('due_date', filters.dateRange.to.toISOString())
+      if (filters.dateRange?.from) {
+        const fromStr = format(filters.dateRange.from, 'yyyy-MM-dd')
+        const toStr = filters.dateRange.to
+          ? format(filters.dateRange.to, 'yyyy-MM-dd')
+          : fromStr
+        query = query.gte('due_date', fromStr).lte('due_date', toStr)
       }
 
       query = query
@@ -462,356 +475,429 @@ export async function fetchAllRecords(
 }
 
 // Imports
+const getCol = (row: any, keys: string[]) => {
+  for (const key of keys) {
+    if (row[key] !== undefined) return row[key]
+  }
+  const rowKeys = Object.keys(row)
+  for (const key of keys) {
+    const found = rowKeys.find((k) => k.toLowerCase() === key.toLowerCase())
+    if (found) return row[found]
+  }
+  return undefined
+}
+
 export async function importarReceivables(
-  companyId: string,
+  userId: string,
   data: any[],
+  fallbackCompanyId?: string,
 ): Promise<ImportResult> {
-  const getCol = (row: any, keys: string[]) => {
-    for (const key of keys) {
-      if (row[key] !== undefined) return row[key]
+  const companyGroups = new Map<string, any[]>()
+  let totalRecordsProcessed = 0
+  let globalFailures: any[] = []
+  let totalInserted = 0
+  let totalInsertedAmount = 0
+  let totalDuplicatesSkipped = 0
+
+  // 1. Group data by company
+  for (const row of data) {
+    const companyName = normalizeText(
+      getCol(row, ['Empresa', 'Company', 'Loja', 'Unidade', 'company']),
+    )
+
+    let targetCompany = companyName
+    if (!targetCompany && fallbackCompanyId) {
+      targetCompany = fallbackCompanyId
     }
-    const rowKeys = Object.keys(row)
-    for (const key of keys) {
-      const found = rowKeys.find((k) => k.toLowerCase() === key.toLowerCase())
-      if (found) return row[found]
+
+    if (!targetCompany) {
+      // Skip row if no company found and no fallback
+      continue
     }
-    return undefined
+
+    if (!companyGroups.has(targetCompany)) {
+      companyGroups.set(targetCompany, [])
+    }
+    companyGroups.get(targetCompany)?.push(row)
   }
 
-  const mappedData = data
-    .map((row: any) => ({
-      invoice_number: normalizeText(
-        getCol(row, [
-          'Nota Fiscal',
-          'NF',
-          'Documento',
-          'invoice_number',
-          'Doc',
-          'Nº Nota',
-        ]),
-      ),
-      order_number: normalizeText(
-        getCol(row, ['Pedido', 'order_number', 'PO', 'Ped']),
-      ),
-      customer: normalizeText(
-        getCol(row, [
-          'Cliente',
-          'Nome Fantasia',
-          'customer',
-          'Nome',
-          'Razão Social',
-        ]),
-      ),
-      customer_name: normalizeText(
-        getCol(row, ['Razão Social', 'Nome Cliente', 'Nome', 'customer_name']),
-      ),
-      customer_doc: normalizeText(
-        getCol(row, [
-          'CNPJ',
-          'CPF',
-          'Documento Cliente',
-          'customer_doc',
-          'CNPJ/CPF',
-          'Doc Cliente',
-        ]),
-      ),
-      issue_date: d(
-        getCol(row, [
-          'Emissão',
-          'Data Emissão',
-          'issue_date',
-          'Data de Emissão',
-          'Dt Emissão',
-        ]),
-      ),
-      due_date: d(
-        getCol(row, [
-          'Vencimento',
-          'Data Vencimento',
-          'due_date',
-          'Data de Vencimento',
-          'Dt Vencimento',
-          'Vcto',
-        ]),
-      ),
-      payment_prediction: d(
-        getCol(row, [
-          'Previsão',
-          'Data Previsão',
-          'payment_prediction',
-          'Prev. Pagto',
-          'Previsão Pagto',
-        ]),
-      ),
-      principal_value: n(
-        getCol(row, [
-          'Valor',
-          'Valor Original',
-          'Principal',
-          'principal_value',
-          'Valor Título',
-          'Valor Liquido',
-          'Valor Líquido',
-          'Valor Total',
-        ]),
-      ),
-      fine: n(getCol(row, ['Multa', 'fine'])),
-      interest: n(getCol(row, ['Juros', 'interest'])),
-      updated_value: n(
-        getCol(row, [
-          'Valor Atualizado',
-          'Valor Total',
-          'updated_value',
-          'Saldo',
-          'Total',
-        ]),
-      ),
-      title_status: normalizeText(
-        getCol(row, [
-          'Status',
-          'Situação',
-          'title_status',
-          'Estado',
-          'Status Título',
-        ]),
-      ),
-      new_status: normalizeText(
-        getCol(row, [
-          'Novo Status',
-          'Status Secundário',
-          'new_status',
-          'Sub Status',
-        ]),
-      ),
-      seller: normalizeText(getCol(row, ['Vendedor', 'seller', 'Comercial'])),
-      customer_code: normalizeText(
-        getCol(row, ['Cod Cliente', 'Código', 'customer_code', 'Cód.', 'Cod.']),
-      ),
-      uf: normalizeText(getCol(row, ['UF', 'uf', 'Estado'])),
-      regional: normalizeText(getCol(row, ['Regional', 'regional'])),
-      installment: normalizeText(getCol(row, ['Parcela', 'installment'])),
-      days_overdue: n(getCol(row, ['Dias Atraso', 'days_overdue', 'Atraso'])),
-      utilization: normalizeText(
-        getCol(row, ['Utilização', 'Uso', 'utilization']),
-      ),
-      negativado: normalizeText(getCol(row, ['Negativado', 'negativado'])),
-      description: normalizeText(
-        getCol(row, ['Descrição', 'Obs', 'description', 'Histórico']),
-      ),
-    }))
-    .filter((r) => r.customer && !isGarbageCompany(r.customer))
-
-  if (mappedData.length === 0) {
+  if (companyGroups.size === 0) {
     return {
       success: false,
-      message: 'Nenhum registro válido encontrado no arquivo.',
+      message:
+        'Nenhuma empresa identificada no arquivo e nenhuma empresa selecionada.',
       failures: [],
     }
   }
 
-  const uniqueRows = new Map()
-  let duplicateCount = 0
+  // 2. Process each company group
+  for (const [companyNameOrId, rows] of companyGroups.entries()) {
+    try {
+      // Resolve Company ID
+      let companyId = companyNameOrId
+      // If it looks like a name (not a UUID), resolve it
+      if (
+        !companyNameOrId.match(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        )
+      ) {
+        companyId = await ensureCompanyAndLink(userId, companyNameOrId)
+      }
 
-  mappedData.forEach((row) => {
-    const key = `${row.invoice_number || ''}|${row.order_number || ''}|${row.installment || ''}|${row.principal_value}`
+      const mappedData = rows
+        .map((row: any) => ({
+          invoice_number: normalizeText(
+            getCol(row, [
+              'Nota Fiscal',
+              'NF',
+              'Documento',
+              'invoice_number',
+              'Doc',
+              'Nº Nota',
+            ]),
+          ),
+          order_number: normalizeText(
+            getCol(row, ['Pedido', 'order_number', 'PO', 'Ped']),
+          ),
+          customer: normalizeText(
+            getCol(row, [
+              'Cliente',
+              'Nome Fantasia',
+              'customer',
+              'Nome',
+              'Razão Social',
+            ]),
+          ),
+          customer_name: normalizeText(
+            getCol(row, [
+              'Razão Social',
+              'Nome Cliente',
+              'Nome',
+              'customer_name',
+            ]),
+          ),
+          customer_doc: normalizeText(
+            getCol(row, [
+              'CNPJ',
+              'CPF',
+              'Documento Cliente',
+              'customer_doc',
+              'CNPJ/CPF',
+              'Doc Cliente',
+            ]),
+          ),
+          issue_date: d(
+            getCol(row, [
+              'Emissão',
+              'Data Emissão',
+              'issue_date',
+              'Data de Emissão',
+              'Dt Emissão',
+            ]),
+          ),
+          due_date: d(
+            getCol(row, [
+              'Vencimento',
+              'Data Vencimento',
+              'due_date',
+              'Data de Vencimento',
+              'Dt Vencimento',
+              'Vcto',
+            ]),
+          ),
+          payment_prediction: d(
+            getCol(row, [
+              'Previsão',
+              'Data Previsão',
+              'payment_prediction',
+              'Prev. Pagto',
+              'Previsão Pagto',
+            ]),
+          ),
+          principal_value: n(
+            getCol(row, [
+              'Valor',
+              'Valor Original',
+              'Principal',
+              'principal_value',
+              'Valor Título',
+              'Valor Liquido',
+              'Valor Líquido',
+              'Valor Total',
+            ]),
+          ),
+          fine: n(getCol(row, ['Multa', 'fine'])),
+          interest: n(getCol(row, ['Juros', 'interest'])),
+          updated_value: n(
+            getCol(row, [
+              'Valor Atualizado',
+              'Valor Total',
+              'updated_value',
+              'Saldo',
+              'Total',
+            ]),
+          ),
+          title_status: normalizeText(
+            getCol(row, [
+              'Status',
+              'Situação',
+              'title_status',
+              'Estado',
+              'Status Título',
+            ]),
+          ),
+          new_status: normalizeText(
+            getCol(row, [
+              'Novo Status',
+              'Status Secundário',
+              'new_status',
+              'Sub Status',
+            ]),
+          ),
+          seller: normalizeText(
+            getCol(row, ['Vendedor', 'seller', 'Comercial']),
+          ),
+          customer_code: normalizeText(
+            getCol(row, [
+              'Cod Cliente',
+              'Código',
+              'customer_code',
+              'Cód.',
+              'Cod.',
+            ]),
+          ),
+          uf: normalizeText(getCol(row, ['UF', 'uf', 'Estado'])),
+          regional: normalizeText(getCol(row, ['Regional', 'regional'])),
+          installment: normalizeText(getCol(row, ['Parcela', 'installment'])),
+          days_overdue: n(
+            getCol(row, ['Dias Atraso', 'days_overdue', 'Atraso']),
+          ),
+          utilization: normalizeText(
+            getCol(row, ['Utilização', 'Uso', 'utilization']),
+          ),
+          negativado: normalizeText(getCol(row, ['Negativado', 'negativado'])),
+          description: normalizeText(
+            getCol(row, ['Descrição', 'Obs', 'description', 'Histórico']),
+          ),
+        }))
+        .filter((r: any) => r.customer && !isGarbageCompany(r.customer))
 
-    if (uniqueRows.has(key)) {
-      duplicateCount++
-    } else {
-      uniqueRows.set(key, row)
-    }
-  })
+      if (mappedData.length === 0) continue
 
-  const cleanData = Array.from(uniqueRows.values())
+      // Deduplication Logic
+      const uniqueRows = new Map()
+      let duplicateCount = 0
 
-  const { data: result, error } = await supabase.rpc(
-    'strict_replace_receivables',
-    {
-      p_company_id: companyId,
-      p_rows: cleanData,
-    },
-  )
+      mappedData.forEach((row: any) => {
+        const key = `${row.invoice_number || ''}|${row.order_number || ''}|${row.installment || ''}|${row.principal_value}`
+        if (uniqueRows.has(key)) {
+          duplicateCount++
+        } else {
+          uniqueRows.set(key, row)
+        }
+      })
 
-  if (error) {
-    console.error('RPC Error:', error)
-    return {
-      success: false,
-      message: error.message || 'Erro de conexão.',
-      failures: [],
+      const cleanData = Array.from(uniqueRows.values())
+
+      const { data: result, error } = await supabase.rpc(
+        'strict_replace_receivables',
+        {
+          p_company_id: companyId,
+          p_rows: cleanData,
+        },
+      )
+
+      if (error) {
+        console.error(`Error processing company ${companyNameOrId}:`, error)
+        globalFailures.push({ company: companyNameOrId, error: error.message })
+        continue
+      }
+
+      const rpcResponse = result as any
+      if (!rpcResponse.success) {
+        globalFailures.push({
+          company: companyNameOrId,
+          error: rpcResponse.error,
+        })
+        continue
+      }
+
+      const stats = rpcResponse.stats
+      totalInserted += stats?.inserted || 0
+      totalInsertedAmount += stats?.inserted_amount || 0
+      totalDuplicatesSkipped += duplicateCount + (stats?.skipped || 0)
+      totalRecordsProcessed += rows.length
+    } catch (err: any) {
+      console.error(`Exception processing company ${companyNameOrId}:`, err)
+      globalFailures.push({ company: companyNameOrId, error: err.message })
     }
   }
 
-  // Fetch integrity stats after insert
-  const { data: integrity } = await supabase.rpc(
-    'get_company_integrity_stats',
-    {
-      p_company_id: companyId,
-      p_table_name: 'receivables',
-    },
-  )
-
-  const rpcResponse = result as any
-  if (!rpcResponse.success) {
-    return {
-      success: false,
-      message: rpcResponse.error || 'Erro no processamento.',
-      failures: [],
-    }
-  }
-
-  const stats = rpcResponse.stats
-  const totalSkipped = duplicateCount + (stats?.skipped || 0)
-
+  // Return aggregated stats
+  // Note: integrity stats per company are not returned in aggregated view to keep it simple,
+  // but could be fetched if only 1 company was processed.
   return {
-    success: true,
-    message:
-      totalSkipped > 0
-        ? `Importação realizada. ${totalSkipped} duplicatas removidas.`
-        : 'Importação realizada com sucesso.',
+    success: totalInserted > 0 || globalFailures.length === 0,
+    message: `Processado com sucesso. ${totalInserted} registros inseridos. ${totalDuplicatesSkipped} duplicatas.`,
     stats: {
-      records: stats?.inserted || 0,
-      importedTotal: stats?.inserted_amount || 0,
+      records: totalInserted,
+      importedTotal: totalInsertedAmount,
       fileTotal: 0,
       fileTotalPrincipal: 0,
       importedPrincipal: 0,
-      failuresTotal: 0,
-      duplicatesSkipped: totalSkipped,
-      // Integrity
-      minCreatedAt: integrity?.min_created_at,
-      maxCreatedAt: integrity?.max_created_at,
-      distinctBatches: integrity?.distinct_batches,
+      failuresTotal: globalFailures.length,
+      duplicatesSkipped: totalDuplicatesSkipped,
     },
-    failures: [],
+    failures: globalFailures,
   }
 }
 
 export const importarPayables = async (
-  companyId: string,
+  userId: string,
   data: any[],
+  fallbackCompanyId?: string,
 ): Promise<ImportResult> => {
-  const getCol = (row: any, keys: string[]) => {
-    for (const key of keys) {
-      if (row[key] !== undefined) return row[key]
+  const companyGroups = new Map<string, any[]>()
+  let totalRecordsProcessed = 0
+  let globalFailures: any[] = []
+  let totalInserted = 0
+  let totalInsertedAmount = 0
+
+  // 1. Group data
+  for (const row of data) {
+    const companyName = normalizeText(
+      getCol(row, ['Empresa', 'Company', 'Loja', 'Unidade', 'company']),
+    )
+
+    let targetCompany = companyName
+    if (!targetCompany && fallbackCompanyId) {
+      targetCompany = fallbackCompanyId
     }
-    const rowKeys = Object.keys(row)
-    for (const key of keys) {
-      const found = rowKeys.find((k) => k.toLowerCase() === key.toLowerCase())
-      if (found) return row[found]
+
+    if (!targetCompany) continue
+
+    if (!companyGroups.has(targetCompany)) {
+      companyGroups.set(targetCompany, [])
     }
-    return undefined
+    companyGroups.get(targetCompany)?.push(row)
   }
 
-  const mappedData = data
-    .map((row: any) => ({
-      entity_name: normalizeText(
-        getCol(row, ['Fornecedor', 'Nome', 'entity_name']),
-      ),
-      document_number: normalizeText(
-        getCol(row, [
-          'Documento',
-          'Nota Fiscal',
-          'NF',
-          'document_number',
-          'Doc',
-        ]),
-      ),
-      issue_date: d(
-        getCol(row, ['Emissão', 'Data Emissão', 'issue_date', 'Data']),
-      ),
-      due_date: d(
-        getCol(row, [
-          'Vencimento',
-          'Data Vencimento',
-          'due_date',
-          'Vcto',
-          'Data Vencto',
-        ]),
-      ),
-      amount: n(
-        getCol(row, [
-          'Valor',
-          'Total',
-          'Valor Total',
-          'amount',
-          'Valor Líquido',
-        ]),
-      ),
-      principal_value: n(
-        getCol(row, ['Valor Principal', 'Principal', 'principal_value']),
-      ),
-      fine: n(getCol(row, ['Multa', 'fine'])),
-      interest: n(getCol(row, ['Juros', 'interest'])),
-      status: normalizeText(
-        getCol(row, ['Status', 'Situação', 'status', 'Estado']),
-      ),
-      category: normalizeText(
-        getCol(row, ['Categoria', 'category', 'Classificação']),
-      ),
-      description: normalizeText(
-        getCol(row, ['Descrição', 'Obs', 'description', 'Histórico']),
-      ),
-    }))
-    .filter((r) => r.entity_name && !isGarbageCompany(r.entity_name))
-
-  if (mappedData.length === 0) {
+  if (companyGroups.size === 0) {
     return {
       success: false,
-      message: 'Nenhum registro válido encontrado.',
+      message: 'Nenhuma empresa identificada e nenhuma selecionada.',
       failures: [],
     }
   }
 
-  const { data: result, error } = await supabase.rpc(
-    'strict_replace_payables',
-    {
-      p_company_id: companyId,
-      p_rows: mappedData,
-    },
-  )
+  // 2. Process
+  for (const [companyNameOrId, rows] of companyGroups.entries()) {
+    try {
+      let companyId = companyNameOrId
+      if (
+        !companyNameOrId.match(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        )
+      ) {
+        companyId = await ensureCompanyAndLink(userId, companyNameOrId)
+      }
 
-  if (error) {
-    return {
-      success: false,
-      message: error.message,
-      failures: [],
-    }
-  }
+      const mappedData = rows
+        .map((row: any) => ({
+          entity_name: normalizeText(
+            getCol(row, ['Fornecedor', 'Nome', 'entity_name']),
+          ),
+          document_number: normalizeText(
+            getCol(row, [
+              'Documento',
+              'Nota Fiscal',
+              'NF',
+              'document_number',
+              'Doc',
+            ]),
+          ),
+          issue_date: d(
+            getCol(row, ['Emissão', 'Data Emissão', 'issue_date', 'Data']),
+          ),
+          due_date: d(
+            getCol(row, [
+              'Vencimento',
+              'Data Vencimento',
+              'due_date',
+              'Vcto',
+              'Data Vencto',
+            ]),
+          ),
+          amount: n(
+            getCol(row, [
+              'Valor',
+              'Total',
+              'Valor Total',
+              'amount',
+              'Valor Líquido',
+            ]),
+          ),
+          principal_value: n(
+            getCol(row, ['Valor Principal', 'Principal', 'principal_value']),
+          ),
+          fine: n(getCol(row, ['Multa', 'fine'])),
+          interest: n(getCol(row, ['Juros', 'interest'])),
+          status: normalizeText(
+            getCol(row, ['Status', 'Situação', 'status', 'Estado']),
+          ),
+          category: normalizeText(
+            getCol(row, ['Categoria', 'category', 'Classificação']),
+          ),
+          description: normalizeText(
+            getCol(row, ['Descrição', 'Obs', 'description', 'Histórico']),
+          ),
+        }))
+        .filter((r: any) => r.entity_name && !isGarbageCompany(r.entity_name))
 
-  // Fetch integrity stats after insert
-  const { data: integrity } = await supabase.rpc(
-    'get_company_integrity_stats',
-    {
-      p_company_id: companyId,
-      p_table_name: 'payables',
-    },
-  )
+      if (mappedData.length === 0) continue
 
-  const rpcResponse = result as any
-  if (!rpcResponse.success) {
-    return {
-      success: false,
-      message: rpcResponse.error || 'Erro no processamento.',
-      failures: [],
+      const { data: result, error } = await supabase.rpc(
+        'strict_replace_payables',
+        {
+          p_company_id: companyId,
+          p_rows: mappedData,
+        },
+      )
+
+      if (error) {
+        globalFailures.push({ company: companyNameOrId, error: error.message })
+        continue
+      }
+
+      const rpcResponse = result as any
+      if (!rpcResponse.success) {
+        globalFailures.push({
+          company: companyNameOrId,
+          error: rpcResponse.error,
+        })
+        continue
+      }
+
+      totalInserted += rpcResponse.inserted || 0
+      totalInsertedAmount += rpcResponse.inserted_amount || 0
+    } catch (err: any) {
+      globalFailures.push({ company: companyNameOrId, error: err.message })
     }
   }
 
   return {
-    success: true,
+    success: totalInserted > 0 || globalFailures.length === 0,
     message: 'Importação de contas a pagar realizada com sucesso.',
     stats: {
-      records: rpcResponse.inserted || 0,
-      importedTotal: rpcResponse.inserted_amount || 0,
+      records: totalInserted,
+      importedTotal: totalInsertedAmount,
       fileTotal: 0,
       fileTotalPrincipal: 0,
       importedPrincipal: 0,
-      failuresTotal: 0,
+      failuresTotal: globalFailures.length,
       duplicatesSkipped: 0,
-      // Integrity
-      minCreatedAt: integrity?.min_created_at,
-      maxCreatedAt: integrity?.max_created_at,
-      distinctBatches: integrity?.distinct_batches,
     },
-    failures: [],
+    failures: globalFailures,
   }
 }
 

@@ -55,7 +55,7 @@ export default function Payables() {
     isLoading,
     refetch,
   } = useQuery(
-    `payables-${selectedCompanyId}-${page}-${debouncedSearch}-${debouncedSupplier}-${situationFilter}`,
+    `payables-${selectedCompanyId}-${page}-${debouncedSearch}-${debouncedSupplier}-${situationFilter}-${JSON.stringify(customMaturityRange)}`,
     () => {
       if (!selectedCompanyId || selectedCompanyId === 'all')
         return Promise.resolve({ data: [], count: 0 })
@@ -271,8 +271,15 @@ export default function Payables() {
             setSearchTerm('')
             setSupplierFilter('')
             setSituationFilter('all')
+            setCustomMaturityRange(undefined)
+            setMaturityPeriod('all')
           }}
-          hasActiveFilters={!!searchTerm || !!supplierFilter}
+          hasActiveFilters={
+            !!searchTerm ||
+            !!supplierFilter ||
+            situationFilter !== 'all' ||
+            !!customMaturityRange
+          }
         />
       </div>
 

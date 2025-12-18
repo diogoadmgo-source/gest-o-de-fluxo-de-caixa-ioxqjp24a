@@ -40,7 +40,7 @@ export function ImportDialog({
   title,
   onImported,
 }: ImportDialogProps) {
-  const { importData, selectedCompanyId } = useCashFlowStore()
+  const { importData } = useCashFlowStore()
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -121,6 +121,7 @@ export function ImportDialog({
 
   const downloadTemplate = () => {
     const headers = [
+      'Empresa',
       'Nota Fiscal',
       'Pedido',
       'Cliente',
@@ -134,7 +135,7 @@ export function ImportDialog({
     const content =
       headers.join(';') +
       '\n' +
-      '12345;PED-001;Empresa Exemplo S.A.;00.000.000/0001-00;01/01/2025;01/02/2025;1.500,00;Aberto;Exemplo de importação'
+      'Minha Empresa;12345;PED-001;Cliente Exemplo;00.000.000/0001-00;01/01/2025;01/02/2025;1.500,00;Aberto;Exemplo'
 
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -148,10 +149,7 @@ export function ImportDialog({
 
   const handleImport = async () => {
     if (!selectedFile) return
-    if (!selectedCompanyId || selectedCompanyId === 'all') {
-      toast.error('Selecione uma empresa específica antes de importar.')
-      return
-    }
+    // Removed company selection check
 
     setIsProcessing(true)
     setProgress(0)
@@ -204,7 +202,6 @@ export function ImportDialog({
           toast.success(msg)
 
           onImported?.()
-          // Do not close immediately, let user see stats
         } else {
           toast.error('Falha na importação. Verifique os erros.')
         }
@@ -246,6 +243,8 @@ export function ImportDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             Faça upload de arquivo CSV para atualizar a base de dados.
+            <br />O sistema identificará automaticamente a empresa pelo campo
+            "Empresa".
           </DialogDescription>
         </DialogHeader>
 
@@ -256,12 +255,11 @@ export function ImportDialog({
           >
             <AlertTriangle className="h-4 w-4 text-destructive" />
             <AlertTitle className="text-sm font-semibold">
-              Modo de Substituição Total
+              Substituição por Empresa
             </AlertTitle>
             <AlertDescription className="text-xs text-destructive/90">
               A importação substituirá <strong>todos</strong> os títulos
-              existentes desta empresa. Certifique-se que o arquivo contém a
-              base completa atualizada.
+              existentes para cada empresa identificada no arquivo.
             </AlertDescription>
           </Alert>
         )}
@@ -374,7 +372,7 @@ export function ImportDialog({
                   <div className="rounded-md border p-4 bg-card text-card-foreground shadow-sm space-y-3">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-primary" />
-                      Verificação de Integridade
+                      Resumo da Operação
                     </h4>
                     <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs">
                       <div>
@@ -394,37 +392,6 @@ export function ImportDialog({
                             'pt-BR',
                             { style: 'currency', currency: 'BRL' },
                           )}
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">
-                          Lotes Distintos:
-                        </span>
-                        <div
-                          className={cn(
-                            'font-medium',
-                            result.stats?.distinctBatches === 1
-                              ? 'text-green-600'
-                              : 'text-amber-600',
-                          )}
-                        >
-                          {result.stats?.distinctBatches || 0}{' '}
-                          {result.stats?.distinctBatches === 1
-                            ? '(Isolamento OK)'
-                            : '(Atenção)'}
-                        </div>
-                      </div>
-                      <div className="col-span-2 border-t pt-2 mt-1">
-                        <span className="text-muted-foreground block mb-1">
-                          Timestamp do Lote:
-                        </span>
-                        <div className="font-mono text-[10px] text-muted-foreground">
-                          {result.stats?.minCreatedAt
-                            ? format(
-                                new Date(result.stats.minCreatedAt),
-                                'dd/MM/yyyy HH:mm:ss',
-                              )
-                            : '-'}
                         </div>
                       </div>
                     </div>

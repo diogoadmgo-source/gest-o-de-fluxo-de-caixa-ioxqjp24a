@@ -118,7 +118,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchData = useCallback(async () => {
     if (!user) return
-    // Avoid loading state flickering for realtime updates, only set loading if entries are empty
+    // Avoid loading state flickering for realtime updates
     if (cashFlowEntries.length === 0) setLoading(true)
 
     try {
@@ -370,37 +370,43 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   ) => {
     if (!user) throw new Error('User not authenticated')
 
-    if (!selectedCompanyId || selectedCompanyId === 'all') {
-      throw new Error(
-        'Selecione uma empresa específica para realizar a importação.',
-      )
-    }
-
     onProgress?.(10)
 
     let result
+    // Pass user.id and optional fallback company
+    const fallback =
+      selectedCompanyId && selectedCompanyId !== 'all'
+        ? selectedCompanyId
+        : undefined
+
     if (type === 'receivable') {
-      result = await importarReceivables(selectedCompanyId, data)
+      result = await importarReceivables(user.id, data, fallback)
       queryClient.invalidate('receivables')
     } else {
-      result = await importarPayables(selectedCompanyId, data)
+      result = await importarPayables(user.id, data, fallback)
       queryClient.invalidate('payables')
     }
 
     onProgress?.(90)
 
     if (result.success) {
-      await supabase.from('import_logs').insert({
-        company_id: selectedCompanyId,
-        user_id: user.id,
-        filename: filename || 'manual_import.csv',
-        type: type,
-        status: 'success',
-        total_records: result.stats?.records || 0,
-        success_count: result.stats?.records || 0,
-        error_count: 0,
-        deleted_count: 0,
-      })
+      // If we had a selected company, log it there, otherwise log with the first success or similar logic
+      // Since we might have imported multiple, we can log generally or skip strict association in UI log
+      const logCompanyId = fallback || (companies[0] ? companies[0].id : null)
+
+      if (logCompanyId) {
+        await supabase.from('import_logs').insert({
+          company_id: logCompanyId,
+          user_id: user.id,
+          filename: filename || 'manual_import.csv',
+          type: type,
+          status: 'success',
+          total_records: result.stats?.records || 0,
+          success_count: result.stats?.records || 0,
+          error_count: result.failures?.length || 0,
+          deleted_count: 0,
+        })
+      }
 
       queryClient.invalidate('dashboard')
       fetchData()

@@ -5,10 +5,11 @@ import { getDashboardKPIs } from '@/services/financial'
 import { useQuery } from '@/hooks/use-query'
 import { MetricCard } from '@/components/dashboard/MetricCard'
 import { KPIPanel } from '@/components/dashboard/KPIPanel'
+import { CashFlowEvolutionChart } from '@/components/cash-flow/CashFlowEvolutionChart'
 import { Loader2 } from 'lucide-react'
 
 export default function Dashboard() {
-  const { selectedCompanyId } = useCashFlowStore()
+  const { selectedCompanyId, cashFlowEntries } = useCashFlowStore()
 
   const { data: kpis, isLoading } = useQuery(
     `dashboard-kpi-${selectedCompanyId}`,
@@ -45,24 +46,29 @@ export default function Dashboard() {
       ) : (
         <>
           <KPIPanel kpi={kpiData} />
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <MetricCard
               title="Saldo Atual"
               value={kpis?.current_balance || 0}
-              description="Calculado via RPC"
+              description="Posição de Caixa"
             />
             <MetricCard
-              title="Saída Média Diária"
-              value={kpis?.avg_daily_outflow || 0}
-              trend="down"
+              title="Total a Receber"
+              value={kpis?.total_receivables || 0}
+              description="Títulos em Aberto"
+              trend="up"
             />
             <MetricCard
-              title="Títulos Vencidos"
-              value={kpis?.overdue_count || 0}
-              isCurrency={false}
-              description="Quantidade"
+              title="Total a Pagar"
+              value={kpis?.total_payables || 0}
+              description="Obrigações Pendentes"
               trend="down"
             />
+          </div>
+
+          <div className="grid grid-cols-1 gap-6">
+            <CashFlowEvolutionChart data={cashFlowEntries} />
           </div>
         </>
       )}
