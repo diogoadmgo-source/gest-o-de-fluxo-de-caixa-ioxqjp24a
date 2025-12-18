@@ -844,6 +844,8 @@ export async function importarPayables(
       const documentNumber = normalizeText(
         row['Documento'] || row['document_number'] || row['nf'],
       )
+      if (!documentNumber) throw new Error('Documento é obrigatório.')
+
       const issueDate =
         d(row['Emissao'] || row['issue_date'] || row['data_emissao']) ||
         new Date().toISOString().split('T')[0]
@@ -870,6 +872,8 @@ export async function importarPayables(
         if (amount > 0 && principal === 0) principal = amount
       }
 
+      // Treat everything as pending/payable by default for the purpose of "Accounts Payable"
+      // But preserve overdue logic if date is past.
       const statusRaw = normalizeText(
         row['Status'] || row['status'] || 'pending',
       )
