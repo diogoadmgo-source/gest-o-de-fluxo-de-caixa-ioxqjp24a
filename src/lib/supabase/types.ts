@@ -1014,6 +1014,7 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       normalize_installment: { Args: { p_inst: string }; Returns: string }
       parse_date_br: { Args: { p_date_text: string }; Returns: string }
+      parse_ptbr_numeric: { Args: { p_text: string }; Returns: number }
       replace_receivables_for_company: {
         Args: { p_company_id: string; p_rows: Json }
         Returns: Json

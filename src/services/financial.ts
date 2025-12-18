@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase/client'
 import { parse, isValid, format } from 'date-fns'
 import { performanceMonitor } from '@/lib/performance'
-import { isGarbageCompany } from '@/lib/utils'
+import { isGarbageCompany, parsePtBrFloat } from '@/lib/utils'
 import { ImportBatchSummary, ImportReject, KPI } from '@/lib/types'
 
 // --- Types ---
@@ -374,23 +374,18 @@ export function normalizeText(text: any): string {
   return String(text).trim().replace(/^"|"$/g, '')
 }
 
+/**
+ * Parses numeric values using robust PT-BR currency logic.
+ * Wraps parsePtBrFloat to ensure consistency.
+ */
 export function n(value: any): number {
-  if (typeof value === 'number') return value
-  if (!value) return 0
-  let str = String(value).trim()
-
-  str = str.replace(/^R\$\s?/, '').replace(/\s/g, '')
-  const lastComma = str.lastIndexOf(',')
-  const lastDot = str.lastIndexOf('.')
-
-  if (lastComma > lastDot) {
-    str = str.replace(/\./g, '').replace(',', '.')
-  } else {
-    str = str.replace(/,/g, '')
+  try {
+    return parsePtBrFloat(value, 'Valor')
+  } catch (e) {
+    // Legacy n() returned 0 on failure usually, but for strict imports we use parsePtBrFloat directly.
+    // Keeping this safe for display purposes if any.
+    return 0
   }
-
-  const num = parseFloat(str)
-  return isNaN(num) ? 0 : num
 }
 
 export function d(value: any): string | null {
@@ -604,11 +599,12 @@ export async function importReceivablesRobust(
 ): Promise<
   ImportBatchSummary & { audit_db_rows?: number; audit_db_value?: number }
 > {
-  // Normalize fields slightly before sending to ensure JSON integrity,
-  // but let SQL handle validation.
+  // Normalize fields slightly before sending to ensure JSON integrity.
+  // CRITICAL: Parse Currency fields here to strictly validate numbers before DB.
   const sanitized = data.map((d) => {
     // Helper to try and get keys regardless of case
     const get = (k: string[]) => getCol(d, k)
+
     return {
       invoice_number: normalizeText(get(RECEIVABLE_MAPPINGS.invoice_number)),
       order_number: normalizeText(get(RECEIVABLE_MAPPINGS.order_number)),
@@ -617,10 +613,17 @@ export async function importReceivablesRobust(
       issue_date: get(RECEIVABLE_MAPPINGS.issue_date),
       due_date: get(RECEIVABLE_MAPPINGS.due_date),
       payment_prediction: get(RECEIVABLE_MAPPINGS.payment_prediction),
-      principal_value: get(RECEIVABLE_MAPPINGS.principal_value),
-      fine: get(RECEIVABLE_MAPPINGS.fine),
-      interest: get(RECEIVABLE_MAPPINGS.interest),
-      updated_value: get(RECEIVABLE_MAPPINGS.updated_value),
+      // STRICT NUMBER PARSING
+      principal_value: parsePtBrFloat(
+        get(RECEIVABLE_MAPPINGS.principal_value),
+        'Valor Principal',
+      ),
+      fine: parsePtBrFloat(get(RECEIVABLE_MAPPINGS.fine), 'Multa'),
+      interest: parsePtBrFloat(get(RECEIVABLE_MAPPINGS.interest), 'Juros'),
+      updated_value: parsePtBrFloat(
+        get(RECEIVABLE_MAPPINGS.updated_value),
+        'Valor Atualizado',
+      ),
       title_status: normalizeText(get(RECEIVABLE_MAPPINGS.title_status)),
       seller: normalizeText(get(RECEIVABLE_MAPPINGS.seller)),
       customer_code: normalizeText(get(RECEIVABLE_MAPPINGS.customer_code)),
@@ -834,7 +837,7 @@ export const importarPayables = async (
               'Data Vencto',
             ]),
           ),
-          amount: n(
+          amount: parsePtBrFloat(
             getCol(row, [
               'Valor',
               'Total',
@@ -842,12 +845,14 @@ export const importarPayables = async (
               'amount',
               'Valor Líquido',
             ]),
+            'Valor',
           ),
-          principal_value: n(
+          principal_value: parsePtBrFloat(
             getCol(row, ['Valor Principal', 'Principal', 'principal_value']),
+            'Valor Principal',
           ),
-          fine: n(getCol(row, ['Multa', 'fine'])),
-          interest: n(getCol(row, ['Juros', 'interest'])),
+          fine: parsePtBrFloat(getCol(row, ['Multa', 'fine']), 'Multa'),
+          interest: parsePtBrFloat(getCol(row, ['Juros', 'interest']), 'Juros'),
           status: normalizeText(
             getCol(row, ['Status', 'Situação', 'status', 'Estado']),
           ),
