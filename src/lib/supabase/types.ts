@@ -950,6 +950,24 @@ export type Database = {
           },
         ]
       }
+      vw_transactions_normalized: {
+        Row: {
+          amount_numeric: number | null
+          due_date: string | null
+          id: string | null
+        }
+        Insert: {
+          amount_numeric?: number | null
+          due_date?: string | null
+          id?: string | null
+        }
+        Update: {
+          amount_numeric?: number | null
+          due_date?: string | null
+          id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       append_payables_skipping_duplicates: {
@@ -976,10 +994,9 @@ export type Database = {
         Args: { p_company_id: string; p_table_name: string }
         Returns: Json
       }
-      get_dashboard_kpis: {
-        Args: { p_company_id: string; p_date?: string }
-        Returns: Json
-      }
+      get_dashboard_kpis:
+        | { Args: { p_company_id: string }; Returns: Json }
+        | { Args: { p_company_id: string; p_date?: string }; Returns: Json }
       get_dashboard_kpis_legacy: {
         Args: { p_company_id: string }
         Returns: Json

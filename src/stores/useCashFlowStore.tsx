@@ -180,6 +180,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         const aggs = await getCashFlowAggregates(selectedCompanyId, start, end)
 
         // Fetch KPIs
+        // Correctly calls the consolidated RPC function
         const kpiData = await getDashboardKPIs(selectedCompanyId)
         setKpis(kpiData as KPI)
 

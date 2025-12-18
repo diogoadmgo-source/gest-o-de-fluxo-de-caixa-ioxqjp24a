@@ -328,6 +328,7 @@ export async function getReceivablesDashboardStats(companyId: string) {
     'get_stats',
     (async () => {
       // Re-use get_dashboard_kpis for robust synced data
+      // Unified signature allows just company_id (date defaults to current)
       const { data, error } = await supabase.rpc('get_dashboard_kpis', {
         p_company_id: companyId,
       })
@@ -335,6 +336,9 @@ export async function getReceivablesDashboardStats(companyId: string) {
 
       const kpi = data as KPI
       // Map KPI to stats format expected by component
+      // receivables_amount_open = "A Vencer" (Current)
+      // receivables_amount_overdue = "Vencido" (Overdue)
+      // total_open = Sum of both
       return {
         total_open:
           (kpi.receivables_amount_open || 0) +
