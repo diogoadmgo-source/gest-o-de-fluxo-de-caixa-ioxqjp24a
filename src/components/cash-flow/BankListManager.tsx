@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, Trash2, Edit2, Check, X } from 'lucide-react'
+import { Plus, Trash2, Edit2, Check, X, RefreshCw } from 'lucide-react'
 import { Bank } from '@/lib/types'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { toast } from 'sonner'
@@ -32,7 +32,7 @@ export function BankListManager() {
     useCashFlowStore()
   const { user } = useAuth()
 
-  // Local state for all banks (including inactive ones)
+  // Local state for all banks (including inactive ones for management)
   const [localBanks, setLocalBanks] = useState<Bank[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -50,12 +50,27 @@ export function BankListManager() {
     account_number: '',
     account_digit: '',
     type: 'bank',
-    company_id: selectedCompanyId || undefined,
+    company_id:
+      selectedCompanyId && selectedCompanyId !== 'all'
+        ? selectedCompanyId
+        : undefined,
+    active: true,
   })
+
+  // Determine if company selection should be locked
+  const lockedCompanyId =
+    selectedCompanyId && selectedCompanyId !== 'all' ? selectedCompanyId : null
 
   useEffect(() => {
     fetchLocalBanks()
   }, [selectedCompanyId, user])
+
+  // If locked company changes (e.g. user changes dropdown in header), reset form
+  useEffect(() => {
+    if (lockedCompanyId) {
+      setFormData((prev) => ({ ...prev, company_id: lockedCompanyId }))
+    }
+  }, [lockedCompanyId])
 
   const fetchLocalBanks = async () => {
     if (!user) return
@@ -98,7 +113,8 @@ export function BankListManager() {
       account_number: '',
       account_digit: '',
       type: 'bank',
-      company_id: selectedCompanyId || undefined,
+      company_id: lockedCompanyId || undefined,
+      active: true,
     })
     setEditingId(null)
     setIsAdding(false)
@@ -160,33 +176,54 @@ export function BankListManager() {
       company_name: isNewCompany ? newCompanyName : undefined,
     }
 
-    if (editingId) {
-      await updateBank({ ...payload, id: editingId } as Bank)
-      toast.success('Conta atualizada com sucesso!')
-    } else {
-      const { error } = await addBank({
-        ...payload,
-        id: `temp-${Date.now()}`,
-        active: true,
-      } as Bank)
-
-      if (error) {
-        if (error.code === '23505') {
-          toast.error('Já existe uma conta com este código para esta empresa.')
-        } else {
-          toast.error('Erro ao cadastrar banco: ' + error.message)
-        }
-        return // Do not reset or refresh if error
+    try {
+      if (editingId) {
+        await updateBank({ ...payload, id: editingId } as Bank)
+        toast.success('Conta atualizada com sucesso!')
       } else {
-        toast.success('Nova conta cadastrada com sucesso!')
-      }
-    }
+        const { error } = await addBank({
+          ...payload,
+          id: `temp-${Date.now()}`,
+          active: true,
+        } as Bank)
 
-    await fetchLocalBanks()
-    resetForm()
+        if (error) {
+          if (error.code === '23505') {
+            toast.error(
+              'Já existe uma conta com este código para esta empresa.',
+            )
+          } else {
+            toast.error('Erro ao cadastrar banco: ' + error.message)
+          }
+          return // Do not reset or refresh if error
+        } else {
+          toast.success('Nova conta cadastrada com sucesso!')
+        }
+      }
+
+      await fetchLocalBanks()
+      resetForm()
+    } catch (err) {
+      toast.error('Ocorreu um erro ao salvar.')
+    }
   }
 
+  const handleToggleStatus = async (bank: Bank) => {
+    // Toggle active status
+    const newStatus = !bank.active
+    try {
+      // We use updateBank to persist change
+      await updateBank({ ...bank, active: newStatus })
+      toast.success(`Conta ${newStatus ? 'ativada' : 'inativada'} com sucesso.`)
+      await fetchLocalBanks()
+    } catch (err) {
+      toast.error('Erro ao atualizar status.')
+    }
+  }
+
+  // Soft delete handled by handleToggleStatus in practice, but let's keep delete for cleanup
   const handleDelete = async (id: string) => {
+    if (!confirm('Tem certeza que deseja inativar esta conta?')) return
     await deleteBank(id)
     toast.success('Conta inativada com sucesso.')
     await fetchLocalBanks()
@@ -195,27 +232,53 @@ export function BankListManager() {
   return (
     <div className="space-y-4">
       {!isAdding && !editingId && (
-        <div className="flex justify-end">
-          <Button onClick={() => setIsAdding(true)} size="sm">
+        <div className="flex justify-between items-center bg-muted/10 p-2 rounded-lg border border-border/50">
+          <p className="text-sm text-muted-foreground pl-2">
+            {lockedCompanyId
+              ? `Gerenciando contas para: ${companies.find((c) => c.id === lockedCompanyId)?.name || 'Empresa Selecionada'}`
+              : 'Visualizando todas as empresas permitidas'}
+          </p>
+          <Button
+            onClick={() => {
+              resetForm()
+              setIsAdding(true)
+            }}
+            size="sm"
+          >
             <Plus className="mr-2 h-4 w-4" /> Nova Conta/Caixa
           </Button>
         </div>
       )}
 
       {(isAdding || editingId) && (
-        <div className="border rounded-lg p-4 bg-muted/20 space-y-4 animate-fade-in">
-          <div className="flex justify-between items-center">
-            <h4 className="font-semibold text-sm">
+        <div className="border rounded-lg p-4 bg-muted/20 space-y-4 animate-fade-in relative">
+          <div className="flex justify-between items-center border-b pb-2 mb-2">
+            <h4 className="font-semibold text-sm flex items-center gap-2">
+              {editingId ? (
+                <Edit2 className="h-4 w-4" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
               {editingId ? 'Editar Conta' : 'Adicionar Nova Conta'}
             </h4>
-            {formData.type === 'cash' && (
-              <Badge
-                variant="outline"
-                className="bg-emerald-50 text-emerald-600 border-emerald-200"
+            <div className="flex items-center gap-2">
+              {formData.type === 'cash' && (
+                <Badge
+                  variant="outline"
+                  className="bg-emerald-50 text-emerald-600 border-emerald-200"
+                >
+                  Caixa Físico
+                </Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={resetForm}
               >
-                Caixa Físico
-              </Badge>
-            )}
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -238,6 +301,7 @@ export function BankListManager() {
                         })
                       }
                     }}
+                    disabled={!!lockedCompanyId && !isNewCompany}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione a empresa..." />
@@ -249,12 +313,14 @@ export function BankListManager() {
                           {c.name}
                         </SelectItem>
                       ))}
-                      <SelectItem
-                        value="new"
-                        className="text-primary font-medium border-t mt-1"
-                      >
-                        + Nova Empresa...
-                      </SelectItem>
+                      {!lockedCompanyId && (
+                        <SelectItem
+                          value="new"
+                          className="text-primary font-medium border-t mt-1"
+                        >
+                          + Nova Empresa...
+                        </SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 ) : (
@@ -271,6 +337,10 @@ export function BankListManager() {
                       onClick={() => {
                         setIsNewCompany(false)
                         setNewCompanyName('')
+                        setFormData({
+                          ...formData,
+                          company_id: lockedCompanyId || undefined,
+                        })
                       }}
                       title="Voltar para seleção"
                     >
@@ -320,8 +390,7 @@ export function BankListManager() {
 
             <div className="space-y-2">
               <Label>
-                Código (Identificador Único){' '}
-                <span className="text-destructive">*</span>
+                Código (ID Único) <span className="text-destructive">*</span>
               </Label>
               <Input
                 value={formData.code}
@@ -382,11 +451,9 @@ export function BankListManager() {
                 <Input
                   className="w-16 text-center"
                   value={formData.account_digit}
-                  maxLength={1}
+                  maxLength={2}
                   onChange={(e) => {
                     const val = e.target.value
-                      .replace(/[^0-9]/g, '')
-                      .slice(0, 1)
                     setFormData({ ...formData, account_digit: val })
                   }}
                   placeholder="X"
@@ -394,9 +461,27 @@ export function BankListManager() {
                 />
               </div>
             </div>
+
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select
+                value={formData.active ? 'true' : 'false'}
+                onValueChange={(val) =>
+                  setFormData({ ...formData, active: val === 'true' })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Ativo</SelectItem>
+                  <SelectItem value="false">Inativo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={resetForm}>
+          <div className="flex justify-end gap-2 border-t pt-4 mt-2">
+            <Button variant="outline" size="sm" onClick={resetForm}>
               Cancelar
             </Button>
             <Button size="sm" onClick={handleSave}>
@@ -410,28 +495,31 @@ export function BankListManager() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Cód</TableHead>
+              <TableHead className="w-[80px]">Cód</TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Instituição</TableHead>
               <TableHead>Agência</TableHead>
               <TableHead>Conta</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead className="w-[100px]">Status</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-4">
-                  Carregando contas...
+                <TableCell colSpan={8} className="text-center py-8">
+                  <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Carregando contas...
+                  </div>
                 </TableCell>
               </TableRow>
             ) : localBanks.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={8}
-                  className="text-center py-4 text-muted-foreground"
+                  className="text-center py-8 text-muted-foreground"
                 >
                   Nenhuma conta encontrada.
                 </TableCell>
@@ -441,7 +529,7 @@ export function BankListManager() {
                 return (
                   <TableRow
                     key={bank.id}
-                    className={cn(!bank.active && 'opacity-50')}
+                    className={cn(!bank.active && 'opacity-50 bg-muted/30')}
                   >
                     <TableCell className="text-xs font-mono font-medium">
                       {bank.code}
@@ -482,6 +570,7 @@ export function BankListManager() {
                           size="icon"
                           className="h-8 w-8"
                           onClick={() => handleEdit(bank)}
+                          title="Editar"
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -491,6 +580,7 @@ export function BankListManager() {
                             size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive/90"
                             onClick={() => handleDelete(bank.id)}
+                            title="Inativar"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

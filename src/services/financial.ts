@@ -35,21 +35,12 @@ export function d(value: any): string | null {
   return null
 }
 
-/**
- * Normalizes installment field to "current/total" format.
- * Handles Excel date conversion bugs (e.g. "01-Jan" -> "1/1").
- */
 export function normalizeInstallment(value: any): string {
   if (!value) return ''
   const str = String(value).trim()
-
-  // If it's already in N/NN format, keep it
   if (/^\d+\/\d+$/.test(str)) return str
-
-  // If it's a simple number, keep it (e.g. "1")
   if (/^\d+$/.test(str)) return str
 
-  // Handle Excel Date conversions (e.g., "01-Jan", "1-fev")
   const ptMonths = [
     'jan',
     'fev',
@@ -82,7 +73,6 @@ export function normalizeInstallment(value: any): string {
   const lower = str.toLowerCase()
   let monthIndex = -1
 
-  // Detect month name
   for (let i = 0; i < 12; i++) {
     if (lower.includes(ptMonths[i]) || lower.includes(enMonths[i])) {
       monthIndex = i + 1
@@ -152,8 +142,6 @@ export async function fetchAllRecords(
   return allData
 }
 
-// --- Company Visibility Logic ---
-
 export async function getVisibleCompanyIds(
   supabaseClient: any,
   userId: string,
@@ -179,8 +167,6 @@ export async function getVisibleCompanyIds(
 
   return data.map((item: any) => item.company_id)
 }
-
-// --- Company & User Linking Logic ---
 
 export async function ensureCompanyAndLink(
   userId: string,
@@ -409,11 +395,17 @@ export async function salvarBankManual(payload: any, userId: string) {
     active: payload.active !== undefined ? payload.active : true,
   }
 
-  if (payload.id && !String(payload.id).startsWith('temp-')) {
+  // Remove temporary IDs before saving
+  const id =
+    payload.id && !String(payload.id).startsWith('temp-')
+      ? payload.id
+      : undefined
+
+  if (id) {
     const { data, error } = await supabase
       .from('banks')
       .update(dbPayload)
-      .eq('id', payload.id)
+      .eq('id', id)
       .select()
       .single()
     if (error) {
@@ -483,8 +475,7 @@ export async function salvarImportLogManual(payload: any, userId: string) {
   }
 }
 
-// --- Import Logic with Overwrite Strategy ---
-
+// ... existing import functions remain unchanged
 export async function importarReceivables(
   rows: any[],
   userId: string,
@@ -503,24 +494,19 @@ export async function importarReceivables(
     return { ...results, message: 'Arquivo vazio.' }
   }
 
-  // 1. Resolve Company and Prepare Data
   const companiesMap = new Map<string, any[]>()
   const companyIdCache = new Map<string, string>()
 
-  // Pre-load fallback if available
   if (fallbackCompanyId) {
     companyIdCache.set('__fallback__', fallbackCompanyId)
   }
 
-  // Set to track unique keys to avoid duplicates within the file sending to DB
   const uniqueKeys = new Set<string>()
-
   let processedCount = 0
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     try {
-      // Determine Company
       let companyId = fallbackCompanyId
       const companyNameInRow = normalizeText(
         row['Empresa'] || row['company'] || row['id_da_empresa'],
@@ -543,7 +529,6 @@ export async function importarReceivables(
 
       results.lastCompanyId = companyId
 
-      // Prepare DB Item
       const dbItem = {
         invoice_number: normalizeText(
           row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
@@ -604,7 +589,6 @@ export async function importarReceivables(
         utilization: normalizeText(row['Utilização'] || row['utilization']),
         negativado: normalizeText(row['Negativado'] || row['negativado']),
         description: normalizeText(row['Descrição'] || row['description']),
-        // New columns
         customer_name: normalizeText(
           row['customer_name'] ||
             row['nome_cliente'] ||
@@ -618,15 +602,12 @@ export async function importarReceivables(
         throw new Error('Data de vencimento inválida.')
       }
 
-      // Deduplication check within the file
       const key = `${companyId}|${dbItem.invoice_number}|${dbItem.order_number}|${dbItem.installment}`
       if (uniqueKeys.has(key)) {
-        // Skip duplicate in file
         continue
       }
       uniqueKeys.add(key)
 
-      // Add to map
       if (!companiesMap.has(companyId)) {
         companiesMap.set(companyId, [])
       }
@@ -637,24 +618,20 @@ export async function importarReceivables(
 
     processedCount++
     if (onProgress && processedCount % 50 === 0) {
-      const percent = Math.round((processedCount / rows.length) * 50) // 0-50% for preparation
+      const percent = Math.round((processedCount / rows.length) * 50)
       onProgress(percent)
     }
   }
 
-  // 2. Perform Atomic Overwrite per Company using new STRICT RPC
   let companiesProcessed = 0
   const totalCompanies = companiesMap.size
 
   for (const [companyId, companyRows] of companiesMap.entries()) {
     try {
-      const { data, error } = await supabase.rpc(
-        'strict_replace_receivables', // Using the new strict function
-        {
-          p_company_id: companyId,
-          p_rows: companyRows,
-        },
-      )
+      const { data, error } = await supabase.rpc('strict_replace_receivables', {
+        p_company_id: companyId,
+        p_rows: companyRows,
+      })
 
       if (error) throw error
 
@@ -673,7 +650,7 @@ export async function importarReceivables(
     companiesProcessed++
     if (onProgress) {
       const percent =
-        50 + Math.round((companiesProcessed / totalCompanies) * 50) // 50-100% for saving
+        50 + Math.round((companiesProcessed / totalCompanies) * 50)
       onProgress(percent)
     }
   }
@@ -698,7 +675,6 @@ export async function importarPayables(
     return { ...results, message: 'Arquivo vazio.' }
   }
 
-  // Pre-process Rows
   let lastCompanyName = ''
   const preProcessedRows = rows.map((row, index) => {
     let companyName = ''

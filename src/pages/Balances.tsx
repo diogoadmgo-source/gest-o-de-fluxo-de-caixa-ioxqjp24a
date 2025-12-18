@@ -116,11 +116,12 @@ export default function Balances() {
                 Gerenciar Bancos
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[700px]">
+            <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Gerenciar Contas Bancárias</DialogTitle>
                 <DialogDescription>
-                  Adicione, edite ou exclua contas bancárias do sistema.
+                  Adicione, edite ou exclua contas bancárias do sistema. As
+                  alterações refletem imediatamente.
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4">

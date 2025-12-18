@@ -140,6 +140,7 @@ export interface Bank {
   account_digit?: string
   active: boolean
   type: 'bank' | 'cash'
+  created_at?: string
 }
 
 export interface BankBalance {
