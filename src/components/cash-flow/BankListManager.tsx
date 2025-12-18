@@ -24,12 +24,19 @@ import useCashFlowStore from '@/stores/useCashFlowStore'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase/client'
-import { getVisibleCompanyIds } from '@/services/financial'
+import { getVisibleCompanyIds, upsertBankBalance } from '@/services/financial'
 import { useAuth } from '@/hooks/use-auth'
+import { format } from 'date-fns'
 
 export function BankListManager() {
-  const { addBank, updateBank, deleteBank, companies, selectedCompanyId } =
-    useCashFlowStore()
+  const {
+    addBank,
+    updateBank,
+    deleteBank,
+    companies,
+    selectedCompanyId,
+    recalculateCashFlow,
+  } = useCashFlowStore()
   const { user } = useAuth()
 
   // Local state for all banks (including inactive ones for management)
@@ -40,6 +47,7 @@ export function BankListManager() {
   const [isAdding, setIsAdding] = useState(false)
   const [isNewCompany, setIsNewCompany] = useState(false)
   const [newCompanyName, setNewCompanyName] = useState('')
+  const [initialBalance, setInitialBalance] = useState('')
 
   // Form State
   const [formData, setFormData] = useState<Partial<Bank>>({
@@ -120,6 +128,7 @@ export function BankListManager() {
     setIsAdding(false)
     setIsNewCompany(false)
     setNewCompanyName('')
+    setInitialBalance('')
   }
 
   const handleEdit = (bank: Bank) => {
@@ -128,6 +137,7 @@ export function BankListManager() {
     setIsAdding(false)
     setIsNewCompany(false)
     setNewCompanyName('')
+    setInitialBalance('')
   }
 
   const handleSave = async () => {
@@ -148,16 +158,13 @@ export function BankListManager() {
       toast.error('O Nome de Exibição é obrigatório.')
       return
     }
-    if (!formData.code?.trim()) {
-      toast.error('O Código é obrigatório.')
-      return
-    }
-    if (!formData.type) {
-      toast.error('O Tipo de Conta é obrigatório.')
-      return
-    }
 
+    // Type-specific validations
     if (formData.type === 'bank') {
+      if (!formData.code?.trim()) {
+        toast.error('O Código é obrigatório para contas bancárias.')
+        return
+      }
       if (!formData.institution) {
         toast.error(
           'Instituição bancária é obrigatória para contas do tipo Banco.',
@@ -170,9 +177,26 @@ export function BankListManager() {
       }
     }
 
+    // Prepare payload
+    let finalCode = formData.code
+    let finalAccount = formData.account_number
+
+    // Auto-fill for Cash type
+    if (formData.type === 'cash') {
+      if (!finalCode?.trim()) {
+        // Generate a simple unique code based on timestamp to satisfy unique constraint
+        finalCode = `CX-${Date.now().toString().slice(-6)}`
+      }
+      if (!finalAccount?.trim()) {
+        finalAccount = '-'
+      }
+    }
+
     // Construct Payload
     const payload = {
       ...formData,
+      code: finalCode,
+      account_number: finalAccount,
       company_name: isNewCompany ? newCompanyName : undefined,
     }
 
@@ -181,7 +205,7 @@ export function BankListManager() {
         await updateBank({ ...payload, id: editingId } as Bank)
         toast.success('Conta atualizada com sucesso!')
       } else {
-        const { error } = await addBank({
+        const { data: createdBank, error } = await addBank({
           ...payload,
           id: `temp-${Date.now()}`,
           active: true,
@@ -198,30 +222,39 @@ export function BankListManager() {
           return // Do not reset or refresh if error
         } else {
           toast.success('Nova conta cadastrada com sucesso!')
+
+          // Handle Initial Balance
+          if (createdBank && initialBalance) {
+            const balanceVal = parseFloat(initialBalance)
+            if (!isNaN(balanceVal) && balanceVal > 0) {
+              try {
+                await upsertBankBalance({
+                  company_id: createdBank.company_id,
+                  bank_id: createdBank.id,
+                  reference_date: format(new Date(), 'yyyy-MM-dd'),
+                  amount: balanceVal,
+                })
+                toast.success('Saldo inicial registrado!')
+                recalculateCashFlow()
+              } catch (balErr: any) {
+                console.error('Failed to set initial balance', balErr)
+                toast.warning(
+                  'Conta criada, mas houve erro ao salvar o saldo inicial.',
+                )
+              }
+            }
+          }
         }
       }
 
       await fetchLocalBanks()
       resetForm()
     } catch (err) {
+      console.error(err)
       toast.error('Ocorreu um erro ao salvar.')
     }
   }
 
-  const handleToggleStatus = async (bank: Bank) => {
-    // Toggle active status
-    const newStatus = !bank.active
-    try {
-      // We use updateBank to persist change
-      await updateBank({ ...bank, active: newStatus })
-      toast.success(`Conta ${newStatus ? 'ativada' : 'inativada'} com sucesso.`)
-      await fetchLocalBanks()
-    } catch (err) {
-      toast.error('Erro ao atualizar status.')
-    }
-  }
-
-  // Soft delete handled by handleToggleStatus in practice, but let's keep delete for cleanup
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja inativar esta conta?')) return
     await deleteBank(id)
@@ -301,8 +334,6 @@ export function BankListManager() {
                         })
                       }
                     }}
-                    // Allow changing company in edit mode regardless of locked view
-                    // This is per user requirement to be able to edit company association
                     disabled={false}
                   >
                     <SelectTrigger>
@@ -386,27 +417,29 @@ export function BankListManager() {
                 onChange={(e) =>
                   setFormData({ ...formData, name: e.target.value })
                 }
-                placeholder="Ex: Itaú Principal"
+                placeholder="Ex: Itaú Principal ou Cofre"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>
-                Código (ID Único) <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                value={formData.code}
-                onChange={(e) =>
-                  setFormData({ ...formData, code: e.target.value })
-                }
-                placeholder="Ex: 341, CX-01"
-              />
-            </div>
+            {formData.type === 'bank' && (
+              <div className="space-y-2">
+                <Label>
+                  Código (ID Único) <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={formData.code}
+                  onChange={(e) =>
+                    setFormData({ ...formData, code: e.target.value })
+                  }
+                  placeholder="Ex: 341, CX-01"
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>
                 {formData.type === 'cash'
-                  ? 'Local / Descrição'
+                  ? 'Local / Descrição (Opcional)'
                   : 'Instituição (Ex: Banco Itaú)'}
               </Label>
               <Input
@@ -422,47 +455,68 @@ export function BankListManager() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Agência</Label>
-              <Input
-                value={formData.agency}
-                onChange={(e) =>
-                  setFormData({ ...formData, agency: e.target.value })
-                }
-                placeholder={
-                  formData.type === 'cash' ? "Use '-' se não houver" : '0000'
-                }
-              />
-            </div>
+            {formData.type === 'bank' && (
+              <>
+                <div className="space-y-2">
+                  <Label>Agência</Label>
+                  <Input
+                    value={formData.agency}
+                    onChange={(e) =>
+                      setFormData({ ...formData, agency: e.target.value })
+                    }
+                    placeholder="0000"
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label>Conta / Dígito</Label>
-              <div className="flex gap-2">
+                <div className="space-y-2">
+                  <Label>Conta / Dígito</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      className="flex-1"
+                      value={formData.account_number}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          account_number: e.target.value,
+                        })
+                      }
+                      placeholder="Ex: 12345"
+                    />
+                    <Input
+                      className="w-16 text-center"
+                      value={formData.account_digit}
+                      maxLength={2}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setFormData({ ...formData, account_digit: val })
+                      }}
+                      placeholder="X"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Initial Balance Field - Only when adding new account */}
+            {!editingId && (
+              <div className="space-y-2">
+                <Label className="text-primary font-semibold">
+                  Saldo Inicial (R$)
+                </Label>
                 <Input
-                  className="flex-1"
-                  value={formData.account_number}
-                  onChange={(e) =>
-                    setFormData({ ...formData, account_number: e.target.value })
-                  }
-                  placeholder={
-                    formData.type === 'cash'
-                      ? "Use '-' se não houver"
-                      : 'Ex: 12345'
-                  }
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={initialBalance}
+                  onChange={(e) => setInitialBalance(e.target.value)}
+                  placeholder="0.00"
+                  className="border-primary/50 bg-primary/5"
                 />
-                <Input
-                  className="w-16 text-center"
-                  value={formData.account_digit}
-                  maxLength={2}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    setFormData({ ...formData, account_digit: val })
-                  }}
-                  placeholder="X"
-                  disabled={formData.type === 'cash'}
-                />
+                <p className="text-xs text-muted-foreground">
+                  Se informado, cria um registro de saldo para hoje.
+                </p>
               </div>
-            </div>
+            )}
 
             <div className="space-y-2">
               <Label>Status</Label>
@@ -500,7 +554,7 @@ export function BankListManager() {
               <TableHead className="w-[80px]">Cód</TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Tipo</TableHead>
-              <TableHead>Instituição</TableHead>
+              <TableHead>Instituição/Local</TableHead>
               <TableHead>Agência</TableHead>
               <TableHead>Conta</TableHead>
               <TableHead className="w-[100px]">Status</TableHead>

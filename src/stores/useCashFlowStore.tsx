@@ -59,7 +59,7 @@ interface CashFlowContextType {
   updateBankBalances: (balances: BankBalance[]) => void
   resetBalanceHistory: () => void
 
-  addBank: (bank: Bank) => Promise<{ error?: any }>
+  addBank: (bank: Bank) => Promise<{ data?: Bank; error?: any }>
   updateBank: (bank: Bank) => Promise<void>
   deleteBank: (id: string) => Promise<void>
 
@@ -550,7 +550,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       const data = await salvarBankManual(bank, user.id)
       await logAudit('Create', 'Banks', data.id, { name: data.name })
       await fetchData()
-      return { error: null }
+      return { data, error: null }
     } catch (error: any) {
       return { error }
     }
