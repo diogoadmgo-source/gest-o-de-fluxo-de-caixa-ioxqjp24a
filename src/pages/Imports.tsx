@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import {
   Card,
   CardContent,
@@ -17,15 +17,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import {
-  Plus,
-  Search,
-  Filter,
-  MoreHorizontal,
-  Trash2,
-  Edit,
-  Container,
-} from 'lucide-react'
+import { Plus, Search, MoreHorizontal, Trash2, Edit } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -59,10 +51,24 @@ import { format, parseISO } from 'date-fns'
 import useProductImportStore from '@/stores/useProductImportStore'
 import { ProductImport } from '@/lib/types'
 import { ProductImportForm } from '@/components/imports/ProductImportForm'
+import { useQuery } from '@/hooks/use-query'
+import { getVisibleCompanyIds } from '@/services/financial'
+import { fetchPaginatedProductImports } from '@/services/product-imports'
+import { supabase } from '@/lib/supabase/client'
+import useCashFlowStore from '@/stores/useCashFlowStore'
+import { useAuth } from '@/hooks/use-auth'
+import { useDebounce } from '@/hooks/use-debounce'
+import { PaginationControl } from '@/components/common/PaginationControl'
 
 export default function Imports() {
-  const { imports, addImport, updateImport, deleteImport, loading } =
-    useProductImportStore()
+  const { addImport, updateImport, deleteImport } = useProductImportStore()
+  const { selectedCompanyId } = useCashFlowStore()
+  const { user } = useAuth()
+
+  // Pagination State (AC 1, 2)
+  const [pageSize, setPageSize] = useState(20)
+  const [page, setPage] = useState(1)
+
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [editingItem, setEditingItem] = useState<Partial<ProductImport> | null>(
@@ -70,20 +76,36 @@ export default function Imports() {
   )
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const filteredData = useMemo(() => {
-    return imports.filter((item) => {
-      const term = searchTerm.toLowerCase()
-      const matchesSearch =
-        item.description.toLowerCase().includes(term) ||
-        item.international_supplier.toLowerCase().includes(term) ||
-        (item.process_number || '').toLowerCase().includes(term)
+  const debouncedSearch = useDebounce(searchTerm, 400)
 
-      const matchesStatus =
-        statusFilter === 'all' || item.status === statusFilter
+  // Server-side fetching with pagination and filters
+  const {
+    data: paginatedData,
+    isLoading,
+    refetch,
+  } = useQuery(
+    `product-imports-${selectedCompanyId}-${page}-${pageSize}-${debouncedSearch}-${statusFilter}`,
+    async () => {
+      if (!user) return { data: [], count: 0 }
+      // Resolve company IDs visible to user
+      const visibleIds = await getVisibleCompanyIds(
+        supabase,
+        user.id,
+        selectedCompanyId,
+      )
 
-      return matchesSearch && matchesStatus
-    })
-  }, [imports, searchTerm, statusFilter])
+      if (visibleIds.length === 0) return { data: [], count: 0 }
+
+      return fetchPaginatedProductImports(visibleIds, page, pageSize, {
+        search: debouncedSearch,
+        status: statusFilter,
+      })
+    },
+    {
+      enabled: !!user,
+      staleTime: 60000,
+    },
+  )
 
   const handleSave = async (data: Partial<ProductImport>) => {
     if (data.id) {
@@ -92,12 +114,14 @@ export default function Imports() {
       await addImport(data)
     }
     setEditingItem(null)
+    refetch()
   }
 
   const handleDelete = async () => {
     if (deletingId) {
       await deleteImport(deletingId)
       setDeletingId(null)
+      refetch()
     }
   }
 
@@ -123,16 +147,16 @@ export default function Imports() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <CardTitle>Processos de Importação</CardTitle>
               <CardDescription>
                 Lista de importações em andamento.
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[150px]">
+                <SelectTrigger className="w-full sm:w-[150px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -144,11 +168,11 @@ export default function Imports() {
                   <SelectItem value="Completed">Concluído</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar fornecedor, processo..."
-                  className="pl-9 w-[250px]"
+                  className="pl-9 w-full sm:w-[250px]"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -171,20 +195,20 @@ export default function Imports() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? (
+              {isLoading ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-8">
                     Carregando...
                   </TableCell>
                 </TableRow>
-              ) : filteredData.length === 0 ? (
+              ) : !paginatedData || paginatedData.data.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-8">
                     Nenhum registro encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredData.map((item) => {
+                paginatedData.data.map((item) => {
                   const totalBRL =
                     item.foreign_currency_value * item.exchange_rate +
                     (item.logistics_costs || 0) +
@@ -248,6 +272,15 @@ export default function Imports() {
               )}
             </TableBody>
           </Table>
+          <div className="mt-4">
+            <PaginationControl
+              currentPage={page}
+              totalCount={paginatedData?.count || 0}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          </div>
         </CardContent>
       </Card>
 

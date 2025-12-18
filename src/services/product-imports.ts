@@ -1,16 +1,45 @@
 import { supabase } from '@/lib/supabase/client'
 import { ProductImport } from '@/lib/types'
-import { ensureCompanyAndLink } from './financial'
 
-export async function getProductImports(companyIds: string[]) {
-  const { data, error } = await supabase
+// Updated to support server-side pagination and filtering
+export async function fetchPaginatedProductImports(
+  companyIds: string[],
+  page: number,
+  pageSize: number,
+  filters: {
+    search?: string
+    status?: string
+  },
+) {
+  let query = supabase
     .from('product_imports')
-    .select('*')
+    .select('*', { count: 'exact' })
     .in('company_id', companyIds)
-    .order('created_at', { ascending: false })
+
+  // Filtering
+  if (filters.status && filters.status !== 'all') {
+    query = query.eq('status', filters.status)
+  }
+
+  if (filters.search) {
+    const term = `%${filters.search}%`
+    query = query.or(
+      `description.ilike.${term},international_supplier.ilike.${term},process_number.ilike.${term}`,
+    )
+  }
+
+  // Sorting
+  query = query.order('created_at', { ascending: false })
+
+  // Pagination
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+  query = query.range(from, to)
+
+  const { data, count, error } = await query
 
   if (error) throw error
-  return data as ProductImport[]
+  return { data: (data as ProductImport[]) || [], count: count || 0 }
 }
 
 export async function saveProductImport(

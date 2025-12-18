@@ -28,6 +28,7 @@ import { useQuery } from '@/hooks/use-query'
 import { fetchPaginatedPayables } from '@/services/financial'
 import { useDebounce } from '@/hooks/use-debounce'
 import { usePerformanceMeasure } from '@/lib/performance'
+import { PaginationControl } from '@/components/common/PaginationControl'
 
 export default function Payables() {
   const { selectedCompanyId, updatePayable, addPayable, deletePayable } =
@@ -35,7 +36,8 @@ export default function Payables() {
   const perf = usePerformanceMeasure('/pagaveis', 'render')
 
   // Filters State
-  const [pageSize] = useState(200)
+  // AC 2: Default View 20 items
+  const [pageSize, setPageSize] = useState(20)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
   const [supplierFilter, setSupplierFilter] = useState('')
@@ -55,7 +57,7 @@ export default function Payables() {
     isLoading,
     refetch,
   } = useQuery(
-    `payables-${selectedCompanyId}-${page}-${debouncedSearch}-${debouncedSupplier}-${situationFilter}-${JSON.stringify(customMaturityRange)}`,
+    `payables-${selectedCompanyId}-${page}-${pageSize}-${debouncedSearch}-${debouncedSupplier}-${situationFilter}-${JSON.stringify(customMaturityRange)}`,
     () => {
       if (!selectedCompanyId || selectedCompanyId === 'all')
         return Promise.resolve({ data: [], count: 0 })
@@ -292,7 +294,7 @@ export default function Payables() {
             </CardDescription>
           </div>
         </CardHeader>
-        <CardContent className="p-0 flex-1">
+        <CardContent className="p-0 flex-1 relative">
           {isLoading ? (
             <div className="h-full flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -310,27 +312,15 @@ export default function Payables() {
             </div>
           )}
         </CardContent>
-        <div className="p-2 border-t text-xs text-muted-foreground text-center shrink-0">
-          Mostrando {paginatedData?.data.length} de {paginatedData?.count}{' '}
-          registros (Página {page})
-          <div className="flex justify-center gap-2 mt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-            >
-              Ant
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => p + 1)}
-              disabled={!paginatedData || paginatedData.data.length < pageSize}
-            >
-              Próx
-            </Button>
-          </div>
+        <div className="shrink-0 border-t">
+          {/* AC 1-6: Pagination Control Component */}
+          <PaginationControl
+            currentPage={page}
+            totalCount={paginatedData?.count || 0}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       </Card>
 
