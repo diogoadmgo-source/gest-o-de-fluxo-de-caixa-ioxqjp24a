@@ -1,93 +1,150 @@
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { KPI } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { Info } from 'lucide-react'
+import {
+  Info,
+  AlertTriangle,
+  TrendingDown,
+  TrendingUp,
+  DollarSign,
+} from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { Badge } from '@/components/ui/badge'
 
 interface KPIPanelProps {
   kpi: KPI
+  previousKpi?: KPI
 }
 
-export function KPIPanel({ kpi }: KPIPanelProps) {
+export function KPIPanel({ kpi, previousKpi }: KPIPanelProps) {
+  // Gap calculation logic:
+  // PMR (Recebimento) < PMP (Pagamento) = Good (Negative Gap is Good usually means we hold cash)
+  // But strictly: Cash Gap = PMR - PMP.
+  // If PMR (60) > PMP (30), Gap is +30. We fund 30 days. Bad.
+  // If PMR (30) < PMP (60), Gap is -30. We are funded. Good.
+  const isGapGood = kpi.cash_gap <= 0
+
   return (
-    <Card className="col-span-1 md:col-span-2 bg-gradient-to-br from-background to-secondary/30">
-      <CardContent className="p-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div className="space-y-2">
-            <div className="flex items-center gap-1">
-              <span className="text-sm font-medium text-muted-foreground">
-                PMR (dias)
-              </span>
-              <Tooltip>
-                <TooltipTrigger>
-                  <Info className="h-3 w-3 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>Prazo Médio de Recebimento</TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="text-3xl font-bold text-foreground">{kpi.pmr}</div>
-            <div className="text-xs text-muted-foreground">Target: 30</div>
-          </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* PMR Card */}
+      <Card className="hover:shadow-md transition-all border-l-4 border-l-blue-500">
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            PMR (Recebimento)
+          </CardTitle>
+          <Tooltip>
+            <TooltipTrigger>
+              <Info className="h-4 w-4 text-muted-foreground" />
+            </TooltipTrigger>
+            <TooltipContent>Prazo Médio de Recebimento (dias)</TooltipContent>
+          </Tooltip>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{Math.round(kpi.pmr)} dias</div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Tempo médio para receber
+          </p>
+        </CardContent>
+      </Card>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-1">
-              <span className="text-sm font-medium text-muted-foreground">
-                PMP (dias)
-              </span>
-              <Tooltip>
-                <TooltipTrigger>
-                  <Info className="h-3 w-3 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>Prazo Médio de Pagamento</TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="text-3xl font-bold text-foreground">{kpi.pmp}</div>
-            <div className="text-xs text-muted-foreground">Target: 45</div>
-          </div>
+      {/* PMP Card */}
+      <Card className="hover:shadow-md transition-all border-l-4 border-l-indigo-500">
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            PMP (Pagamento)
+          </CardTitle>
+          <Tooltip>
+            <TooltipTrigger>
+              <Info className="h-4 w-4 text-muted-foreground" />
+            </TooltipTrigger>
+            <TooltipContent>Prazo Médio de Pagamento (dias)</TooltipContent>
+          </Tooltip>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{Math.round(kpi.pmp)} dias</div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Tempo médio para pagar
+          </p>
+        </CardContent>
+      </Card>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-1">
-              <span className="text-sm font-medium text-muted-foreground">
-                Gap de Caixa
-              </span>
-            </div>
-            <div
-              className={cn(
-                'text-3xl font-bold',
-                kpi.cash_gap < 0 ? 'text-success' : 'text-destructive',
-              )}
+      {/* Cash Gap Card */}
+      <Card
+        className={cn(
+          'hover:shadow-md transition-all border-l-4',
+          isGapGood ? 'border-l-emerald-500' : 'border-l-rose-500',
+        )}
+      >
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Ciclo Financeiro (GAP)
+          </CardTitle>
+          {isGapGood ? (
+            <TrendingUp className="h-4 w-4 text-emerald-500" />
+          ) : (
+            <TrendingDown className="h-4 w-4 text-rose-500" />
+          )}
+        </CardHeader>
+        <CardContent>
+          <div
+            className={cn(
+              'text-2xl font-bold',
+              isGapGood ? 'text-emerald-600' : 'text-rose-600',
+            )}
+          >
+            {Math.round(kpi.cash_gap)} dias
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge
+              variant={isGapGood ? 'secondary' : 'destructive'}
+              className="text-[10px] h-5"
             >
-              {kpi.cash_gap}
-            </div>
-            <div className="text-xs text-muted-foreground">Menor é melhor</div>
+              {isGapGood ? 'Saudável' : 'Atenção'}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              {isGapGood ? 'Financiado' : 'Necessidade de Capital'}
+            </span>
           </div>
+        </CardContent>
+      </Card>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-1">
-              <span className="text-sm font-medium text-muted-foreground">
-                Dias até Caixa Zero
-              </span>
-            </div>
-            <div
-              className={cn(
-                'text-3xl font-bold',
-                kpi.days_until_zero < 15
-                  ? 'text-destructive'
-                  : kpi.days_until_zero < 30
-                    ? 'text-warning'
-                    : 'text-success',
-              )}
-            >
-              {kpi.days_until_zero}
-            </div>
-            <div className="text-xs text-muted-foreground">Projeção</div>
+      {/* Runway / Cash Zero Card */}
+      <Card
+        className={cn(
+          'hover:shadow-md transition-all border-l-4',
+          kpi.days_until_zero > 30
+            ? 'border-l-emerald-500'
+            : kpi.days_until_zero > 15
+              ? 'border-l-amber-500'
+              : 'border-l-rose-500',
+        )}
+      >
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Runway (Caixa)
+          </CardTitle>
+          <DollarSign className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">
+            {kpi.days_until_zero >= 999
+              ? 'Estável'
+              : `${Math.round(kpi.days_until_zero)} dias`}
           </div>
-        </div>
-      </CardContent>
-    </Card>
+          <div className="flex items-center gap-2 mt-1">
+            {kpi.days_until_zero < 15 && (
+              <AlertTriangle className="h-3 w-3 text-rose-500" />
+            )}
+            <p className="text-xs text-muted-foreground">
+              Duração estimada do saldo atual
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
