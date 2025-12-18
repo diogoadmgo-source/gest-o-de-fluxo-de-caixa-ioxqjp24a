@@ -605,6 +605,16 @@ export async function importarReceivables(
     let currentDoc = ''
     let currentVal = 0
 
+    // Capture value early for File Total integrity checks
+    currentVal = n(
+      row['Vlr Atualizado'] ||
+        row['updated_value'] ||
+        row['valor_atualizado'] ||
+        row['Vlr Principal'] ||
+        row['principal_value'] ||
+        row['valor_principal'],
+    )
+
     try {
       let companyId = fallbackCompanyId
       const companyNameInRow = normalizeText(
@@ -614,13 +624,17 @@ export async function importarReceivables(
       // Garbage Check
       if (isGarbageCompanyName(companyNameInRow)) {
         if (!fallbackCompanyId) {
+          // If we rely on company name column, validation is stricter
           throw new Error(
             'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
           )
         }
-        // If fallback exists, we skip this row as it's likely a summary row
+        // Skip garbage rows, don't count them in total
         continue
       }
+
+      // Add to File Total (Gross) after garbage check
+      results.fileTotal += currentVal
 
       if (companyNameInRow) {
         if (companyIdCache.has(companyNameInRow)) {
@@ -639,7 +653,7 @@ export async function importarReceivables(
 
       results.lastCompanyId = companyId
 
-      // Normalize status using the new function
+      // Normalize status
       const rawStatus = normalizeText(
         row['Status do Título'] ||
           row['title_status'] ||
@@ -648,17 +662,9 @@ export async function importarReceivables(
       )
       const titleStatus = normalizeReceivableStatus(rawStatus)
 
-      // Extract key fields safely for error reporting
+      // Extract doc number
       currentDoc = normalizeText(
         row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
-      )
-      currentVal = n(
-        row['Vlr Atualizado'] ||
-          row['updated_value'] ||
-          row['valor_atualizado'] ||
-          row['Vlr Principal'] ||
-          row['principal_value'] ||
-          row['valor_principal'],
       )
 
       const dbItem = {
@@ -722,14 +728,12 @@ export async function importarReceivables(
         throw new Error('Data de vencimento inválida.')
       }
 
+      // Check Duplicates within the file
       const key = `${companyId}|${dbItem.invoice_number}|${dbItem.order_number}|${dbItem.installment}`
       if (uniqueKeys.has(key)) {
-        continue
+        throw new Error('Registro duplicado no arquivo.')
       }
       uniqueKeys.add(key)
-
-      // Calculate Total File Value for Integrity Check (summing updated_value)
-      results.fileTotal += dbItem.updated_value || 0
 
       if (!companiesMap.has(companyId)) {
         companiesMap.set(companyId, [])
@@ -768,7 +772,7 @@ export async function importarReceivables(
       if (data && data.success) {
         results.success += data.stats?.inserted || 0
         results.deleted += data.stats?.deleted || 0
-        // Collect actual inserted amount from DB for Integrity Check
+        // Use the actual inserted amount from DB for accuracy
         results.importedTotal += data.stats?.inserted_amount || 0
       } else {
         throw new Error(data?.error || 'Erro desconhecido ao substituir dados.')
@@ -777,8 +781,8 @@ export async function importarReceivables(
       results.errors.push(
         `Erro crítico ao salvar dados da empresa ${companyId}: ${err.message}`,
       )
-      // Note: We don't add to `failures` here because we don't know exactly which rows failed in the batch unless the RPC tells us.
-      // The RPC is atomic for the batch/company replacement.
+      // If a critical batch error occurs, we can't easily attribute to specific rows unless we handle row-by-row fallback.
+      // But we count this as a batch failure.
     }
 
     companiesProcessed++
@@ -834,6 +838,22 @@ export async function importarPayables(
     let currentDoc = ''
     let currentVal = 0
 
+    // Attempt to extract value early
+    let principal = n(
+      row['Valor Principal'] || row['principal_value'] || row['Valor'],
+    )
+    let amount = n(row['Total'] || row['amount'] || row['valor_total'])
+    if (amount === 0 && principal > 0) {
+      amount =
+        principal +
+        n(row['Multa'] || row['fine']) +
+        n(row['Juros'] || row['interest'])
+    }
+    if (amount === 0 && principal === 0) {
+      amount = n(row['Valor'] || row['valor'])
+    }
+    currentVal = amount
+
     try {
       let companyId = fallbackCompanyId
       const companyNameInRow = normalizeText(
@@ -847,9 +867,11 @@ export async function importarPayables(
             'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
           )
         }
-        // If fallback exists, we skip this row as it's likely a summary row
         continue
       }
+
+      // Add to file total (Gross)
+      results.fileTotal += currentVal
 
       if (companyNameInRow) {
         if (companyIdCache.has(companyNameInRow)) {
@@ -868,7 +890,6 @@ export async function importarPayables(
 
       results.lastCompanyId = companyId
 
-      // Field Extraction & Normalization
       const entityName = normalizeText(
         row['Fornecedor'] || row['entity_name'] || row['supplier'],
       )
@@ -888,27 +909,13 @@ export async function importarPayables(
 
       if (!dueDate) throw new Error('Data de vencimento inválida.')
 
-      let principal = n(
-        row['Valor Principal'] || row['principal_value'] || row['Valor'],
-      )
+      // Re-calculate fields for DB payload
       const fine = n(row['Multa'] || row['fine'])
       const interest = n(row['Juros'] || row['interest'])
 
-      // Calculate amount if not explicitly provided or sum up
-      let amount = n(row['Total'] || row['amount'] || row['valor_total'])
-      if (amount === 0 && principal > 0) {
-        amount = principal + fine + interest
-      }
-      if (amount === 0 && principal === 0) {
-        // Try to find any value column
-        amount = n(row['Valor'] || row['valor'])
-        if (amount > 0 && principal === 0) principal = amount
-      }
+      // If amount was derived, double check principal
+      if (principal === 0 && amount > 0) principal = amount
 
-      currentVal = amount
-
-      // Treat everything as pending/payable by default for the purpose of "Accounts Payable"
-      // But preserve overdue logic if date is past.
       const statusRaw = normalizeText(
         row['Status'] || row['status'] || 'pending',
       )
@@ -921,10 +928,10 @@ export async function importarPayables(
         row['Descrição'] || row['description'] || 'Importado via Planilha',
       )
 
-      // Deduplication Key for FILE processing (to avoid duplicates within the same file)
+      // Deduplication Key
       const key = `${companyId}|${entityName}|${currentDoc}|${dueDate}|${principal.toFixed(2)}`
       if (uniqueKeys.has(key)) {
-        continue // Skip duplicate row within file
+        throw new Error('Registro duplicado no arquivo.')
       }
       uniqueKeys.add(key)
 
@@ -941,9 +948,6 @@ export async function importarPayables(
         category: category,
         description: description,
       }
-
-      // Calculate Total File Value for Integrity Check (summing amount)
-      results.fileTotal += dbItem.amount || 0
 
       if (!companiesMap.has(companyId)) {
         companiesMap.set(companyId, [])
@@ -967,13 +971,12 @@ export async function importarPayables(
     }
   }
 
-  // 2. Bulk Append Skipping Duplicates per Company
+  // 2. Bulk Append
   let companiesProcessed = 0
   const totalCompanies = companiesMap.size
 
   for (const [companyId, companyRows] of companiesMap.entries()) {
     try {
-      // Changed from strict_replace_payables to append_payables_skipping_duplicates
       const { data, error } = await supabase.rpc(
         'append_payables_skipping_duplicates',
         {
@@ -986,12 +989,7 @@ export async function importarPayables(
 
       if (data && data.success) {
         results.success += data.inserted || 0
-        // We calculate imported total based on what was *attempted* to be imported (because skipped ones are valid but present)
-        // Or strictly what was inserted. The RPC doesn't return inserted amount easily, so we approximate or skip
-        // For integrity check, strictly we should compare what was IN FILE vs what is IN DB.
-        // But since we are skipping duplicates, 'importedTotal' in the context of integrity check might be misleading if we only count inserted.
-        // Let's assume file total integrity check is primarily for ensuring parsing was correct.
-        // We will just sum up the rows that were passed to the RPC as "processed"
+        // Approximate inserted amount
         const insertedAmount = companyRows.reduce(
           (sum: number, r: any) => sum + (r.amount || 0),
           0,
@@ -1004,7 +1002,6 @@ export async function importarPayables(
       results.errors.push(
         `Erro crítico ao salvar dados da empresa ${companyId}: ${err.message}`,
       )
-      // Cannot attribute to single row easily here
     }
 
     companiesProcessed++

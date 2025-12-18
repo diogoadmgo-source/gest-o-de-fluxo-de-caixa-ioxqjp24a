@@ -58,6 +58,7 @@ export function ImportDialog({
       fileTotal: number
       importedTotal: number
       records: number
+      failuresTotal?: number
     }
     failures?: {
       document: string
@@ -140,7 +141,6 @@ export function ImportDialog({
       }
 
       const text = await selectedFile.text()
-      // Initial progress for reading
       setProgress(5)
 
       const parsedData = parseCSV(text)
@@ -152,19 +152,22 @@ export function ImportDialog({
           parsedData,
           selectedFile.name,
           (percent) => {
-            // Map 0-100% from import process to 10-100% of total progress bar
             const overallProgress = 10 + Math.round((percent * 90) / 100)
             setProgress(overallProgress)
           },
         )
         setResult(res)
 
-        if (res.success) {
+        if (res.success && (!res.failures || res.failures.length === 0)) {
           toast.success('Importação concluída com sucesso.')
-          // Auto close on success and trigger callback
           onImported?.()
         } else {
-          toast.error(res.message || 'Falha na importação.')
+          // If partial success or error
+          if (res.success) {
+            toast.warning('Importação parcial. Verifique os avisos.')
+          } else {
+            toast.error('Falha na importação.')
+          }
         }
       }
 
@@ -185,6 +188,14 @@ export function ImportDialog({
   const showWarning = type === 'receivable' || type === 'payable'
   const formatCurrency = (val: number) =>
     val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+  // Integrity Check Logic:
+  // Diff = | (FileTotal - FailuresTotal) - ImportedTotal |
+  const isIntegrityOk = (stats: any) => {
+    const expected = (stats.fileTotal || 0) - (stats.failuresTotal || 0)
+    const diff = Math.abs(expected - (stats.importedTotal || 0))
+    return diff < 0.1
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -311,20 +322,23 @@ export function ImportDialog({
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Valor Total no Arquivo:</span>
+                        <span>Valor Total no Arquivo (Bruto):</span>
                         <span className="font-mono text-blue-600 dark:text-blue-400">
                           {formatCurrency(result.stats.fileTotal)}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Valor Total Importado:</span>
+                        <span>Valor Rejeitado (Falhas):</span>
+                        <span className="font-mono text-destructive">
+                          {formatCurrency(result.stats.failuresTotal || 0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Valor Total Importado (Líquido):</span>
                         <span
                           className={cn(
                             'font-mono font-bold',
-                            Math.abs(
-                              result.stats.fileTotal -
-                                result.stats.importedTotal,
-                            ) < 0.1
+                            isIntegrityOk(result.stats)
                               ? 'text-success'
                               : 'text-destructive',
                           )}
@@ -332,11 +346,10 @@ export function ImportDialog({
                           {formatCurrency(result.stats.importedTotal)}
                         </span>
                       </div>
-                      {Math.abs(
-                        result.stats.fileTotal - result.stats.importedTotal,
-                      ) >= 0.1 && (
+                      {!isIntegrityOk(result.stats) && (
                         <p className="text-destructive text-xs mt-1 font-semibold">
-                          Divergência detectada! Verifique o log de erros.
+                          Divergência não explicada pelas falhas! Verifique o
+                          log de erros.
                         </p>
                       )}
                     </div>
@@ -395,7 +408,11 @@ export function ImportDialog({
           <Button
             onClick={handleImport}
             disabled={
-              !selectedFile || isProcessing || (!!result && result.success)
+              !selectedFile ||
+              isProcessing ||
+              (!!result &&
+                result.success &&
+                (!result.failures || result.failures.length === 0))
             }
             variant={showWarning ? 'destructive' : 'default'}
           >

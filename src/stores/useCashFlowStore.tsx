@@ -88,6 +88,7 @@ interface CashFlowContextType {
       fileTotal: number
       importedTotal: number
       records: number
+      failuresTotal?: number
     }
     failures?: {
       document: string
@@ -150,10 +151,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return
 
     setLoading(true)
-    // Clear data only if changing scope significantly to avoid flash
-    // But for safety let's clear to avoid mixing data
     if (!selectedCompanyId) {
-      // Logic could be refined to not clear if just refreshing
+      // Optional: Clear or retain previous state
     }
 
     try {
@@ -215,8 +214,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .select(
           'id, name, code, type, institution, agency, account_number, account_digit, company_id, active, created_at',
         )
-        // We fetch inactive too to calculate history if needed, but for "Active Balance" user story says "active: true".
-        // Let's fetch all and filter in memory.
         .order('created_at', { ascending: false })
 
       if (visibleIds.length > 0) {
@@ -313,14 +310,14 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     bankBalances,
     adjustments,
     selectedCompanyId,
-    banks, // Added dependency
+    banks,
   ])
 
   const performRecalculation = () => {
     // Determine Scope
     const today = startOfDay(new Date())
-    const startGenDate = subDays(today, 60) // 2 months back for history
-    const endGenDate = addDays(today, 180) // 6 months forward for projection
+    const startGenDate = subDays(today, 60)
+    const endGenDate = addDays(today, 180)
 
     // 1. Identify active banks for current scope
     const activeBanks = banks.filter((b) => b.active)
@@ -333,8 +330,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     let anchorBalance = 0
     scopeBanks.forEach((bank) => {
       const bankBals = bankBalances.filter((b) => b.bank_id === bank.id)
-
-      // Find latest balance strictly before or on today
       const sorted = bankBals
         .filter((b) => !isAfter(parseISO(b.date), today))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -353,13 +348,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const flowData = dates.map((date) => {
-      // Filter Receivables
       const dayReceivables = receivables
         .filter(
           (r) =>
             isSameDay(parseISO(r.due_date), date) &&
             r.title_status !== 'Cancelado' &&
-            // Exclude paid items in future (unlikely but safe)
             (isBefore(date, today) ? true : r.title_status === 'Aberto'),
         )
         .reduce(
@@ -367,7 +360,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           0,
         )
 
-      // Filter Payables (Transactions)
       const dayPayablesTransactions = payables
         .filter(
           (p) =>
@@ -377,14 +369,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         )
         .reduce((sum, p) => sum + (p.amount || 0), 0)
 
-      // Filter Payables (Table)
       const dayAccountPayables = accountPayables
         .filter((p) => p.due_date && isSameDay(parseISO(p.due_date), date))
         .reduce((sum, p) => sum + (p.principal_value || 0), 0)
 
       const totalDayPayables = dayPayablesTransactions + dayAccountPayables
 
-      // Filter Adjustments
       const dayAdjustments = adjustments.filter(
         (a) => isSameDay(parseISO(a.date), date) && a.status === 'approved',
       )
@@ -398,7 +388,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       const dailyBalance =
         dayReceivables - totalDayPayables + adjustmentsCredit - adjustmentsDebit
 
-      // Check imports/other (using 0 for now as they are not fully implemented in flow calculation yet)
       const imports = 0
       const other_expenses = 0
 
@@ -416,8 +405,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
     // 4. Calculate Accumulated Balances using Anchor
     const todayIndex = flowData.findIndex((f) => isSameDay(f.date, today))
-
-    // Initialize map
     const entriesMap: Record<string, CashFlowEntry> = {}
 
     if (todayIndex !== -1) {
@@ -444,18 +431,14 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           is_projected: true,
           is_weekend: flow.date.getDay() === 0 || flow.date.getDay() === 6,
         }
-
         currentAccumulated = accumulated
       }
 
       // B. Backward from Today (Reconstruction)
-      // Open(Today) = Anchor.
-      // Close(Yesterday) = Open(Today).
-      // Open(Yesterday) = Close(Yesterday) - DailyFlow(Yesterday).
       let nextOpening = anchorBalance
       for (let i = todayIndex - 1; i >= 0; i--) {
         const flow = flowData[i]
-        const accumulated = nextOpening // Yesterday's close is Today's open
+        const accumulated = nextOpening
         const opening = accumulated - flow.dailyBalance
 
         entriesMap[flow.date.toISOString()] = {
@@ -475,12 +458,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           is_projected: false,
           is_weekend: flow.date.getDay() === 0 || flow.date.getDay() === 6,
         }
-
         nextOpening = opening
       }
     }
 
-    // Convert map to sorted array
     const finalEntries = Object.values(entriesMap).sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     )
@@ -758,24 +739,34 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       deletedCount = importResults.deleted || 0
       fileTotal = importResults.fileTotal || 0
       importedTotal = importResults.importedTotal || 0
+      const failures = importResults.failures || []
 
-      // Integrity Check
-      const integrityDiff = Math.abs(fileTotal - importedTotal)
+      // Calculate total value of failed rows
+      const failuresTotal = failures.reduce(
+        (sum: number, f: any) => sum + (f.value || 0),
+        0,
+      )
+
+      // Expected Imported = File Total - Failures Total
+      // Integrity Diff = | (File Total - Failures) - Imported |
+      // Use 0.1 tolerance for float
+      const expectedImported = fileTotal - failuresTotal
+      const integrityDiff = Math.abs(expectedImported - importedTotal)
       const isIntegrityError = integrityDiff > 0.1
 
       if (isIntegrityError) {
         importResults.errors.push(
-          `Erro de Integridade: Valor total do arquivo (R$ ${fileTotal.toFixed(2)}) difere do valor importado (R$ ${importedTotal.toFixed(2)}).`,
+          `Erro de Integridade: Esperado (R$ ${expectedImported.toFixed(2)}) difere do Importado (R$ ${importedTotal.toFixed(2)}). Diff: ${integrityDiff.toFixed(2)}`,
         )
-        // If no explicit failures caused this, maybe it's a batch issue or rounding.
-        // But usually failures list will contain rows that caused missing data.
-        errorCount++
+        // Count integrity issue as an error if not already failed
+        if (errorCount === 0) errorCount++
       }
 
       const stats = {
         fileTotal,
         importedTotal,
         records: successCount,
+        failuresTotal,
       }
 
       if (user) {
@@ -783,14 +774,18 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           fallbackCompanyId || importResults.lastCompanyId || selectedCompanyId
 
         if (logCompanyId && logCompanyId !== 'all') {
-          const errorDetails =
-            importResults.errors.length > 0
-              ? importResults.errors
-              : isIntegrityError
-                ? [
-                    `Divergência de valores: File=${fileTotal}, DB=${importedTotal}`,
-                  ]
-                : null
+          // Store failures and errors in detailed JSON
+          const errorDetails = {
+            errors: importResults.errors,
+            failures: failures,
+            integrityCheck: {
+              fileTotal,
+              failuresTotal,
+              expectedImported,
+              importedTotal,
+              diff: integrityDiff,
+            },
+          }
 
           const { data: logData } = await supabase
             .from('import_logs')
@@ -801,7 +796,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
                 errorCount === 0 && successCount > 0 ? 'success' : 'failure',
               total_records: data.length,
               success_count: successCount,
-              error_count: errorCount,
+              error_count: failures.length + (isIntegrityError ? 1 : 0),
               deleted_count: deletedCount,
               error_details: errorDetails,
               company_id: logCompanyId,
@@ -816,6 +811,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
               deleted: deletedCount,
               fileTotal,
               importedTotal,
+              failures: failures.length,
             })
           }
         }
@@ -826,14 +822,14 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         await fetchData()
       }
 
-      // Return failures for UI display
-      const failures = importResults.failures || []
-
-      if (errorCount > 0) {
-        const errorMsg = importResults.errors.slice(0, 3).join('; ')
+      if (errorCount > 0 || failures.length > 0) {
+        const errorMsg =
+          failures.length > 0
+            ? `${failures.length} registros falharam. Verifique os detalhes.`
+            : importResults.errors.slice(0, 3).join('; ')
         return {
           success: false,
-          message: `Importação com erros (${errorCount} falhas). ${errorMsg}`,
+          message: `Importação concluída com observações. ${errorMsg}`,
           stats,
           failures,
         }
