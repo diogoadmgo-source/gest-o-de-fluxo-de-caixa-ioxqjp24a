@@ -8,6 +8,20 @@ export interface PaginatedResult<T> {
   error: any
 }
 
+export interface ImportResult {
+  success: boolean
+  message: string
+  stats?: {
+    records: number
+    importedTotal: number
+    fileTotal: number
+    fileTotalPrincipal: number
+    importedPrincipal: number
+    failuresTotal: number
+  }
+  failures: any[]
+}
+
 // --- Fetching Helpers (Optimized) ---
 
 export async function fetchPaginatedReceivables(
@@ -357,7 +371,10 @@ export async function fetchAllRecords(
 }
 
 // Imports
-export async function importarReceivables(companyId: string, data: any[]) {
+export async function importarReceivables(
+  companyId: string,
+  data: any[],
+): Promise<ImportResult> {
   // Column aliases to support various CSV formats
   const getCol = (row: any, keys: string[]) => {
     // Try exact match first
@@ -383,13 +400,20 @@ export async function importarReceivables(companyId: string, data: any[]) {
           'Documento',
           'invoice_number',
           'Doc',
+          'Nº Nota',
         ]),
       ),
       order_number: normalizeText(
-        getCol(row, ['Pedido', 'order_number', 'PO']),
+        getCol(row, ['Pedido', 'order_number', 'PO', 'Ped']),
       ),
       customer: normalizeText(
-        getCol(row, ['Cliente', 'Nome Fantasia', 'customer', 'Nome']),
+        getCol(row, [
+          'Cliente',
+          'Nome Fantasia',
+          'customer',
+          'Nome',
+          'Razão Social',
+        ]),
       ),
       customer_name: normalizeText(
         getCol(row, ['Razão Social', 'Nome Cliente', 'Nome', 'customer_name']),
@@ -401,6 +425,7 @@ export async function importarReceivables(companyId: string, data: any[]) {
           'Documento Cliente',
           'customer_doc',
           'CNPJ/CPF',
+          'Doc Cliente',
         ]),
       ),
       issue_date: d(
@@ -409,6 +434,7 @@ export async function importarReceivables(companyId: string, data: any[]) {
           'Data Emissão',
           'issue_date',
           'Data de Emissão',
+          'Dt Emissão',
         ]),
       ),
       due_date: d(
@@ -417,6 +443,8 @@ export async function importarReceivables(companyId: string, data: any[]) {
           'Data Vencimento',
           'due_date',
           'Data de Vencimento',
+          'Dt Vencimento',
+          'Vcto',
         ]),
       ),
       payment_prediction: d(
@@ -425,6 +453,7 @@ export async function importarReceivables(companyId: string, data: any[]) {
           'Data Previsão',
           'payment_prediction',
           'Prev. Pagto',
+          'Previsão Pagto',
         ]),
       ),
       principal_value: n(
@@ -434,6 +463,9 @@ export async function importarReceivables(companyId: string, data: any[]) {
           'Principal',
           'principal_value',
           'Valor Título',
+          'Valor Liquido',
+          'Valor Líquido',
+          'Valor Total',
         ]),
       ),
       fine: n(getCol(row, ['Multa', 'fine'])),
@@ -444,10 +476,17 @@ export async function importarReceivables(companyId: string, data: any[]) {
           'Valor Total',
           'updated_value',
           'Saldo',
+          'Total',
         ]),
       ),
       title_status: normalizeText(
-        getCol(row, ['Status', 'Situação', 'title_status']),
+        getCol(row, [
+          'Status',
+          'Situação',
+          'title_status',
+          'Estado',
+          'Status Título',
+        ]),
       ),
       new_status: normalizeText(
         getCol(row, [
@@ -457,9 +496,9 @@ export async function importarReceivables(companyId: string, data: any[]) {
           'Sub Status',
         ]),
       ),
-      seller: normalizeText(getCol(row, ['Vendedor', 'seller'])),
+      seller: normalizeText(getCol(row, ['Vendedor', 'seller', 'Comercial'])),
       customer_code: normalizeText(
-        getCol(row, ['Cod Cliente', 'Código', 'customer_code', 'Cód.']),
+        getCol(row, ['Cod Cliente', 'Código', 'customer_code', 'Cód.', 'Cod.']),
       ),
       uf: normalizeText(getCol(row, ['UF', 'uf', 'Estado'])),
       regional: normalizeText(getCol(row, ['Regional', 'regional'])),
@@ -473,14 +512,15 @@ export async function importarReceivables(companyId: string, data: any[]) {
         getCol(row, ['Descrição', 'Obs', 'description', 'Histórico']),
       ),
     }))
-    // Filter out rows that are clearly invalid (e.g. no customer AND no value)
-    .filter((r) => r.customer || r.principal_value !== 0)
+    // Filter out rows that are clearly invalid (must have customer)
+    .filter((r) => r.customer)
 
   if (mappedData.length === 0) {
     return {
       success: false,
       message:
         'Nenhum registro válido encontrado no arquivo. Verifique se o arquivo não está vazio e se as colunas estão corretas.',
+      failures: [],
     }
   }
 
@@ -496,24 +536,37 @@ export async function importarReceivables(companyId: string, data: any[]) {
 
   if (error) {
     console.error('RPC Error:', error)
-    throw new Error(
-      error.message ||
-        'Erro ao processar importação no banco de dados. Verifique o formato dos dados.',
-    )
+    return {
+      success: false,
+      message:
+        error.message ||
+        'Erro de conexão ao processar importação. Tente novamente.',
+      failures: [],
+    }
+  }
+
+  const rpcResponse = result as any
+
+  if (!rpcResponse.success) {
+    return {
+      success: false,
+      message:
+        rpcResponse.error ||
+        'Erro no processamento dos dados pelo banco. Verifique o formato do arquivo.',
+      failures: [],
+    }
   }
 
   // Adapt result to standard import format
-  const stats = (result as any).stats
+  const stats = rpcResponse.stats
   const totalValue = mappedData.reduce(
     (sum: number, r: any) => sum + r.principal_value,
     0,
   )
 
   return {
-    success: (result as any).success,
-    message: (result as any).success
-      ? 'Importação realizada com sucesso.'
-      : 'Erro na importação.',
+    success: true,
+    message: 'Importação realizada com sucesso.',
     stats: {
       records: stats?.inserted || 0,
       importedTotal: stats?.inserted_amount || totalValue,
@@ -526,7 +579,11 @@ export async function importarReceivables(companyId: string, data: any[]) {
   }
 }
 
-export const importarPayables = async () => ({ success: 0, errors: [] }) // Placeholder for payables
+export const importarPayables = async (): Promise<ImportResult> => ({
+  success: false,
+  message: 'Não implementado',
+  failures: [],
+}) // Placeholder for payables
 export const salvarBankManual = async (p: any, u: string) => {
   return { id: '1', ...p }
 }

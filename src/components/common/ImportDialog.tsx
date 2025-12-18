@@ -13,7 +13,6 @@ import {
   X,
   Play,
   AlertCircle,
-  CheckCircle,
   AlertTriangle,
   Download,
 } from 'lucide-react'
@@ -128,7 +127,7 @@ export function ImportDialog({
     const content =
       headers.join(';') +
       '\n' +
-      '12345;PED-001;Empresa Exemplo S.A.;00.000.000/0001-00;01/01/2025;01/02/2025;1500,00;Aberto;Exemplo de importação'
+      '12345;PED-001;Empresa Exemplo S.A.;00.000.000/0001-00;01/01/2025;01/02/2025;1.500,00;Aberto;Exemplo de importação'
 
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -158,8 +157,6 @@ export function ImportDialog({
 
       if (selectedFile.name.endsWith('.xlsx')) {
         // Limitation handling for XLSX within strict environment
-        // We simulate a delay and throw an error advising conversion
-        // In a real scenario with 'xlsx' package, we would read it here.
         await new Promise((resolve) => setTimeout(resolve, 500))
         throw new Error(
           'O processamento de arquivos XLSX requer conversão prévia. Por favor, salve seu arquivo como CSV (separado por ponto e vírgula) e tente novamente.',
@@ -193,9 +190,15 @@ export function ImportDialog({
         setResult(res)
 
         if (res.success) {
-          toast.success('Importação concluída com sucesso!')
+          const count = res.stats?.records || 0
+          toast.success(
+            `Importação concluída com sucesso! ${count} registros atualizados.`,
+          )
           onImported?.()
-          // Do not close immediately so user can see stats
+          // Close immediately on success per requirement
+          setTimeout(() => {
+            onOpenChange(false)
+          }, 500)
         } else {
           toast.error(res.message || 'Falha na importação.')
         }
@@ -215,8 +218,6 @@ export function ImportDialog({
   }
 
   const showWarning = type === 'receivable' || type === 'payable'
-  const formatCurrency = (val: number) =>
-    val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   return (
     <Dialog
@@ -339,44 +340,15 @@ export function ImportDialog({
                 )}
               </div>
 
-              {result && (
+              {result && !result.success && (
                 <div className="space-y-2 animate-fade-in">
-                  <Alert
-                    variant={result.success ? 'default' : 'destructive'}
-                    className={cn(
-                      result.success &&
-                        'border-success bg-success/10 text-success',
-                    )}
-                  >
-                    {result.success ? (
-                      <CheckCircle className="h-4 w-4" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4" />
-                    )}
-                    <AlertTitle>
-                      {result.success ? 'Sucesso' : 'Erro'}
-                    </AlertTitle>
-                    <AlertDescription className="text-xs mt-1">
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Erro na importação</AlertTitle>
+                    <AlertDescription className="text-xs mt-1 font-medium">
                       {result.message}
                     </AlertDescription>
                   </Alert>
-
-                  {result.stats && (
-                    <div className="rounded-md bg-muted p-3 text-sm grid gap-2">
-                      <div className="flex justify-between">
-                        <span>Registros Importados:</span>
-                        <span className="font-mono font-medium">
-                          {result.stats.records}
-                        </span>
-                      </div>
-                      <div className="flex justify-between border-t pt-2">
-                        <span>Valor Total:</span>
-                        <span className="font-mono font-bold text-primary">
-                          {formatCurrency(result.stats.importedTotal)}
-                        </span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
