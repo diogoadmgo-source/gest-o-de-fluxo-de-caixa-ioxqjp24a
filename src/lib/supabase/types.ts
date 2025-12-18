@@ -816,6 +816,10 @@ export type Database = {
       }
     }
     Functions: {
+      append_payables_skipping_duplicates: {
+        Args: { p_company_id: string; p_rows: Json }
+        Returns: Json
+      }
       ensure_company_and_link_user: {
         Args: { p_company_name: string; p_user_id: string }
         Returns: string

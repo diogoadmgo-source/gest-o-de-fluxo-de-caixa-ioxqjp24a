@@ -89,6 +89,12 @@ interface CashFlowContextType {
       importedTotal: number
       records: number
     }
+    failures?: {
+      document: string
+      value: number
+      reason: string
+      line: number
+    }[]
   }>
   clearImportHistory: () => void
   recalculateCashFlow: () => void
@@ -718,6 +724,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     let importResults: any = {
       success: 0,
       errors: [],
+      failures: [],
       deleted: 0,
       total: 0,
       lastCompanyId: '',
@@ -760,6 +767,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         importResults.errors.push(
           `Erro de Integridade: Valor total do arquivo (R$ ${fileTotal.toFixed(2)}) difere do valor importado (R$ ${importedTotal.toFixed(2)}).`,
         )
+        // If no explicit failures caused this, maybe it's a batch issue or rounding.
+        // But usually failures list will contain rows that caused missing data.
         errorCount++
       }
 
@@ -817,12 +826,16 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         await fetchData()
       }
 
+      // Return failures for UI display
+      const failures = importResults.failures || []
+
       if (errorCount > 0) {
         const errorMsg = importResults.errors.slice(0, 3).join('; ')
         return {
           success: false,
           message: `Importação com erros (${errorCount} falhas). ${errorMsg}`,
           stats,
+          failures,
         }
       }
 
@@ -831,6 +844,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           success: false,
           message: importResults.message,
           stats,
+          failures,
         }
       }
 
@@ -838,6 +852,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         success: true,
         message: `Importação de ${successCount} registros realizada com sucesso!`,
         stats,
+        failures,
       }
     } catch (error: any) {
       console.error('Import error:', error)

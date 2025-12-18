@@ -21,6 +21,15 @@ import { Progress } from '@/components/ui/progress'
 import { cn, parseCSV } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 interface ImportDialogProps {
   open: boolean
@@ -50,6 +59,12 @@ export function ImportDialog({
       importedTotal: number
       records: number
     }
+    failures?: {
+      document: string
+      value: number
+      reason: string
+      line: number
+    }[]
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -148,9 +163,6 @@ export function ImportDialog({
           toast.success('Importação concluída com sucesso.')
           // Auto close on success and trigger callback
           onImported?.()
-
-          // If showing stats, we might want to keep the dialog open for a bit or let the user close it
-          // Based on user story, we need to show feedback. So let's NOT close automatically if we have stats to show.
         } else {
           toast.error(res.message || 'Falha na importação.')
         }
@@ -176,7 +188,7 @@ export function ImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
@@ -327,6 +339,44 @@ export function ImportDialog({
                           Divergência detectada! Verifique o log de erros.
                         </p>
                       )}
+                    </div>
+                  )}
+
+                  {result.failures && result.failures.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-semibold mb-2 text-destructive">
+                        Registros com Falha ({result.failures.length})
+                      </h4>
+                      <ScrollArea className="h-[200px] border rounded-md">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[80px]">Linha</TableHead>
+                              <TableHead>Documento</TableHead>
+                              <TableHead className="text-right">
+                                Valor
+                              </TableHead>
+                              <TableHead>Motivo</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {result.failures.map((f, i) => (
+                              <TableRow key={i}>
+                                <TableCell>{f.line}</TableCell>
+                                <TableCell className="font-medium">
+                                  {f.document}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {formatCurrency(f.value)}
+                                </TableCell>
+                                <TableCell className="text-red-500 text-xs">
+                                  {f.reason}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
                     </div>
                   )}
                 </div>

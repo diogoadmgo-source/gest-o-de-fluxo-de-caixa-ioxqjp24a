@@ -575,6 +575,12 @@ export async function importarReceivables(
     success: 0,
     deleted: 0,
     errors: [] as string[],
+    failures: [] as {
+      line: number
+      document: string
+      value: number
+      reason: string
+    }[],
     lastCompanyId: '' as string,
     fileTotal: 0,
     importedTotal: 0,
@@ -596,6 +602,9 @@ export async function importarReceivables(
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
+    let currentDoc = ''
+    let currentVal = 0
+
     try {
       let companyId = fallbackCompanyId
       const companyNameInRow = normalizeText(
@@ -639,10 +648,21 @@ export async function importarReceivables(
       )
       const titleStatus = normalizeReceivableStatus(rawStatus)
 
+      // Extract key fields safely for error reporting
+      currentDoc = normalizeText(
+        row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
+      )
+      currentVal = n(
+        row['Vlr Atualizado'] ||
+          row['updated_value'] ||
+          row['valor_atualizado'] ||
+          row['Vlr Principal'] ||
+          row['principal_value'] ||
+          row['valor_principal'],
+      )
+
       const dbItem = {
-        invoice_number: normalizeText(
-          row['NF'] || row['invoice_number'] || row['numero_da_fatura'],
-        ),
+        invoice_number: currentDoc,
         order_number: normalizeText(
           row['Nr do Pedido'] || row['order_number'] || row['numero_do_pedido'],
         ),
@@ -676,12 +696,7 @@ export async function importarReceivables(
         ),
         fine: n(row['Multa'] || row['fine'] || row['multa']),
         interest: n(row['Juros'] || row['interest'] || row['juros']),
-        updated_value: n(
-          row['Vlr Atualizado'] ||
-            row['updated_value'] ||
-            row['valor_atualizado'] ||
-            row['Vlr Principal'],
-        ),
+        updated_value: currentVal,
         title_status: titleStatus,
         seller: normalizeText(
           row['Vendedor'] || row['seller'] || row['vendedor'],
@@ -721,7 +736,14 @@ export async function importarReceivables(
       }
       companiesMap.get(companyId)!.push(dbItem)
     } catch (err: any) {
-      results.errors.push(`Linha ${i + 2}: ${err.message}`)
+      const errorMsg = err.message
+      results.errors.push(`Linha ${i + 2}: ${errorMsg}`)
+      results.failures.push({
+        line: i + 2,
+        document: currentDoc || 'N/A',
+        value: currentVal || 0,
+        reason: errorMsg,
+      })
     }
 
     processedCount++
@@ -755,6 +777,8 @@ export async function importarReceivables(
       results.errors.push(
         `Erro crítico ao salvar dados da empresa ${companyId}: ${err.message}`,
       )
+      // Note: We don't add to `failures` here because we don't know exactly which rows failed in the batch unless the RPC tells us.
+      // The RPC is atomic for the batch/company replacement.
     }
 
     companiesProcessed++
@@ -779,6 +803,12 @@ export async function importarPayables(
     success: 0,
     deleted: 0,
     errors: [] as string[],
+    failures: [] as {
+      line: number
+      document: string
+      value: number
+      reason: string
+    }[],
     lastCompanyId: '' as string,
     fileTotal: 0,
     importedTotal: 0,
@@ -801,6 +831,9 @@ export async function importarPayables(
   // 1. Process rows and group by company
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
+    let currentDoc = ''
+    let currentVal = 0
+
     try {
       let companyId = fallbackCompanyId
       const companyNameInRow = normalizeText(
@@ -841,10 +874,10 @@ export async function importarPayables(
       )
       if (!entityName) throw new Error('Fornecedor é obrigatório.')
 
-      const documentNumber = normalizeText(
+      currentDoc = normalizeText(
         row['Documento'] || row['document_number'] || row['nf'],
       )
-      if (!documentNumber) throw new Error('Documento é obrigatório.')
+      if (!currentDoc) throw new Error('Documento é obrigatório.')
 
       const issueDate =
         d(row['Emissao'] || row['issue_date'] || row['data_emissao']) ||
@@ -872,6 +905,8 @@ export async function importarPayables(
         if (amount > 0 && principal === 0) principal = amount
       }
 
+      currentVal = amount
+
       // Treat everything as pending/payable by default for the purpose of "Accounts Payable"
       // But preserve overdue logic if date is past.
       const statusRaw = normalizeText(
@@ -887,7 +922,7 @@ export async function importarPayables(
       )
 
       // Deduplication Key for FILE processing (to avoid duplicates within the same file)
-      const key = `${companyId}|${entityName}|${documentNumber}|${dueDate}|${principal.toFixed(2)}`
+      const key = `${companyId}|${entityName}|${currentDoc}|${dueDate}|${principal.toFixed(2)}`
       if (uniqueKeys.has(key)) {
         continue // Skip duplicate row within file
       }
@@ -895,7 +930,7 @@ export async function importarPayables(
 
       const dbItem = {
         entity_name: entityName,
-        document_number: documentNumber,
+        document_number: currentDoc,
         issue_date: issueDate,
         due_date: dueDate,
         principal_value: principal,
@@ -915,7 +950,14 @@ export async function importarPayables(
       }
       companiesMap.get(companyId)!.push(dbItem)
     } catch (err: any) {
-      results.errors.push(`Linha ${i + 2}: ${err.message}`)
+      const errorMsg = err.message
+      results.errors.push(`Linha ${i + 2}: ${errorMsg}`)
+      results.failures.push({
+        line: i + 2,
+        document: currentDoc || 'N/A',
+        value: currentVal || 0,
+        reason: errorMsg,
+      })
     }
 
     processedCount++
@@ -962,6 +1004,7 @@ export async function importarPayables(
       results.errors.push(
         `Erro crítico ao salvar dados da empresa ${companyId}: ${err.message}`,
       )
+      // Cannot attribute to single row easily here
     }
 
     companiesProcessed++

@@ -162,8 +162,8 @@ export default function Payables() {
       })
       .sort(
         (a, b) =>
-          new Date(a.due_date).getTime() - new Date(b.due_date).getTime(),
-      ) // Always sort by Due Date Ascending
+          parseISO(a.due_date).getTime() - parseISO(b.due_date).getTime(),
+      ) // Always sort by Due Date Ascending using parseISO for safety
   }, [
     payables,
     searchTerm,
@@ -176,6 +176,7 @@ export default function Payables() {
   ])
 
   // --- Metrics Calculation ---
+  // Calculates stats based on FILTERED data for dynamic updates
   const stats = useMemo(() => {
     const today = startOfDay(new Date())
     let total = 0
