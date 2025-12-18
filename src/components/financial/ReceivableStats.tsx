@@ -6,11 +6,15 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 interface ReceivableStatsProps {
   companyId: string | null
+  lastUpdate?: number // Trigger to force refetch
 }
 
-export function ReceivableStats({ companyId }: ReceivableStatsProps) {
+export function ReceivableStats({
+  companyId,
+  lastUpdate,
+}: ReceivableStatsProps) {
   const { data: stats, isLoading } = useQuery(
-    `receivables-stats-${companyId}`,
+    `receivables-stats-${companyId}-${lastUpdate || 0}`,
     () => {
       if (!companyId || companyId === 'all') return Promise.resolve(null)
       return getReceivablesDashboardStats(companyId)
@@ -18,6 +22,7 @@ export function ReceivableStats({ companyId }: ReceivableStatsProps) {
     {
       enabled: !!companyId && companyId !== 'all',
       staleTime: 60000, // 1 minute
+      dependencies: [lastUpdate], // Ensure explicit dependency
     },
   )
 

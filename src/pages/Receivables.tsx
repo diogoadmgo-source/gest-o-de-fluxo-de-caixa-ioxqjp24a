@@ -30,6 +30,7 @@ export default function Receivables() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<any>(null)
+  const [dataVersion, setDataVersion] = useState(0) // Control version for dashboard sync
 
   // Advanced filters state
   const [dueDateRange, setDueDateRange] = useState<any>(undefined)
@@ -71,6 +72,7 @@ export default function Receivables() {
     else await addReceivable(data)
     setEditingItem(null)
     refetch()
+    setDataVersion((v) => v + 1) // Refresh stats
   }
 
   const getStatusBadge = (status: string, dueDate: string) => {
@@ -98,12 +100,20 @@ export default function Receivables() {
   const columns: VirtualTableColumn<any>[] = [
     {
       header: 'NF / Pedido',
-      width: '20%',
+      width: '15%',
       cell: (item) => (
         <div className="flex flex-col">
-          <span className="font-medium">{item.invoice_number}</span>
+          <span
+            className="font-medium text-xs truncate"
+            title={item.invoice_number}
+          >
+            {item.invoice_number || '-'}
+          </span>
           {item.order_number && (
-            <span className="text-xs text-muted-foreground">
+            <span
+              className="text-[10px] text-muted-foreground truncate"
+              title={item.order_number}
+            >
               Ped: {item.order_number}
             </span>
           )}
@@ -112,40 +122,94 @@ export default function Receivables() {
     },
     {
       header: 'Cliente',
-      width: '30%',
+      width: '25%',
       cell: (item) => (
-        <span className="truncate block" title={item.customer}>
-          {item.customer}
-        </span>
+        <div className="flex flex-col">
+          <span
+            className="font-medium truncate block text-xs"
+            title={item.customer}
+          >
+            {item.customer}
+          </span>
+          {item.customer_name && item.customer_name !== item.customer && (
+            <span
+              className="text-[10px] text-muted-foreground truncate"
+              title={item.customer_name}
+            >
+              {item.customer_name}
+            </span>
+          )}
+        </div>
       ),
     },
     {
       header: 'Vencimento',
-      width: '15%',
+      width: '12%',
       cell: (item) => (
-        <span>
-          {item.due_date ? format(new Date(item.due_date), 'dd/MM/yyyy') : '-'}
-        </span>
+        <div className="flex flex-col">
+          <span className="text-xs font-medium">
+            {item.due_date
+              ? format(new Date(item.due_date), 'dd/MM/yyyy')
+              : '-'}
+          </span>
+          <span className="text-[10px] text-muted-foreground">
+            Emis:{' '}
+            {item.issue_date
+              ? format(new Date(item.issue_date), 'dd/MM/yyyy')
+              : '-'}
+          </span>
+        </div>
       ),
     },
     {
-      header: 'Emissão',
-      width: '15%',
+      header: 'Status',
+      width: '10%',
+      className: 'text-center',
+      cell: (item) => getStatusBadge(item.title_status, item.due_date),
+    },
+    {
+      header: 'Info',
+      width: '10%',
       cell: (item) => (
-        <span>
-          {item.issue_date
-            ? format(new Date(item.issue_date), 'dd/MM/yyyy')
-            : '-'}
-        </span>
+        <div className="flex flex-col text-[10px] text-muted-foreground">
+          {item.new_status && (
+            <span title="Status Secundário">{item.new_status}</span>
+          )}
+          {item.installment && <span>Parc: {item.installment}</span>}
+        </div>
       ),
     },
     {
-      header: 'Valor',
+      header: 'Atraso',
+      width: '8%',
+      className: 'text-center',
+      cell: (item) => {
+        const days = item.days_overdue || 0
+        if (days <= 0)
+          return <span className="text-muted-foreground text-xs">-</span>
+        return <span className="text-red-600 font-bold text-xs">{days}d</span>
+      },
+    },
+    {
+      header: 'Valor Orig.',
       width: '10%',
       className: 'text-right',
       cell: (item) => (
-        <span className="font-medium">
-          {(item.updated_value || item.principal_value).toLocaleString(
+        <span className="text-xs text-muted-foreground">
+          {(item.principal_value || 0).toLocaleString('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+          })}
+        </span>
+      ),
+    },
+    {
+      header: 'Valor Atual.',
+      width: '10%',
+      className: 'text-right',
+      cell: (item) => (
+        <span className="font-medium text-xs">
+          {(item.updated_value || item.principal_value || 0).toLocaleString(
             'pt-BR',
             {
               style: 'currency',
@@ -155,15 +219,9 @@ export default function Receivables() {
         </span>
       ),
     },
-    {
-      header: 'Status',
-      width: '10%',
-      className: 'text-center',
-      cell: (item) => getStatusBadge(item.title_status, item.due_date),
-    },
   ]
 
-  // Clean, standard layout (v0.75 style) without tabs/sub-nav
+  // Clean, standard layout (v0.77 functional state)
   return (
     <div className="space-y-6 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
       <div className="flex justify-between items-center shrink-0">
@@ -185,9 +243,12 @@ export default function Receivables() {
         </div>
       </div>
 
-      {/* Dashboard Stats Panel */}
+      {/* Dashboard Stats Panel - Synchronized via dataVersion */}
       <div className="shrink-0">
-        <ReceivableStats companyId={selectedCompanyId} />
+        <ReceivableStats
+          companyId={selectedCompanyId}
+          lastUpdate={dataVersion}
+        />
       </div>
 
       <div className="shrink-0">
@@ -282,6 +343,7 @@ export default function Receivables() {
         title="Importar Recebíveis"
         onImported={() => {
           refetch()
+          setDataVersion((v) => v + 1) // Force stats refresh
         }}
       />
     </div>
