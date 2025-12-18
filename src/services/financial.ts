@@ -400,10 +400,12 @@ export async function salvarReceivableManual(payload: any, userId: string) {
     if (error) throw error
     return data
   } else {
+    // UPDATED: Include principal_value in onConflict to match the new DB unique constraint
     const { data, error } = await supabase
       .from('receivables')
       .upsert(dbPayload, {
-        onConflict: 'company_id,invoice_number,order_number,installment',
+        onConflict:
+          'company_id,invoice_number,order_number,installment,principal_value',
       })
       .select()
       .single()
@@ -729,7 +731,8 @@ export async function importarReceivables(
       }
 
       // Check Duplicates within the file
-      const key = `${companyId}|${dbItem.invoice_number}|${dbItem.order_number}|${dbItem.installment}`
+      // UPDATED: Now includes principal_value to allow same-installment duplicates if values differ
+      const key = `${companyId}|${dbItem.invoice_number}|${dbItem.order_number}|${dbItem.installment}|${dbItem.principal_value}`
       if (uniqueKeys.has(key)) {
         throw new Error('Registro duplicado no arquivo.')
       }

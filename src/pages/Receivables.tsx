@@ -587,7 +587,7 @@ export default function Receivables() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[50px]"></TableHead>
-                  <TableHead className="w-[100px]">NF</TableHead>
+                  <TableHead className="w-[120px]">NF / Parc.</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead className="w-[50px]">UF</TableHead>
@@ -637,6 +637,11 @@ export default function Receivables() {
                         </TableCell>
                         <TableCell className="text-xs font-medium">
                           {item.invoice_number}
+                          {item.installment && (
+                            <span className="text-[10px] text-muted-foreground ml-1">
+                              ({item.installment})
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge
