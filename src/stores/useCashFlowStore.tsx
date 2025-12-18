@@ -107,6 +107,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     if (norm) localStorage.setItem('hospcash_selectedCompany', norm)
     else localStorage.removeItem('hospcash_selectedCompany')
     queryClient.invalidate('cashflow')
+    queryClient.invalidate('receivables')
+    queryClient.invalidate('dashboard')
   }
 
   const fetchData = useCallback(async () => {
@@ -307,7 +309,13 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     }
 
     if (type === 'receivable') {
+      // Simulate progress for UI feedback
+      onProgress?.(10)
+
       const result = await importarReceivables(selectedCompanyId, data)
+
+      onProgress?.(90)
+
       // Log the import
       if (result.success) {
         await supabase.from('import_logs').insert({
@@ -319,10 +327,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           total_records: result.stats.records,
           success_count: result.stats.records,
           error_count: 0,
-          deleted_count: 0, // handled in RPC stats usually but simplifying here
+          deleted_count: 0,
         })
 
-        // Force refresh of dashboard data
+        // Force refresh of all relevant data
         queryClient.invalidate('receivables')
         queryClient.invalidate('dashboard')
         fetchData()

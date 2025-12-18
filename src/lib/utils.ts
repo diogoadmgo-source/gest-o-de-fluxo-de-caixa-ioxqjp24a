@@ -54,13 +54,16 @@ export function parseCSV(content: string, delimiter?: string): any[] {
   }
 
   const headers = parseLine(lines[0], delimiter).map((h) =>
-    h.trim().replace(/^"|"$/g, ''),
+    h.trim().replace(/^"|"$/g, '').trim(),
   )
+
   const result = []
 
   for (let i = 1; i < lines.length; i++) {
     const currentline = parseLine(lines[i], delimiter)
+
     // Skip empty lines or lines with significantly wrong column count
+    // Allow for some flexibility (e.g. trailing empty columns)
     if (currentline.length < 1) continue
 
     const obj: any = {}
@@ -69,8 +72,10 @@ export function parseCSV(content: string, delimiter?: string): any[] {
     // Map data to headers
     for (let j = 0; j < headers.length; j++) {
       const val = currentline[j] || ''
-      obj[headers[j]] = val
-      if (val) hasData = true
+      if (headers[j]) {
+        obj[headers[j]] = val
+        if (val) hasData = true
+      }
     }
 
     if (hasData) result.push(obj)

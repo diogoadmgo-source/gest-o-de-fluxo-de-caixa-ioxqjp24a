@@ -15,21 +15,13 @@ import {
   AlertCircle,
   CheckCircle,
   AlertTriangle,
+  Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
 import { cn, parseCSV } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { ScrollArea } from '@/components/ui/scroll-area'
 
 interface ImportDialogProps {
   open: boolean
@@ -46,7 +38,7 @@ export function ImportDialog({
   title,
   onImported,
 }: ImportDialogProps) {
-  const { importData } = useCashFlowStore()
+  const { importData, selectedCompanyId } = useCashFlowStore()
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -62,12 +54,6 @@ export function ImportDialog({
       records: number
       failuresTotal?: number
     }
-    failures?: {
-      document: string
-      value: number
-      reason: string
-      line: number
-    }[]
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -111,7 +97,7 @@ export function ImportDialog({
 
     setSelectedFile(file)
     setResult(null)
-    toast.success(`Arquivo "${file.name}" validado com sucesso.`)
+    toast.info(`Arquivo "${file.name}" selecionado.`)
   }
 
   const removeFile = () => {
@@ -127,56 +113,91 @@ export function ImportDialog({
     fileInputRef.current?.click()
   }
 
+  const downloadTemplate = () => {
+    const headers = [
+      'Nota Fiscal',
+      'Pedido',
+      'Cliente',
+      'CNPJ',
+      'Emissão',
+      'Vencimento',
+      'Valor',
+      'Status',
+      'Observações',
+    ]
+    const content =
+      headers.join(';') +
+      '\n' +
+      '12345;PED-001;Empresa Exemplo S.A.;00.000.000/0001-00;01/01/2025;01/02/2025;1500,00;Aberto;Exemplo de importação'
+
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'modelo_importacao.csv')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const handleImport = async () => {
     if (!selectedFile) return
+    if (!selectedCompanyId || selectedCompanyId === 'all') {
+      toast.error('Selecione uma empresa específica antes de importar.')
+      return
+    }
+
     setIsProcessing(true)
     setProgress(0)
     setResult(null)
 
     try {
-      // Simulate file reading delay for better UX
-      setProgress(5)
-
+      // Step 1: Read File
+      setProgress(10)
       let parsedData: any[] = []
 
       if (selectedFile.name.endsWith('.xlsx')) {
-        // Since we cannot install 'xlsx' or 'read-excel-file' due to environment restrictions (no npm install),
-        // we must inform the user. The User Story requires XLSX support, but we are technically limited.
-        // We will throw a friendly error advising CSV usage for now.
-        // In a real environment with npm access, we would dynamic import('xlsx') here.
+        // Limitation handling for XLSX within strict environment
+        // We simulate a delay and throw an error advising conversion
+        // In a real scenario with 'xlsx' package, we would read it here.
+        await new Promise((resolve) => setTimeout(resolve, 500))
         throw new Error(
-          'A leitura de arquivos .xlsx requer processamento adicional. Por favor, salve seu arquivo como CSV para prosseguir.',
+          'O processamento de arquivos XLSX requer conversão prévia. Por favor, salve seu arquivo como CSV (separado por ponto e vírgula) e tente novamente.',
         )
       } else {
         const text = await selectedFile.text()
-        setProgress(15)
+        setProgress(30)
         parsedData = parseCSV(text)
       }
 
-      setProgress(30)
+      if (parsedData.length === 0) {
+        throw new Error(
+          'O arquivo está vazio ou não pôde ser lido corretamente.',
+        )
+      }
 
+      setProgress(50)
+
+      // Step 2: Send to Store/API
       if (type === 'receivable' || type === 'payable') {
         const res = await importData(
           type,
           parsedData,
           selectedFile.name,
           (percent) => {
-            const overallProgress = 30 + Math.round((percent * 70) / 100)
+            // Map inner progress (0-100) to remaining outer progress (50-100)
+            const overallProgress = 50 + Math.round((percent * 50) / 100)
             setProgress(overallProgress)
           },
         )
         setResult(res)
 
-        if (res.success && (!res.failures || res.failures.length === 0)) {
-          toast.success('Importação concluída com sucesso.')
+        if (res.success) {
+          toast.success('Importação concluída com sucesso!')
           onImported?.()
+          // Do not close immediately so user can see stats
         } else {
-          // If partial success or error
-          if (res.success) {
-            toast.warning('Importação parcial. Verifique os avisos.')
-          } else {
-            toast.error(res.message || 'Falha na importação.')
-          }
+          toast.error(res.message || 'Falha na importação.')
         }
       }
 
@@ -188,7 +209,6 @@ export function ImportDialog({
         message: error.message || 'Erro desconhecido na importação.',
       })
       toast.error(error.message || 'Falha na importação.')
-      // Do not remove file immediately so user can retry or see name
     } finally {
       setIsProcessing(false)
     }
@@ -198,20 +218,28 @@ export function ImportDialog({
   const formatCurrency = (val: number) =>
     val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-  // Integrity Check Logic:
-  const isIntegrityOk = (stats: any) => {
-    const expected = (stats.fileTotal || 0) - (stats.failuresTotal || 0)
-    const diff = Math.abs(expected - (stats.importedTotal || 0))
-    return diff < 1.0 // Tolerance
-  }
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+    <Dialog
+      open={open}
+      onOpenChange={(val) => {
+        if (!isProcessing) {
+          onOpenChange(val)
+          if (!val) {
+            // Reset on close
+            setTimeout(() => {
+              setResult(null)
+              setSelectedFile(null)
+              setProgress(0)
+            }, 300)
+          }
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            Faça upload de arquivo CSV ou XLSX.
+            Faça upload de arquivo CSV para atualizar a base de dados.
           </DialogDescription>
         </DialogHeader>
 
@@ -222,14 +250,12 @@ export function ImportDialog({
           >
             <AlertTriangle className="h-4 w-4 text-destructive" />
             <AlertTitle className="text-sm font-semibold">
-              Atenção: Sobrescrita de Dados
+              Modo de Substituição Total
             </AlertTitle>
             <AlertDescription className="text-xs text-destructive/90">
-              A importação de{' '}
-              {type === 'receivable' ? 'contas a receber' : 'contas a pagar'}{' '}
-              substituirá <strong>TODOS</strong> os títulos existentes para as
-              empresas identificadas no arquivo. Certifique-se de que o arquivo
-              contém a base completa.
+              A importação substituirá <strong>todos</strong> os títulos
+              existentes desta empresa. Certifique-se que o arquivo contém a
+              base completa atualizada.
             </AlertDescription>
           </Alert>
         )}
@@ -238,7 +264,7 @@ export function ImportDialog({
           {!selectedFile ? (
             <div
               className={cn(
-                'border-2 border-dashed rounded-lg p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all',
+                'border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all',
                 isDragging
                   ? 'border-primary bg-primary/5'
                   : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50',
@@ -252,16 +278,28 @@ export function ImportDialog({
                 type="file"
                 ref={fileInputRef}
                 className="hidden"
-                accept=".csv,.xlsx"
+                accept=".csv,.xlsx,.txt"
                 onChange={handleFileSelect}
               />
               <Upload className="h-10 w-10 text-muted-foreground mb-4" />
               <p className="text-sm font-medium">
-                Arraste seu arquivo aqui ou clique para selecionar
+                Clique para selecionar ou arraste o arquivo
               </p>
               <p className="text-xs text-muted-foreground mt-2">
-                Suporta CSV e XLSX
+                Suporta CSV (Excel via Salvar Como CSV)
               </p>
+              <Button
+                variant="link"
+                size="sm"
+                className="mt-4 h-auto p-0 text-xs text-primary"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  downloadTemplate()
+                }}
+              >
+                <Download className="mr-1 h-3 w-3" />
+                Baixar modelo CSV
+              </Button>
             </div>
           ) : (
             <div className="space-y-4">
@@ -271,8 +309,8 @@ export function ImportDialog({
                     <div className="p-2 bg-primary/10 text-primary rounded">
                       <FileSpreadsheet className="h-6 w-6" />
                     </div>
-                    <div>
-                      <p className="font-medium truncate max-w-[300px]">
+                    <div className="overflow-hidden">
+                      <p className="font-medium truncate max-w-[250px]">
                         {selectedFile.name}
                       </p>
                       <p className="text-sm text-muted-foreground">
@@ -293,7 +331,7 @@ export function ImportDialog({
                 {isProcessing && (
                   <div className="mt-4 space-y-2">
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Processando registros...</span>
+                      <span>Processando...</span>
                       <span>{progress}%</span>
                     </div>
                     <Progress value={progress} className="h-2" />
@@ -318,41 +356,22 @@ export function ImportDialog({
                     <AlertTitle>
                       {result.success ? 'Sucesso' : 'Erro'}
                     </AlertTitle>
-                    <AlertDescription className="max-h-24 overflow-y-auto text-xs mt-1">
+                    <AlertDescription className="text-xs mt-1">
                       {result.message}
                     </AlertDescription>
                   </Alert>
 
                   {result.stats && (
-                    <div className="rounded-md bg-muted p-3 text-sm grid gap-1">
-                      <p className="font-semibold text-xs text-muted-foreground uppercase mb-1">
-                        Resumo da Importação
-                      </p>
+                    <div className="rounded-md bg-muted p-3 text-sm grid gap-2">
                       <div className="flex justify-between">
-                        <span>Registros Processados:</span>
-                        <span className="font-mono">
+                        <span>Registros Importados:</span>
+                        <span className="font-mono font-medium">
                           {result.stats.records}
                         </span>
                       </div>
-
-                      <div className="my-1 border-t border-dashed" />
-
-                      <div className="flex justify-between">
-                        <span>Valor Total (Arquivo):</span>
-                        <span className="font-mono text-blue-600 dark:text-blue-400">
-                          {formatCurrency(result.stats.fileTotal)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Valor Importado (Banco):</span>
-                        <span
-                          className={cn(
-                            'font-mono font-bold',
-                            isIntegrityOk(result.stats)
-                              ? 'text-success'
-                              : 'text-destructive',
-                          )}
-                        >
+                      <div className="flex justify-between border-t pt-2">
+                        <span>Valor Total:</span>
+                        <span className="font-mono font-bold text-primary">
                           {formatCurrency(result.stats.importedTotal)}
                         </span>
                       </div>
@@ -374,19 +393,10 @@ export function ImportDialog({
           <Button
             onClick={handleImport}
             disabled={
-              !selectedFile ||
-              isProcessing ||
-              (!!result &&
-                result.success &&
-                (!result.failures || result.failures.length === 0))
+              !selectedFile || isProcessing || (!!result && result.success)
             }
-            variant={showWarning ? 'destructive' : 'default'}
           >
-            {isProcessing
-              ? 'Processando...'
-              : showWarning
-                ? 'Sobrescrever e Importar'
-                : 'Importar Arquivo'}
+            {isProcessing ? 'Importando...' : 'Confirmar Importação'}
             {!isProcessing && <Play className="ml-2 h-4 w-4" />}
           </Button>
         </div>

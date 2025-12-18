@@ -154,27 +154,25 @@ export function n(value: any): number {
   if (!value) return 0
   let str = String(value).trim()
 
-  // Handle "R$ 1.200,50" -> "1200.50" (Brazilian standard)
-  // Remove spaces, R$, and dots (thousands separator)
-  str = str.replace(/[^\d.,-]/g, '')
-  if (!str) return 0
+  // Handle currency symbols
+  str = str.replace(/^R\$\s?/, '').replace(/\s/g, '')
 
-  // Check if it looks like US format (1,000.00) vs BR format (1.000,00)
-  // Simple heuristic: if last punctuation is ',', treat as BR
-  const lastCommaIndex = str.lastIndexOf(',')
-  const lastDotIndex = str.lastIndexOf('.')
+  // Check format
+  // 1.234,56 (BR) -> Last separator is comma
+  // 1,234.56 (US) -> Last separator is dot
+  const lastComma = str.lastIndexOf(',')
+  const lastDot = str.lastIndexOf('.')
 
-  if (lastCommaIndex > lastDotIndex) {
+  if (lastComma > lastDot) {
     // BR Format: remove dots, replace comma with dot
-    const cleanStr = str.replace(/\./g, '').replace(',', '.')
-    const num = parseFloat(cleanStr)
-    return isNaN(num) ? 0 : num
+    str = str.replace(/\./g, '').replace(',', '.')
   } else {
-    // US Format or simple number: remove commas
-    const cleanStr = str.replace(/,/g, '')
-    const num = parseFloat(cleanStr)
-    return isNaN(num) ? 0 : num
+    // US Format: remove commas
+    str = str.replace(/,/g, '')
   }
+
+  const num = parseFloat(str)
+  return isNaN(num) ? 0 : num
 }
 
 export function d(value: any): string | null {
@@ -183,15 +181,21 @@ export function d(value: any): string | null {
   const str = String(value).trim()
   if (!str) return null
 
-  // Try DD/MM/YYYY (Common in BR CSVs)
-  let parsed = parse(str, 'dd/MM/yyyy', new Date())
-  if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
+  // Try parsing common formats
+  const formats = [
+    'dd/MM/yyyy',
+    'dd-MM-yyyy',
+    'yyyy-MM-dd',
+    'dd/MM/yy',
+    'MM/dd/yyyy',
+  ]
 
-  // Try YYYY-MM-DD
-  parsed = parse(str, 'yyyy-MM-dd', new Date())
-  if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
+  for (const fmt of formats) {
+    const parsed = parse(str, fmt, new Date())
+    if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
+  }
 
-  // Try basic ISO substring
+  // Fallback for basic ISO substring
   if (str.match(/^\d{4}-\d{2}-\d{2}/)) return str.substring(0, 10)
 
   return null
@@ -354,69 +358,119 @@ export async function fetchAllRecords(
 
 // Imports
 export async function importarReceivables(companyId: string, data: any[]) {
+  // Column aliases to support various CSV formats
+  const getCol = (row: any, keys: string[]) => {
+    // Try exact match first
+    for (const key of keys) {
+      if (row[key] !== undefined) return row[key]
+    }
+    // Try case insensitive match
+    const rowKeys = Object.keys(row)
+    for (const key of keys) {
+      const found = rowKeys.find((k) => k.toLowerCase() === key.toLowerCase())
+      if (found) return row[found]
+    }
+    return undefined
+  }
+
   // Normalize and map data
   const mappedData = data
     .map((row: any) => ({
       invoice_number: normalizeText(
-        row['Nota Fiscal'] ||
-          row['NF'] ||
-          row['Documento'] ||
-          row['invoice_number'],
+        getCol(row, [
+          'Nota Fiscal',
+          'NF',
+          'Documento',
+          'invoice_number',
+          'Doc',
+        ]),
       ),
-      order_number: normalizeText(row['Pedido'] || row['order_number']),
+      order_number: normalizeText(
+        getCol(row, ['Pedido', 'order_number', 'PO']),
+      ),
       customer: normalizeText(
-        row['Cliente'] || row['Nome Fantasia'] || row['customer'],
+        getCol(row, ['Cliente', 'Nome Fantasia', 'customer', 'Nome']),
       ),
       customer_name: normalizeText(
-        row['Razão Social'] ||
-          row['Nome Cliente'] ||
-          row['Nome'] ||
-          row['customer_name'],
+        getCol(row, ['Razão Social', 'Nome Cliente', 'Nome', 'customer_name']),
       ),
       customer_doc: normalizeText(
-        row['CNPJ'] ||
-          row['CPF'] ||
-          row['Documento Cliente'] ||
-          row['customer_doc'],
+        getCol(row, [
+          'CNPJ',
+          'CPF',
+          'Documento Cliente',
+          'customer_doc',
+          'CNPJ/CPF',
+        ]),
       ),
-      issue_date: d(row['Emissão'] || row['Data Emissão'] || row['issue_date']),
+      issue_date: d(
+        getCol(row, [
+          'Emissão',
+          'Data Emissão',
+          'issue_date',
+          'Data de Emissão',
+        ]),
+      ),
       due_date: d(
-        row['Vencimento'] || row['Data Vencimento'] || row['due_date'],
+        getCol(row, [
+          'Vencimento',
+          'Data Vencimento',
+          'due_date',
+          'Data de Vencimento',
+        ]),
       ),
       payment_prediction: d(
-        row['Previsão'] || row['Data Previsão'] || row['payment_prediction'],
+        getCol(row, [
+          'Previsão',
+          'Data Previsão',
+          'payment_prediction',
+          'Prev. Pagto',
+        ]),
       ),
       principal_value: n(
-        row['Valor'] ||
-          row['Valor Original'] ||
-          row['Principal'] ||
-          row['principal_value'],
+        getCol(row, [
+          'Valor',
+          'Valor Original',
+          'Principal',
+          'principal_value',
+          'Valor Título',
+        ]),
       ),
-      fine: n(row['Multa'] || row['fine']),
-      interest: n(row['Juros'] || row['interest']),
+      fine: n(getCol(row, ['Multa', 'fine'])),
+      interest: n(getCol(row, ['Juros', 'interest'])),
       updated_value: n(
-        row['Valor Atualizado'] || row['Valor Total'] || row['updated_value'],
+        getCol(row, [
+          'Valor Atualizado',
+          'Valor Total',
+          'updated_value',
+          'Saldo',
+        ]),
       ),
       title_status: normalizeText(
-        row['Status'] || row['Situação'] || row['title_status'],
+        getCol(row, ['Status', 'Situação', 'title_status']),
       ),
       new_status: normalizeText(
-        row['Novo Status'] || row['Status Secundário'] || row['new_status'],
+        getCol(row, [
+          'Novo Status',
+          'Status Secundário',
+          'new_status',
+          'Sub Status',
+        ]),
       ),
-      seller: normalizeText(row['Vendedor'] || row['seller']),
+      seller: normalizeText(getCol(row, ['Vendedor', 'seller'])),
       customer_code: normalizeText(
-        row['Cod Cliente'] || row['Código'] || row['customer_code'],
+        getCol(row, ['Cod Cliente', 'Código', 'customer_code', 'Cód.']),
       ),
-      uf: normalizeText(row['UF'] || row['uf']),
-      regional: normalizeText(row['Regional'] || row['regional']),
-      installment: normalizeText(row['Parcela'] || row['installment']),
-      days_overdue: n(row['Dias Atraso'] || row['days_overdue']),
+      uf: normalizeText(getCol(row, ['UF', 'uf', 'Estado'])),
+      regional: normalizeText(getCol(row, ['Regional', 'regional'])),
+      installment: normalizeText(getCol(row, ['Parcela', 'installment'])),
+      days_overdue: n(getCol(row, ['Dias Atraso', 'days_overdue', 'Atraso'])),
       utilization: normalizeText(
-        row['Utilização'] || row['Uso'] || row['utilization'],
+        getCol(row, ['Utilização', 'Uso', 'utilization']),
       ),
-      negativado: normalizeText(row['Negativado'] || row['negativado']),
+      negativado: normalizeText(getCol(row, ['Negativado', 'negativado'])),
       description: normalizeText(
-        row['Descrição'] || row['Obs'] || row['description'],
+        getCol(row, ['Descrição', 'Obs', 'description', 'Histórico']),
       ),
     }))
     // Filter out rows that are clearly invalid (e.g. no customer AND no value)
@@ -425,11 +479,13 @@ export async function importarReceivables(companyId: string, data: any[]) {
   if (mappedData.length === 0) {
     return {
       success: false,
-      message: 'Nenhum registro válido encontrado no arquivo.',
+      message:
+        'Nenhum registro válido encontrado no arquivo. Verifique se o arquivo não está vazio e se as colunas estão corretas.',
     }
   }
 
   // Use the RPC to atomically replace data for this company
+  // Note: We use the supabase client directly to handle errors properly
   const { data: result, error } = await supabase.rpc(
     'strict_replace_receivables',
     {
@@ -441,7 +497,8 @@ export async function importarReceivables(companyId: string, data: any[]) {
   if (error) {
     console.error('RPC Error:', error)
     throw new Error(
-      error.message || 'Erro ao processar importação no banco de dados.',
+      error.message ||
+        'Erro ao processar importação no banco de dados. Verifique o formato dos dados.',
     )
   }
 

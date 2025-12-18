@@ -282,8 +282,6 @@ export default function Receivables() {
         title="Importar Recebíveis"
         onImported={() => {
           refetch()
-          // Force refresh of stats by invalidating query
-          // stats component will refetch automatically if keys match, but explicit invalidation helps
         }}
       />
     </div>
