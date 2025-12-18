@@ -11,14 +11,14 @@ export function normalizeText(text: any): string {
 export const s = normalizeText
 
 export function isGarbageCompanyName(text: any): boolean {
-  if (text === null || text === undefined) return true
+  if (text === null || text === undefined) return false
   const s = String(text).trim().toLowerCase()
-  if (s === '') return true
+  if (s === '') return false
 
   if (s.startsWith('total')) return true
   if (s.startsWith('valor')) return true
   if (s.includes('filtros aplicados')) return true
-  if (s.includes('intercompany')) return true
+  if (s === 'intercompany') return true
 
   return false
 }
@@ -604,24 +604,13 @@ export async function importarReceivables(
 
       // Garbage Check
       if (isGarbageCompanyName(companyNameInRow)) {
-        if (companyNameInRow !== '') {
-          // It has text content but is identified as garbage (e.g. "Total")
-          if (!fallbackCompanyId) {
-            throw new Error(
-              'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
-            )
-          }
-          // If fallback exists, we skip this row as it's likely a summary row
-          continue
-        } else {
-          // Empty content (also identified as garbage by utility)
-          if (!fallbackCompanyId) {
-            throw new Error(
-              'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
-            )
-          }
-          // If fallback exists, we proceed using fallback
+        if (!fallbackCompanyId) {
+          throw new Error(
+            'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
+          )
         }
+        // If fallback exists, we skip this row as it's likely a summary row
+        continue
       }
 
       if (companyNameInRow) {
@@ -755,10 +744,10 @@ export async function importarReceivables(
       if (error) throw error
 
       if (data && data.success) {
-        results.success += data.stats.inserted
-        results.deleted += data.stats.deleted
+        results.success += data.stats?.inserted || 0
+        results.deleted += data.stats?.deleted || 0
         // Collect actual inserted amount from DB for Integrity Check
-        results.importedTotal += data.stats.inserted_amount || 0
+        results.importedTotal += data.stats?.inserted_amount || 0
       } else {
         throw new Error(data?.error || 'Erro desconhecido ao substituir dados.')
       }
@@ -820,24 +809,13 @@ export async function importarPayables(
 
       // Garbage Check
       if (isGarbageCompanyName(companyNameInRow)) {
-        if (companyNameInRow !== '') {
-          // It has text content but is identified as garbage (e.g. "Total")
-          if (!fallbackCompanyId) {
-            throw new Error(
-              'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
-            )
-          }
-          // If fallback exists, we skip this row as it's likely a summary row
-          continue
-        } else {
-          // Empty content (also identified as garbage by utility)
-          if (!fallbackCompanyId) {
-            throw new Error(
-              'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
-            )
-          }
-          // If fallback exists, we proceed using fallback
+        if (!fallbackCompanyId) {
+          throw new Error(
+            'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
+          )
         }
+        // If fallback exists, we skip this row as it's likely a summary row
+        continue
       }
 
       if (companyNameInRow) {
