@@ -18,6 +18,7 @@ import {
   Info,
   CheckCircle2,
   Eye,
+  Database,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
@@ -59,6 +60,8 @@ export function ImportDialog({
       batchId?: string
       rejectedRows?: number
       rejectedAmount?: number
+      auditDbRows?: number
+      auditDbValue?: number
     }
   } | null>(null)
   const [showRejects, setShowRejects] = useState(false)
@@ -447,6 +450,29 @@ export function ImportDialog({
                                 </span>
                               </div>
                             </div>
+
+                            {/* Post-Import Audit Check */}
+                            {result.stats?.auditDbValue !== undefined && (
+                              <div className="flex flex-col border-t border-dashed pt-2 col-span-2">
+                                <span className="text-xs uppercase tracking-wider font-semibold flex items-center gap-1 text-muted-foreground">
+                                  <Database className="h-3 w-3" />
+                                  Auditoria Pós-Importação (DB)
+                                </span>
+                                <div className="flex justify-between items-center mt-1">
+                                  <span className="text-sm font-medium">
+                                    {(
+                                      result.stats.auditDbValue || 0
+                                    ).toLocaleString('pt-BR', {
+                                      style: 'currency',
+                                      currency: 'BRL',
+                                    })}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {result.stats.auditDbRows} total no banco
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           {result.stats?.rejectedRows ? (

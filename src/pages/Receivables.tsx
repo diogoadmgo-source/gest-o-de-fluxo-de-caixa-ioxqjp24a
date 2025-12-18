@@ -21,7 +21,7 @@ export default function Receivables() {
   const perf = usePerformanceMeasure('/recebiveis', 'render')
 
   // State
-  // AC 5: Server-side paginated grid (Limit 30)
+  // AC 8: Server-side paginated grid (Limit 30)
   const [pageSize] = useState(30)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
@@ -256,6 +256,7 @@ export default function Receivables() {
       </div>
 
       <div className="shrink-0">
+        {/* AC 9: Dashboard Accuracy - Stats refreshed on dataVersion change */}
         <ReceivableStats
           companyId={selectedCompanyId}
           lastUpdate={dataVersion}
@@ -362,6 +363,7 @@ export default function Receivables() {
         title="Importar Recebíveis"
         onImported={() => {
           refetch()
+          // Force dashboard/stats refresh
           setDataVersion((v) => v + 1)
         }}
       />

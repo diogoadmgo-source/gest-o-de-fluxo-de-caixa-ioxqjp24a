@@ -976,9 +976,14 @@ export type Database = {
         Args: { p_company_id: string; p_table_name: string }
         Returns: Json
       }
-      get_dashboard_kpis:
-        | { Args: { p_company_id: string }; Returns: Json }
-        | { Args: { p_company_id: string; p_date?: string }; Returns: Json }
+      get_dashboard_kpis: {
+        Args: { p_company_id: string; p_date?: string }
+        Returns: Json
+      }
+      get_dashboard_kpis_legacy: {
+        Args: { p_company_id: string }
+        Returns: Json
+      }
       get_data_isolation_audit: {
         Args: { p_company_id: string }
         Returns: Json

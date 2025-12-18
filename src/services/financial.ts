@@ -26,6 +26,9 @@ export interface ImportResult {
     batchId?: string
     rejectedRows?: number
     rejectedAmount?: number
+    // Audit Stats
+    auditDbRows?: number
+    auditDbValue?: number
   }
   failures: any[]
 }
@@ -598,7 +601,9 @@ export async function importReceivablesRobust(
   companyId: string,
   data: any[],
   fileName: string,
-): Promise<ImportBatchSummary> {
+): Promise<
+  ImportBatchSummary & { audit_db_rows?: number; audit_db_value?: number }
+> {
   // Normalize fields slightly before sending to ensure JSON integrity,
   // but let SQL handle validation.
   const sanitized = data.map((d) => {
@@ -642,7 +647,7 @@ export async function importReceivablesRobust(
   )
 
   if (error) throw error
-  return result as ImportBatchSummary
+  return result as any
 }
 
 export async function fetchImportRejects(
@@ -698,6 +703,8 @@ export async function importarReceivables(
   let totalFileAmount = 0
   let totalDuplicatesSkipped = 0
   let lastBatchId: string | undefined
+  let auditDbRows: number | undefined
+  let auditDbValue: number | undefined
   let globalFailures: any[] = []
 
   try {
@@ -716,6 +723,8 @@ export async function importarReceivables(
       totalFileAmount = summary.total_value || 0
       totalRejectedAmount = summary.rejected_value || 0
       lastBatchId = summary.batch_id
+      auditDbRows = summary.audit_db_rows
+      auditDbValue = summary.audit_db_value
     } else {
       globalFailures.push({ company: fallbackCompanyId, error: 'RPC Failed' })
     }
@@ -742,6 +751,8 @@ export async function importarReceivables(
       batchId: lastBatchId,
       rejectedRows: totalDuplicatesSkipped,
       rejectedAmount: totalRejectedAmount,
+      auditDbRows,
+      auditDbValue,
     },
     failures: globalFailures,
   }
