@@ -80,11 +80,7 @@ DECLARE
     
     -- Validation
     v_reject_reason TEXT;
-    v_unique_key TEXT;
     
-    -- Internal deduplication map (using temp table for batch uniqueness)
-    -- We can't easily use a variable for a set in PLPGSQL, so we'll query the table we are inserting into
-    -- OR use a temp table. Since we wipe the main table for the company, we just need to check if we already inserted in this transaction.
 BEGIN
     -- 1. Setup Batch Log
     INSERT INTO public.import_receivables_log (
@@ -369,10 +365,10 @@ $$;
 -- 5. Garbage Cleanup (AC 6)
 DO $$
 DECLARE
-  r RECORD;
+  rec RECORD;
 BEGIN
   -- Iterate through companies matching garbage patterns
-  FOR r IN 
+  FOR rec IN 
     SELECT id, name FROM companies 
     WHERE (name ILIKE 'filtros aplicados:%' 
        OR name ILIKE 'total' 
@@ -382,19 +378,19 @@ BEGIN
     -- Check dependencies and delete
     -- We can force delete if they are indeed garbage created by bad imports
     -- Removing from user_companies first
-    DELETE FROM user_companies WHERE company_id = r.id;
+    DELETE FROM user_companies WHERE company_id = rec.id;
     
     -- Delete orphaned financial data if any (garbage companies shouldn't have valid data ideally, but clean up just in case)
-    DELETE FROM receivables WHERE company_id = r.id;
-    DELETE FROM transactions WHERE company_id = r.id;
-    DELETE FROM bank_balances WHERE company_id = r.id;
-    DELETE FROM banks WHERE company_id = r.id;
-    DELETE FROM import_receivables_log WHERE company_id = r.id;
+    DELETE FROM receivables WHERE company_id = rec.id;
+    DELETE FROM transactions WHERE company_id = rec.id;
+    DELETE FROM bank_balances WHERE company_id = rec.id;
+    DELETE FROM banks WHERE company_id = rec.id;
+    DELETE FROM import_receivables_log WHERE company_id = rec.id;
     
     -- Delete company
-    DELETE FROM companies WHERE id = r.id;
+    DELETE FROM companies WHERE id = rec.id;
     
-    RAISE NOTICE 'Cleaned up garbage company: %', r.name;
+    RAISE NOTICE 'Cleaned up garbage company: %', rec.name;
   END LOOP;
   
   -- Also clean companies with NO links to user_companies and NO data (Orphans)
