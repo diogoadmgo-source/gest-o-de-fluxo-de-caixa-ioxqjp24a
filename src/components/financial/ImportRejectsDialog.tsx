@@ -137,6 +137,14 @@ function translateReason(reason: string) {
       return 'Parcela inválida'
     case 'duplicado_lote':
       return 'Duplicado (Mesmo Lote)'
+    case 'valor_negativo':
+      return 'Valor Negativo'
+    case 'valor_atualizado_negativo':
+      return 'Valor Atualizado Negativo'
+    case 'vencimento_menor_emissao':
+      return 'Vencimento menor que Emissão'
+    case 'linha_invalida':
+      return 'Linha Inválida (Lixo/Total)'
     default:
       return reason
   }

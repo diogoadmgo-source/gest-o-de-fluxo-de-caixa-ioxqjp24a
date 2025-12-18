@@ -28,6 +28,7 @@ export default function Dashboard() {
     )
   }
 
+  // AC 4: Restored Charts & Corrected KPIs
   const kpiData = {
     pmr: kpis?.pmr || 30,
     pmp: kpis?.pmp || 45,

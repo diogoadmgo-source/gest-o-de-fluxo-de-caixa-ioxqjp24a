@@ -21,7 +21,8 @@ export default function Receivables() {
   const perf = usePerformanceMeasure('/recebiveis', 'render')
 
   // State
-  const [pageSize] = useState(200)
+  // AC 5: Server-side paginated grid (Limit 30)
+  const [pageSize] = useState(30)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -44,7 +45,7 @@ export default function Receivables() {
     isLoading,
     refetch,
   } = useQuery(
-    `receivables-${selectedCompanyId}-${page}-${debouncedSearch}-${statusFilter}-${JSON.stringify(dueDateRange)}-${JSON.stringify(issueDateRange)}-${JSON.stringify(createdAtRange)}`,
+    `receivables-${selectedCompanyId}-${page}-${debouncedSearch}-${statusFilter}-${JSON.stringify(dueDateRange)}-${JSON.stringify(issueDateRange)}-${JSON.stringify(createdAtRange)}-${dataVersion}`,
     () => {
       if (!selectedCompanyId || selectedCompanyId === 'all')
         return Promise.resolve({ data: [], count: 0 })

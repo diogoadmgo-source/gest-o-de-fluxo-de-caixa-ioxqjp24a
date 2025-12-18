@@ -217,7 +217,7 @@ export async function fetchPaginatedReceivables(
         query = query.gte('created_at', fromStr).lte('created_at', toStr)
       }
 
-      // Sorting - Force default sorting by due_date ASC and invoice_number for consistency
+      // Sorting - AC 5: Default sorting by due_date (ASC)
       const sortCol = filters.sortBy || 'due_date'
       query = query
         .order(sortCol, { ascending: filters.sortOrder === 'asc' })
@@ -586,7 +586,9 @@ export async function importReceivablesRobust(
   fileName: string,
 ): Promise<ImportBatchSummary> {
   // Normalize fields slightly before sending to ensure JSON integrity,
-  // but let SQL handle validation
+  // but let SQL handle validation.
+  // AC 6: Company Isolation - We do NOT map 'company' column here.
+  // We strictly use the companyId passed to this function.
   const sanitized = data.map((d) => {
     // Helper to try and get keys regardless of case
     const get = (k: string[]) => getCol(d, k)
@@ -656,7 +658,7 @@ export async function importarReceivables(
   fallbackCompanyId?: string,
   fileName: string = 'import.csv',
 ): Promise<ImportResult> {
-  // STRICT GOVERNANCE: Force company selection
+  // STRICT GOVERNANCE (AC 6): Force company selection
   if (!fallbackCompanyId || fallbackCompanyId === 'all') {
     return {
       success: false,
@@ -666,7 +668,7 @@ export async function importarReceivables(
     }
   }
 
-  // 0. Validate Layout
+  // 0. Validate Layout (AC 2/7 Pre-check)
   if (data && data.length > 0) {
     const missingColumns = validateReceivablesLayout(data[0])
     if (missingColumns.length > 0) {
