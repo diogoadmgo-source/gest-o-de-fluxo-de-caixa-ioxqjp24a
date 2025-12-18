@@ -16,12 +16,14 @@ import {
   AlertTriangle,
   Download,
   Info,
+  CheckCircle2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
 import { cn, parseCSV } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { format } from 'date-fns'
 
 interface ImportDialogProps {
   open: boolean
@@ -54,6 +56,9 @@ export function ImportDialog({
       records: number
       failuresTotal?: number
       duplicatesSkipped?: number
+      minCreatedAt?: string
+      maxCreatedAt?: string
+      distinctBatches?: number
     }
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -158,7 +163,6 @@ export function ImportDialog({
       let parsedData: any[] = []
 
       if (selectedFile.name.endsWith('.xlsx')) {
-        // Limitation handling for XLSX within strict environment
         await new Promise((resolve) => setTimeout(resolve, 500))
         throw new Error(
           'O processamento de arquivos XLSX requer conversão prévia. Por favor, salve seu arquivo como CSV (separado por ponto e vírgula) e tente novamente.',
@@ -184,7 +188,6 @@ export function ImportDialog({
           parsedData,
           selectedFile.name,
           (percent) => {
-            // Map inner progress (0-100) to remaining outer progress (50-100)
             const overallProgress = 50 + Math.round((percent * 50) / 100)
             setProgress(overallProgress)
           },
@@ -201,11 +204,7 @@ export function ImportDialog({
           toast.success(msg)
 
           onImported?.()
-          // Close immediately on success per requirement, slightly longer delay to read success message if desired
-          // User Story says "visible ... toast ... dashboard refresh", not necessarily close immediately but close logic is here
-          setTimeout(() => {
-            onOpenChange(false)
-          }, 1500)
+          // Do not close immediately, let user see stats
         } else {
           toast.error('Falha na importação. Verifique os erros.')
         }
@@ -233,7 +232,6 @@ export function ImportDialog({
         if (!isProcessing) {
           onOpenChange(val)
           if (!val) {
-            // Reset on close
             setTimeout(() => {
               setResult(null)
               setSelectedFile(null)
@@ -360,27 +358,77 @@ export function ImportDialog({
               )}
 
               {result && result.success && (
-                <div className="space-y-2 animate-fade-in">
+                <div className="space-y-3 animate-fade-in">
                   <Alert
                     variant="default"
                     className="border-green-500/50 bg-green-500/10 text-green-700"
                   >
                     <Info className="h-4 w-4 text-green-600" />
-                    <AlertTitle>Sucesso</AlertTitle>
+                    <AlertTitle>Importação Concluída</AlertTitle>
                     <AlertDescription className="text-xs mt-1">
                       {result.message}
-                      {result.stats && (
-                        <div className="mt-2 grid grid-cols-2 gap-2 text-xs opacity-90">
-                          <div>Registros: {result.stats.records}</div>
-                          {result.stats.duplicatesSkipped ? (
-                            <div>
-                              Duplicatas: {result.stats.duplicatesSkipped}
-                            </div>
-                          ) : null}
-                        </div>
-                      )}
                     </AlertDescription>
                   </Alert>
+
+                  {/* Verification Stats */}
+                  <div className="rounded-md border p-4 bg-card text-card-foreground shadow-sm space-y-3">
+                    <h4 className="text-sm font-semibold flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-primary" />
+                      Verificação de Integridade
+                    </h4>
+                    <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">
+                          Registros:
+                        </span>
+                        <div className="font-medium">
+                          {result.stats?.records}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">
+                          Valor Total:
+                        </span>
+                        <div className="font-medium">
+                          {(result.stats?.importedTotal || 0).toLocaleString(
+                            'pt-BR',
+                            { style: 'currency', currency: 'BRL' },
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">
+                          Lotes Distintos:
+                        </span>
+                        <div
+                          className={cn(
+                            'font-medium',
+                            result.stats?.distinctBatches === 1
+                              ? 'text-green-600'
+                              : 'text-amber-600',
+                          )}
+                        >
+                          {result.stats?.distinctBatches || 0}{' '}
+                          {result.stats?.distinctBatches === 1
+                            ? '(Isolamento OK)'
+                            : '(Atenção)'}
+                        </div>
+                      </div>
+                      <div className="col-span-2 border-t pt-2 mt-1">
+                        <span className="text-muted-foreground block mb-1">
+                          Timestamp do Lote:
+                        </span>
+                        <div className="font-mono text-[10px] text-muted-foreground">
+                          {result.stats?.minCreatedAt
+                            ? format(
+                                new Date(result.stats.minCreatedAt),
+                                'dd/MM/yyyy HH:mm:ss',
+                              )
+                            : '-'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -394,15 +442,15 @@ export function ImportDialog({
           >
             Fechar
           </Button>
-          <Button
-            onClick={handleImport}
-            disabled={
-              !selectedFile || isProcessing || (!!result && result.success)
-            }
-          >
-            {isProcessing ? 'Importando...' : 'Confirmar Importação'}
-            {!isProcessing && <Play className="ml-2 h-4 w-4" />}
-          </Button>
+          {!result?.success && (
+            <Button
+              onClick={handleImport}
+              disabled={!selectedFile || isProcessing}
+            >
+              {isProcessing ? 'Importando...' : 'Confirmar Importação'}
+              {!isProcessing && <Play className="ml-2 h-4 w-4" />}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

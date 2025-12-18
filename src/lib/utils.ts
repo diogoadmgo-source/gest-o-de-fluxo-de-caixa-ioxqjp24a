@@ -1,4 +1,3 @@
-/* General utility functions (exposes cn) */
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -102,4 +101,24 @@ export function normalizeCompanyId(
     return trimmed
   }
   return null
+}
+
+/**
+ * Checks if a company name matches garbage patterns.
+ * Patterns: "filtros aplicados:%", "total", "valor%", "intercompany%"
+ * @param name - The company name to check
+ * @returns true if it is a garbage company
+ */
+export function isGarbageCompany(name: string): boolean {
+  if (!name) return false
+  const lower = name.toLowerCase().trim()
+  if (
+    lower.startsWith('filtros aplicados:') ||
+    lower === 'total' ||
+    lower.startsWith('valor') ||
+    lower.startsWith('intercompany')
+  ) {
+    return true
+  }
+  return false
 }

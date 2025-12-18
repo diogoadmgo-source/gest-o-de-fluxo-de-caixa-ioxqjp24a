@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase/client'
 import { parse, isValid, format } from 'date-fns'
 import { performanceMonitor } from '@/lib/performance'
+import { isGarbageCompany } from '@/lib/utils'
 
 // --- Types ---
 export interface PaginatedResult<T> {
@@ -20,6 +21,10 @@ export interface ImportResult {
     importedPrincipal: number
     failuresTotal: number
     duplicatesSkipped?: number
+    // Integrity Stats
+    minCreatedAt?: string
+    maxCreatedAt?: string
+    distinctBatches?: number
   }
   failures: any[]
 }
@@ -147,6 +152,9 @@ export async function fetchPaginatedPayables(
           query = query
             .eq('status', 'pending')
             .gte('due_date', new Date().toISOString())
+        } else if (filters.status === 'due_today') {
+          const today = new Date().toISOString().split('T')[0]
+          query = query.eq('due_date', today)
         } else {
           query = query.eq('status', filters.status)
         }
@@ -290,6 +298,13 @@ export async function ensureCompanyAndLink(
 ): Promise<string> {
   const val = normalizeText(companyIdOrName)
   if (!val) throw new Error('ID ou Nome da empresa é obrigatório')
+
+  if (isGarbageCompany(val)) {
+    throw new Error(
+      `A criação de empresas com o nome "${val}" está bloqueada por política de segurança.`,
+    )
+  }
+
   const { data, error } = await supabase.rpc('ensure_company_and_link_user', {
     p_user_id: userId,
     p_company_name: val,
@@ -413,9 +428,14 @@ export async function salvarPayableManual(payload: any, userId: string) {
   }
 }
 
-export async function upsertBankBalance(payload: any) {
+export async function upsertBankBalance(payload: {
+  company_id: string
+  bank_id: string
+  reference_date: string
+  amount: number
+}) {
   const { data, error } = await supabase
-    .from('bank_balances_v2')
+    .from('bank_balances')
     .upsert(payload, { onConflict: 'company_id,bank_id,reference_date' })
     .select()
     .single()
@@ -424,10 +444,7 @@ export async function upsertBankBalance(payload: any) {
 }
 
 export async function deleteBankBalance(id: string) {
-  const { error } = await supabase
-    .from('bank_balances_v2')
-    .delete()
-    .eq('id', id)
+  const { error } = await supabase.from('bank_balances').delete().eq('id', id)
   if (error) throw error
 }
 
@@ -582,7 +599,7 @@ export async function importarReceivables(
         getCol(row, ['Descrição', 'Obs', 'description', 'Histórico']),
       ),
     }))
-    .filter((r) => r.customer)
+    .filter((r) => r.customer && !isGarbageCompany(r.customer))
 
   if (mappedData.length === 0) {
     return {
@@ -592,13 +609,10 @@ export async function importarReceivables(
     }
   }
 
-  // Client-side deduplication to reduce load and network traffic
   const uniqueRows = new Map()
   let duplicateCount = 0
 
   mappedData.forEach((row) => {
-    // Treat empty strings as potentially matching nulls or empty strings
-    // Key matches the Unique Constraint: company_id + invoice + order + installment + principal
     const key = `${row.invoice_number || ''}|${row.order_number || ''}|${row.installment || ''}|${row.principal_value}`
 
     if (uniqueRows.has(key)) {
@@ -627,6 +641,15 @@ export async function importarReceivables(
     }
   }
 
+  // Fetch integrity stats after insert
+  const { data: integrity } = await supabase.rpc(
+    'get_company_integrity_stats',
+    {
+      p_company_id: companyId,
+      p_table_name: 'receivables',
+    },
+  )
+
   const rpcResponse = result as any
   if (!rpcResponse.success) {
     return {
@@ -653,20 +676,193 @@ export async function importarReceivables(
       importedPrincipal: 0,
       failuresTotal: 0,
       duplicatesSkipped: totalSkipped,
+      // Integrity
+      minCreatedAt: integrity?.min_created_at,
+      maxCreatedAt: integrity?.max_created_at,
+      distinctBatches: integrity?.distinct_batches,
     },
     failures: [],
   }
 }
 
-export const importarPayables = async (): Promise<ImportResult> => ({
-  success: false,
-  message: 'Não implementado',
-  failures: [],
-})
+export const importarPayables = async (
+  companyId: string,
+  data: any[],
+): Promise<ImportResult> => {
+  const getCol = (row: any, keys: string[]) => {
+    for (const key of keys) {
+      if (row[key] !== undefined) return row[key]
+    }
+    const rowKeys = Object.keys(row)
+    for (const key of keys) {
+      const found = rowKeys.find((k) => k.toLowerCase() === key.toLowerCase())
+      if (found) return row[found]
+    }
+    return undefined
+  }
 
-export const salvarBankManual = async (p: any, u: string) => {
-  return { id: '1', ...p }
+  const mappedData = data
+    .map((row: any) => ({
+      entity_name: normalizeText(
+        getCol(row, ['Fornecedor', 'Nome', 'entity_name']),
+      ),
+      document_number: normalizeText(
+        getCol(row, [
+          'Documento',
+          'Nota Fiscal',
+          'NF',
+          'document_number',
+          'Doc',
+        ]),
+      ),
+      issue_date: d(
+        getCol(row, ['Emissão', 'Data Emissão', 'issue_date', 'Data']),
+      ),
+      due_date: d(
+        getCol(row, [
+          'Vencimento',
+          'Data Vencimento',
+          'due_date',
+          'Vcto',
+          'Data Vencto',
+        ]),
+      ),
+      amount: n(
+        getCol(row, [
+          'Valor',
+          'Total',
+          'Valor Total',
+          'amount',
+          'Valor Líquido',
+        ]),
+      ),
+      principal_value: n(
+        getCol(row, ['Valor Principal', 'Principal', 'principal_value']),
+      ),
+      fine: n(getCol(row, ['Multa', 'fine'])),
+      interest: n(getCol(row, ['Juros', 'interest'])),
+      status: normalizeText(
+        getCol(row, ['Status', 'Situação', 'status', 'Estado']),
+      ),
+      category: normalizeText(
+        getCol(row, ['Categoria', 'category', 'Classificação']),
+      ),
+      description: normalizeText(
+        getCol(row, ['Descrição', 'Obs', 'description', 'Histórico']),
+      ),
+    }))
+    .filter((r) => r.entity_name && !isGarbageCompany(r.entity_name))
+
+  if (mappedData.length === 0) {
+    return {
+      success: false,
+      message: 'Nenhum registro válido encontrado.',
+      failures: [],
+    }
+  }
+
+  const { data: result, error } = await supabase.rpc(
+    'strict_replace_payables',
+    {
+      p_company_id: companyId,
+      p_rows: mappedData,
+    },
+  )
+
+  if (error) {
+    return {
+      success: false,
+      message: error.message,
+      failures: [],
+    }
+  }
+
+  // Fetch integrity stats after insert
+  const { data: integrity } = await supabase.rpc(
+    'get_company_integrity_stats',
+    {
+      p_company_id: companyId,
+      p_table_name: 'payables',
+    },
+  )
+
+  const rpcResponse = result as any
+  if (!rpcResponse.success) {
+    return {
+      success: false,
+      message: rpcResponse.error || 'Erro no processamento.',
+      failures: [],
+    }
+  }
+
+  return {
+    success: true,
+    message: 'Importação de contas a pagar realizada com sucesso.',
+    stats: {
+      records: rpcResponse.inserted || 0,
+      importedTotal: rpcResponse.inserted_amount || 0,
+      fileTotal: 0,
+      fileTotalPrincipal: 0,
+      importedPrincipal: 0,
+      failuresTotal: 0,
+      duplicatesSkipped: 0,
+      // Integrity
+      minCreatedAt: integrity?.min_created_at,
+      maxCreatedAt: integrity?.max_created_at,
+      distinctBatches: integrity?.distinct_batches,
+    },
+    failures: [],
+  }
 }
-export const salvarImportLogManual = async (p: any, u: string) => {
-  return { id: '1', ...p }
+
+export const salvarBankManual = async (payload: any, userId: string) => {
+  const companyId = await ensureCompanyAndLink(
+    userId,
+    payload.company_id || payload.company_name,
+  )
+
+  const dbPayload = {
+    company_id: companyId,
+    name: payload.name,
+    code: payload.code,
+    institution: payload.institution,
+    agency: payload.agency,
+    account_number: payload.account_number,
+    account_digit: payload.account_digit,
+    active: payload.active,
+    type: payload.type || 'bank',
+  }
+
+  if (payload.id && !payload.id.startsWith('temp-')) {
+    const { data, error } = await supabase
+      .from('banks')
+      .update(dbPayload)
+      .eq('id', payload.id)
+      .select()
+      .single()
+    if (error) throw error
+    return { data, error: null }
+  } else {
+    const { data, error } = await supabase
+      .from('banks')
+      .insert(dbPayload)
+      .select()
+      .single()
+    if (error) return { data: null, error }
+    return { data, error: null }
+  }
+}
+
+export const salvarImportLogManual = async (payload: any, userId: string) => {
+  const { data, error } = await supabase
+    .from('import_logs')
+    .insert({
+      ...payload,
+      user_id: userId,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
 }

@@ -108,6 +108,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     else localStorage.removeItem('hospcash_selectedCompany')
     queryClient.invalidate('cashflow')
     queryClient.invalidate('receivables')
+    queryClient.invalidate('payables')
     queryClient.invalidate('dashboard')
   }
 
@@ -143,8 +144,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .eq('active', true)
       setBanks((banksData as Bank[]) || [])
 
+      // Updated to use the correct table 'bank_balances'
       const { data: balData } = await supabase
-        .from('bank_balances_v2')
+        .from('bank_balances')
         .select('*, banks(name, account_number)')
         .in('company_id', visibleIds)
         .order('reference_date', { ascending: false })
@@ -173,6 +175,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
         let currentBalance = 0
         const latestBalances = new Map<string, number>()
+        // Calculate initial balance from the latest available balance for each bank
         balData?.forEach((b: any) => {
           if (!latestBalances.has(b.bank_id))
             latestBalances.set(b.bank_id, b.amount)
@@ -257,14 +260,17 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   const addPayable = async (p: Transaction) => {
     if (user) await salvarPayableManual(p, user.id)
+    queryClient.invalidate('payables')
     fetchData()
   }
   const updatePayable = async (p: Transaction) => {
     if (user) await salvarPayableManual(p, user.id)
+    queryClient.invalidate('payables')
     fetchData()
   }
   const deletePayable = async (id: string) => {
     await supabase.from('transactions').delete().eq('id', id)
+    queryClient.invalidate('payables')
     fetchData()
   }
 
@@ -308,36 +314,38 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       )
     }
 
+    onProgress?.(10)
+
+    let result
     if (type === 'receivable') {
-      onProgress?.(10)
-
-      const result = await importarReceivables(selectedCompanyId, data)
-
-      onProgress?.(90)
-
-      // Log the import
-      if (result.success) {
-        await supabase.from('import_logs').insert({
-          company_id: selectedCompanyId,
-          user_id: user.id,
-          filename: filename || 'manual_import.csv',
-          type: 'receivable',
-          status: 'success',
-          total_records: result.stats.records,
-          success_count: result.stats.records,
-          error_count: 0,
-          deleted_count: 0,
-        })
-
-        // Force refresh of all relevant data
-        queryClient.invalidate('receivables')
-        queryClient.invalidate('dashboard')
-        fetchData()
-      }
-      return result
+      result = await importarReceivables(selectedCompanyId, data)
+      queryClient.invalidate('receivables')
+    } else {
+      result = await importarPayables(selectedCompanyId, data)
+      queryClient.invalidate('payables')
     }
 
-    return await importarPayables()
+    onProgress?.(90)
+
+    // Log the import
+    if (result.success) {
+      await supabase.from('import_logs').insert({
+        company_id: selectedCompanyId,
+        user_id: user.id,
+        filename: filename || 'manual_import.csv',
+        type: type,
+        status: 'success',
+        total_records: result.stats?.records || 0,
+        success_count: result.stats?.records || 0,
+        error_count: 0,
+        deleted_count: 0,
+      })
+
+      // Force refresh of all relevant data
+      queryClient.invalidate('dashboard')
+      fetchData()
+    }
+    return result
   }
 
   return (
