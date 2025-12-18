@@ -24,14 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Save,
-  AlertCircle,
-  RefreshCw,
-  Trash2,
-  Edit2,
-  Loader2,
-} from 'lucide-react'
+import { Save, AlertCircle, Trash2, Edit2, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -103,14 +96,23 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
       return
     }
 
+    // Strict numeric validation
     const val = parseFloat(amount)
     if (isNaN(val)) {
-      toast.error('Valor inválido.')
+      toast.error('Valor inválido. Insira um número válido.')
+      return
+    }
+
+    // Negative Check (User Story Requirement)
+    if (val < 0) {
+      toast.error('O saldo não pode ser negativo.')
       return
     }
 
     setIsSaving(true)
     try {
+      // The upsertBankBalance service will also check for negative values
+      // and the database has a CHECK constraint as a final safeguard.
       await upsertBankBalance({
         company_id: selectedCompanyId!,
         bank_id: selectedBankId,
@@ -122,12 +124,16 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
 
       // Trigger update of global store
       recalculateCashFlow()
-
-      // We do NOT clear the input here or refetch individually.
-      // The store update will propagate and the useEffect above will verify/update the value if needed.
-      // Optimistically the value is already correct in the input.
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar saldo.')
+      // Handle constraints errors specifically if possible
+      if (
+        error.message &&
+        error.message.includes('check_amount_non_negative')
+      ) {
+        toast.error('Erro de integridade: O saldo não pode ser negativo.')
+      } else {
+        toast.error(error.message || 'Erro ao salvar saldo.')
+      }
     } finally {
       setIsSaving(false)
     }
@@ -205,7 +211,9 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end bg-muted/30 p-4 rounded-lg">
             <div className="space-y-2 md:col-span-1">
-              <Label>Conta / Caixa</Label>
+              <Label>
+                Conta / Caixa <span className="text-destructive">*</span>
+              </Label>
               <Select
                 value={selectedBankId}
                 onValueChange={setSelectedBankId}
@@ -236,10 +244,14 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
             </div>
 
             <div className="space-y-2 md:col-span-1">
-              <Label>Saldo (R$)</Label>
+              <Label>
+                Saldo (R$) <span className="text-destructive">*</span>
+              </Label>
               <div className="relative">
                 <Input
                   type="number"
+                  min="0"
+                  step="0.01"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"

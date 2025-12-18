@@ -285,6 +285,15 @@ export async function upsertBankBalance(payload: {
   reference_date: string
   amount: number
 }) {
+  // Service-level validation
+  if (payload.amount < 0) {
+    throw new Error('O saldo não pode ser negativo.')
+  }
+
+  if (!payload.company_id || !payload.bank_id || !payload.reference_date) {
+    throw new Error('Campos obrigatórios faltando (Empresa, Banco ou Data).')
+  }
+
   const { data, error } = await supabase
     .from('bank_balances_v2')
     .upsert(
@@ -302,6 +311,10 @@ export async function upsertBankBalance(payload: {
     .single()
 
   if (error) {
+    if (error.code === '23514') {
+      // Check constraint violation code
+      throw new Error(`Erro: O saldo não pode ser negativo.`)
+    }
     throw new Error(`Erro ao salvar saldo: ${error.message}`)
   }
   return data

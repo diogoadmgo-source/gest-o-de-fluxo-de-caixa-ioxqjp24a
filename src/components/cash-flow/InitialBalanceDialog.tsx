@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { CalendarIcon } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface InitialBalanceDialogProps {
   open: boolean
@@ -39,7 +40,19 @@ export function InitialBalanceDialog({
 
   const handleSave = () => {
     if (date && amount) {
-      onSave(date, parseFloat(amount))
+      const val = parseFloat(amount)
+
+      if (isNaN(val)) {
+        toast.error('Valor inválido.')
+        return
+      }
+
+      if (val < 0) {
+        toast.error('O saldo não pode ser negativo.')
+        return
+      }
+
+      onSave(date, val)
       onOpenChange(false)
       setAmount('')
     }
@@ -91,6 +104,8 @@ export function InitialBalanceDialog({
             <Input
               id="amount"
               type="number"
+              min="0"
+              step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
