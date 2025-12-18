@@ -866,8 +866,16 @@ export type Database = {
           total_receivables: number
         }[]
       }
+      get_company_integrity_stats: {
+        Args: { p_company_id: string; p_table_name: string }
+        Returns: Json
+      }
       get_dashboard_kpis: {
         Args: { p_company_id: string; p_date?: string }
+        Returns: Json
+      }
+      get_data_isolation_audit: {
+        Args: { p_company_id: string }
         Returns: Json
       }
       get_receivables_dashboard_stats: {

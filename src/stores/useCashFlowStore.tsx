@@ -16,6 +16,7 @@ import {
   Payable,
   FinancialAdjustment,
   ImportHistoryEntry,
+  KPI,
 } from '@/lib/types'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
@@ -28,6 +29,7 @@ import {
   salvarImportLogManual,
   importarReceivables,
   importarPayables,
+  getDashboardKPIs,
 } from '@/services/financial'
 import { normalizeCompanyId } from '@/lib/utils'
 import { subDays, addDays } from 'date-fns'
@@ -41,6 +43,7 @@ interface CashFlowContextType {
   bankBalances: BankBalance[]
   banks: Bank[]
   cashFlowEntries: CashFlowEntry[]
+  kpis: KPI | null
 
   receivables: Receivable[]
   payables: Transaction[]
@@ -94,6 +97,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const [cashFlowEntries, setCashFlowEntries] = useState<CashFlowEntry[]>([])
   const [bankBalances, setBankBalances] = useState<BankBalance[]>([])
   const [banks, setBanks] = useState<Bank[]>([])
+  const [kpis, setKpis] = useState<KPI | null>(null)
 
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [payables, setPayables] = useState<Transaction[]>([])
@@ -114,7 +118,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchData = useCallback(async () => {
     if (!user) return
-    setLoading(true)
+    // Avoid loading state flickering for realtime updates, only set loading if entries are empty
+    if (cashFlowEntries.length === 0) setLoading(true)
+
     try {
       const { data: userCompanies } = await supabase
         .from('user_companies')
@@ -144,7 +150,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .eq('active', true)
       setBanks((banksData as Bank[]) || [])
 
-      // Updated to use the correct table 'bank_balances'
       const { data: balData } = await supabase
         .from('bank_balances')
         .select('*, banks(name, account_number)')
@@ -171,7 +176,13 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         const today = new Date()
         const start = subDays(today, 30)
         const end = addDays(today, 90)
+
+        // Fetch Aggregates
         const aggs = await getCashFlowAggregates(selectedCompanyId, start, end)
+
+        // Fetch KPIs
+        const kpiData = await getDashboardKPIs(selectedCompanyId)
+        setKpis(kpiData as KPI)
 
         let currentBalance = 0
         const latestBalances = new Map<string, number>()
@@ -223,6 +234,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         setCashFlowEntries(entries)
       } else {
         setCashFlowEntries([])
+        setKpis(null)
       }
     } catch (err) {
       console.error(err)
@@ -234,7 +246,58 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     fetchData()
-  }, [fetchData])
+
+    // Real-time subscriptions
+    if (selectedCompanyId && selectedCompanyId !== 'all') {
+      const channel = supabase
+        .channel('cash-flow-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'receivables',
+            filter: `company_id=eq.${selectedCompanyId}`,
+          },
+          () => fetchData(),
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'transactions',
+            filter: `company_id=eq.${selectedCompanyId}`,
+          },
+          () => fetchData(),
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'payables',
+            filter: `company_id=eq.${selectedCompanyId}`,
+          },
+          () => fetchData(),
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'bank_balances',
+            filter: `company_id=eq.${selectedCompanyId}`,
+          },
+          () => fetchData(),
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
+    }
+  }, [fetchData, selectedCompanyId])
 
   const addReceivable = async (r: Receivable) => {
     if (!user) return
@@ -307,7 +370,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   ) => {
     if (!user) throw new Error('User not authenticated')
 
-    // Ensure company is selected
     if (!selectedCompanyId || selectedCompanyId === 'all') {
       throw new Error(
         'Selecione uma empresa específica para realizar a importação.',
@@ -327,7 +389,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
     onProgress?.(90)
 
-    // Log the import
     if (result.success) {
       await supabase.from('import_logs').insert({
         company_id: selectedCompanyId,
@@ -341,7 +402,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         deleted_count: 0,
       })
 
-      // Force refresh of all relevant data
       queryClient.invalidate('dashboard')
       fetchData()
     }
@@ -360,6 +420,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         bankBalances,
         banks,
         cashFlowEntries,
+        kpis,
         adjustments,
         importHistory,
         addReceivable,

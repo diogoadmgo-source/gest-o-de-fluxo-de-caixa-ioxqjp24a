@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { CashFlowGrid } from '@/components/cash-flow/CashFlowGrid'
 import { CashFlowFilters } from '@/components/cash-flow/CashFlowFilters'
+import { CashFlowEvolutionChart } from '@/components/cash-flow/CashFlowEvolutionChart'
+import { KPIPanel } from '@/components/dashboard/KPIPanel'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -64,6 +66,8 @@ export default function CashFlow() {
     payables,
     accountPayables,
     adjustments,
+    kpis,
+    selectedCompanyId,
   } = useCashFlowStore()
   const [loading, setLoading] = useState(false)
 
@@ -311,107 +315,127 @@ export default function CashFlow() {
         </div>
       </div>
 
-      {/* Categorized Dashboard - Daily Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-l-4 border-l-success">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <ArrowUp className="h-4 w-4 text-success" />A Receber (Daily)
-            </CardTitle>
-            <CardDescription>
-              {format(selectedDate, 'dd/MM/yyyy')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-success">
-              {dailyReceivables.toLocaleString('pt-BR', {
-                style: 'currency',
-                currency: 'BRL',
-              })}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-destructive">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <ArrowDown className="h-4 w-4 text-destructive" />A Pagar (Daily)
-            </CardTitle>
-            <CardDescription>
-              {format(selectedDate, 'dd/MM/yyyy')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">
-              {totalDailyPayables.toLocaleString('pt-BR', {
-                style: 'currency',
-                currency: 'BRL',
-              })}
-            </div>
-          </CardContent>
-        </Card>
-        <Card
-          className={cn(
-            'border-l-4',
-            dailyBalance >= 0 ? 'border-l-primary' : 'border-l-destructive',
-          )}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <TrendingUp
-                className={cn(
-                  'h-4 w-4',
-                  dailyBalance >= 0 ? 'text-primary' : 'text-destructive',
-                )}
-              />
-              Saldo do Dia
-            </CardTitle>
-            <CardDescription>
-              {format(selectedDate, 'dd/MM/yyyy')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div
-              className={cn(
-                'text-2xl font-bold',
-                dailyBalance >= 0 ? 'text-primary' : 'text-destructive',
-              )}
-            >
-              {dailyBalance.toLocaleString('pt-BR', {
-                style: 'currency',
-                currency: 'BRL',
-              })}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-blue-500 bg-blue-50/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Landmark className="h-4 w-4 text-blue-500" />
-              Saldo Projetado
-            </CardTitle>
-            <CardDescription>
-              {format(selectedDate, 'dd/MM/yyyy')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {selectedEntry
-                ? selectedEntry.accumulated_balance.toLocaleString('pt-BR', {
+      {/* KPI Panel - Restored */}
+      {selectedCompanyId && selectedCompanyId !== 'all' && kpis && (
+        <div className="animate-fade-in-down duration-500">
+          <KPIPanel kpi={kpis} />
+        </div>
+      )}
+
+      {/* Dynamic Evolution Chart - Prominent */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2">
+          <CashFlowEvolutionChart data={cashFlowEntries} />
+        </div>
+
+        <div className="space-y-4">
+          {/* Categorized Dashboard - Daily Metrics */}
+          <div className="grid grid-cols-1 gap-4">
+            <Card className="border-l-4 border-l-success">
+              <CardHeader className="pb-2 pt-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <ArrowUp className="h-4 w-4 text-success" />A Receber (Dia)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-success">
+                  {dailyReceivables.toLocaleString('pt-BR', {
                     style: 'currency',
                     currency: 'BRL',
-                  })
-                : '---'}
-            </div>
-          </CardContent>
-        </Card>
+                  })}
+                </div>
+                <CardDescription className="text-xs mt-1">
+                  {format(selectedDate, 'dd/MM/yyyy')}
+                </CardDescription>
+              </CardContent>
+            </Card>
+            <Card className="border-l-4 border-l-destructive">
+              <CardHeader className="pb-2 pt-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <ArrowDown className="h-4 w-4 text-destructive" />A Pagar
+                  (Dia)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-destructive">
+                  {totalDailyPayables.toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })}
+                </div>
+                <CardDescription className="text-xs mt-1">
+                  {format(selectedDate, 'dd/MM/yyyy')}
+                </CardDescription>
+              </CardContent>
+            </Card>
+            <Card
+              className={cn(
+                'border-l-4',
+                dailyBalance >= 0 ? 'border-l-primary' : 'border-l-destructive',
+              )}
+            >
+              <CardHeader className="pb-2 pt-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <TrendingUp
+                    className={cn(
+                      'h-4 w-4',
+                      dailyBalance >= 0 ? 'text-primary' : 'text-destructive',
+                    )}
+                  />
+                  Saldo do Dia
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={cn(
+                    'text-2xl font-bold',
+                    dailyBalance >= 0 ? 'text-primary' : 'text-destructive',
+                  )}
+                >
+                  {dailyBalance.toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })}
+                </div>
+                <CardDescription className="text-xs mt-1">
+                  {format(selectedDate, 'dd/MM/yyyy')}
+                </CardDescription>
+              </CardContent>
+            </Card>
+            <Card className="border-l-4 border-l-blue-500 bg-blue-50/20">
+              <CardHeader className="pb-2 pt-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Landmark className="h-4 w-4 text-blue-500" />
+                  Saldo Projetado
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-600">
+                  {selectedEntry
+                    ? selectedEntry.accumulated_balance.toLocaleString(
+                        'pt-BR',
+                        {
+                          style: 'currency',
+                          currency: 'BRL',
+                        },
+                      )
+                    : '---'}
+                </div>
+                <CardDescription className="text-xs mt-1">
+                  {format(selectedDate, 'dd/MM/yyyy')}
+                </CardDescription>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
 
-      {/* Projection Chart */}
+      {/* Daily Projection Chart */}
       <Card>
         <CardHeader>
-          <CardTitle>Projeção de Caixa</CardTitle>
+          <CardTitle>Projeção Detalhada</CardTitle>
           <CardDescription>
-            Evolução do saldo acumulado no período selecionado.
+            Evolução diária do saldo acumulado no período selecionado.
           </CardDescription>
         </CardHeader>
         <CardContent>
