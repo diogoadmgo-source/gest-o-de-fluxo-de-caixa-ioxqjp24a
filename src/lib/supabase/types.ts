@@ -391,6 +391,36 @@ export type Database = {
           },
         ]
       }
+      performance_logs: {
+        Row: {
+          action: string | null
+          created_at: string | null
+          duration_ms: number | null
+          id: string
+          meta: Json | null
+          route: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action?: string | null
+          created_at?: string | null
+          duration_ms?: number | null
+          id?: string
+          meta?: Json | null
+          route?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string | null
+          created_at?: string | null
+          duration_ms?: number | null
+          id?: string
+          meta?: Json | null
+          route?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       product_imports: {
         Row: {
           actual_arrival_date: string | null
@@ -827,6 +857,18 @@ export type Database = {
       ensure_company_for_user: {
         Args: { p_company_name: string; p_user_id: string }
         Returns: string
+      }
+      get_cash_flow_aggregates: {
+        Args: { p_company_id: string; p_end_date: string; p_start_date: string }
+        Returns: {
+          day: string
+          total_payables: number
+          total_receivables: number
+        }[]
+      }
+      get_dashboard_kpis: {
+        Args: { p_company_id: string; p_date?: string }
+        Returns: Json
       }
       is_admin: { Args: never; Returns: boolean }
       replace_receivables_for_company: {
