@@ -25,7 +25,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Save, AlertCircle, Trash2, Edit2, Loader2 } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, isBefore, startOfToday } from 'date-fns'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
@@ -96,6 +96,18 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
       return
     }
 
+    // Retroactive Date Validation
+    const today = startOfToday()
+    // Compare selectedDate against today.
+    // Note: selectedDate might be 2024-01-01 10:00, today is 2024-01-02 00:00.
+    // We normalize selectedDate to start of day implicitly via startOfToday comparison
+    // But since selectedDate comes from Calendar, it might have time components or be midnight.
+    // Safest is to compare normalized dates or rely on isBefore if strictly less.
+    if (isBefore(selectedDate, today)) {
+      toast.error('Não é possível realizar lançamentos com data retroativa.')
+      return
+    }
+
     // Strict numeric validation
     const val = parseFloat(amount)
     if (isNaN(val)) {
@@ -128,9 +140,14 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
       // Handle constraints errors specifically if possible
       if (
         error.message &&
-        error.message.includes('check_amount_non_negative')
+        (error.message.includes('check_amount_non_negative') ||
+          error.message.includes('check_bank_balance_retroactive'))
       ) {
-        toast.error('Erro de integridade: O saldo não pode ser negativo.')
+        toast.error(
+          error.message.includes('retroactive')
+            ? 'Erro: Não é possível realizar lançamentos com data retroativa.'
+            : 'Erro de integridade: O saldo não pode ser negativo.',
+        )
       } else {
         toast.error(error.message || 'Erro ao salvar saldo.')
       }

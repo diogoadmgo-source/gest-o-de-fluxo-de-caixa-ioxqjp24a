@@ -6,7 +6,7 @@ import { HistoricalBalanceList } from '@/components/cash-flow/HistoricalBalanceL
 import { BankBalanceDashboard } from '@/components/cash-flow/BankBalanceDashboard'
 import { Calendar } from '@/components/ui/calendar'
 import { ptBR } from 'date-fns/locale'
-import { isSameDay, parseISO } from 'date-fns'
+import { isSameDay, parseISO, startOfToday } from 'date-fns'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { toast } from 'sonner'
 import { HistoricalBalance } from '@/lib/types'
@@ -148,6 +148,7 @@ export default function Balances() {
                 onSelect={(d) => d && setSelectedDate(d)}
                 locale={ptBR}
                 className="rounded-md border"
+                disabled={{ before: startOfToday() }}
               />
             </CardContent>
           </Card>

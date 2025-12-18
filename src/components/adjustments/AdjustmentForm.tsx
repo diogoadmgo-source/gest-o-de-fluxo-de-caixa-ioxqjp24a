@@ -17,10 +17,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Calendar } from '@/components/ui/calendar'
 import { FinancialAdjustment } from '@/lib/types'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { CalendarIcon, Loader2 } from 'lucide-react'
+import { format, isBefore, parseISO, startOfToday } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { cn } from '@/lib/utils'
 
 export function AdjustmentForm() {
   const { addAdjustment, selectedCompanyId } = useCashFlowStore()
@@ -39,27 +48,43 @@ export function AdjustmentForm() {
       return
     }
 
+    if (!formData.date) {
+      toast.error('A data é obrigatória.')
+      return
+    }
+
+    // Retroactive Date Check
+    const today = startOfToday()
+    const selectedDate = parseISO(formData.date)
+    if (isBefore(selectedDate, today)) {
+      toast.error('Não é possível realizar lançamentos com data retroativa.')
+      return
+    }
+
     setIsSubmitting(true)
     try {
       await addAdjustment({
         ...formData,
         company_id: selectedCompanyId,
-        status: 'approved', // Auto-approve for now based on user story flow (Request Approval usually implies a process, but for this demo/MVP we treat as success)
-        // If "Request Approval" implies pending, we can set it to pending. The user story says "Solicitar Aprovação".
-        // Let's set it to 'approved' so it reflects in cash flow immediately for the user to see "Ensure... functionalities are working".
-        // Or strictly 'pending' and have another view. I'll stick to 'approved' for UX immediacy in this prototype unless specified otherwise.
-        // Actually, button says "Solicitar Aprovação". It implies pending. But for the user to see the result, I'll assume they are admin or it auto-approves.
-        // Let's go with 'approved' for immediate feedback loop on the data integrity part of the user story.
+        status: 'approved',
       } as FinancialAdjustment)
 
+      toast.success('Ajuste registrado com sucesso!')
       setFormData({
         type: undefined,
         amount: 0,
         date: new Date().toISOString().split('T')[0],
         reason: '',
       })
-    } catch (error) {
-      console.error(error)
+    } catch (error: any) {
+      if (error.message && error.message.includes('check_not_retroactive')) {
+        toast.error(
+          'Erro: Não é possível realizar lançamentos com data retroativa.',
+        )
+      } else {
+        console.error(error)
+        toast.error('Erro ao salvar ajuste.')
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -102,15 +127,41 @@ export function AdjustmentForm() {
               }
             />
           </div>
-          <div className="space-y-2">
-            <Label>Data</Label>
-            <Input
-              type="date"
-              value={formData.date}
-              onChange={(e) =>
-                setFormData({ ...formData, date: e.target.value })
-              }
-            />
+          <div className="space-y-2 flex flex-col">
+            <Label className="mb-1">Data</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    'w-full justify-start text-left font-normal',
+                    !formData.date && 'text-muted-foreground',
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {formData.date ? (
+                    format(parseISO(formData.date), 'PPP', { locale: ptBR })
+                  ) : (
+                    <span>Selecione uma data</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={formData.date ? parseISO(formData.date) : undefined}
+                  onSelect={(d) =>
+                    setFormData({
+                      ...formData,
+                      date: d ? format(d, 'yyyy-MM-dd') : '',
+                    })
+                  }
+                  disabled={{ before: startOfToday() }}
+                  initialFocus
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="space-y-2">
             <Label>Motivo</Label>
