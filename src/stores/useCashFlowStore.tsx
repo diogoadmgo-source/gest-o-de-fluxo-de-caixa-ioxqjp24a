@@ -74,7 +74,15 @@ interface CashFlowContextType {
     data: any[],
     filename?: string,
     onProgress?: (percent: number) => void,
-  ) => Promise<{ success: boolean; message: string }>
+  ) => Promise<{
+    success: boolean
+    message: string
+    stats?: {
+      fileTotal: number
+      importedTotal: number
+      records: number
+    }
+  }>
   clearImportHistory: () => void
   recalculateCashFlow: () => void
   loading: boolean
@@ -653,12 +661,16 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     let successCount = 0
     let errorCount = 0
     let deletedCount = 0
+    let fileTotal = 0
+    let importedTotal = 0
     let importResults: any = {
       success: 0,
       errors: [],
       deleted: 0,
       total: 0,
       lastCompanyId: '',
+      fileTotal: 0,
+      importedTotal: 0,
     }
 
     try {
@@ -685,12 +697,40 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       successCount = importResults.success
       errorCount = importResults.errors.length
       deletedCount = importResults.deleted || 0
+      fileTotal = importResults.fileTotal || 0
+      importedTotal = importResults.importedTotal || 0
+
+      // Integrity Check
+      const integrityDiff = Math.abs(fileTotal - importedTotal)
+      const isIntegrityError = integrityDiff > 0.1 // Tolerance for floating point
+
+      if (isIntegrityError) {
+        importResults.errors.push(
+          `Erro de Integridade: Valor total do arquivo (R$ ${fileTotal.toFixed(2)}) difere do valor importado (R$ ${importedTotal.toFixed(2)}).`,
+        )
+        errorCount++
+      }
+
+      const stats = {
+        fileTotal,
+        importedTotal,
+        records: successCount,
+      }
 
       if (user) {
         const logCompanyId =
           fallbackCompanyId || importResults.lastCompanyId || selectedCompanyId
 
         if (logCompanyId && logCompanyId !== 'all') {
+          const errorDetails =
+            importResults.errors.length > 0
+              ? importResults.errors
+              : isIntegrityError
+                ? [
+                    `Divergência de valores: File=${fileTotal}, DB=${importedTotal}`,
+                  ]
+                : null
+
           const { data: logData } = await supabase
             .from('import_logs')
             .insert({
@@ -702,8 +742,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
               success_count: successCount,
               error_count: errorCount,
               deleted_count: deletedCount,
-              error_details:
-                importResults.errors.length > 0 ? importResults.errors : null,
+              error_details: errorDetails,
               company_id: logCompanyId,
             })
             .select()
@@ -714,6 +753,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
               type,
               count: successCount,
               deleted: deletedCount,
+              fileTotal,
+              importedTotal,
             })
           }
         }
@@ -729,6 +770,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         return {
           success: false,
           message: `Importação com erros (${errorCount} falhas). ${errorMsg}`,
+          stats,
         }
       }
 
@@ -736,12 +778,14 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         return {
           success: false,
           message: importResults.message,
+          stats,
         }
       }
 
       return {
         success: true,
         message: `Importação de ${successCount} registros realizada com sucesso!`,
+        stats,
       }
     } catch (error: any) {
       console.error('Import error:', error)

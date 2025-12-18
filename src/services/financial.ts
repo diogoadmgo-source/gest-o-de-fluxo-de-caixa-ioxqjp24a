@@ -569,6 +569,8 @@ export async function importarReceivables(
     deleted: 0,
     errors: [] as string[],
     lastCompanyId: '' as string,
+    fileTotal: 0,
+    importedTotal: 0,
   }
 
   if (rows.length === 0) {
@@ -693,6 +695,9 @@ export async function importarReceivables(
       }
       uniqueKeys.add(key)
 
+      // Calculate Total File Value for Integrity Check (summing updated_value)
+      results.fileTotal += dbItem.updated_value || 0
+
       if (!companiesMap.has(companyId)) {
         companiesMap.set(companyId, [])
       }
@@ -723,6 +728,8 @@ export async function importarReceivables(
       if (data && data.success) {
         results.success += data.stats.inserted
         results.deleted += data.stats.deleted
+        // Collect actual inserted amount from DB for Integrity Check
+        results.importedTotal += data.stats.inserted_amount || 0
       } else {
         throw new Error(data?.error || 'Erro desconhecido ao substituir dados.')
       }
@@ -755,6 +762,8 @@ export async function importarPayables(
     deleted: 0,
     errors: [] as string[],
     lastCompanyId: '' as string,
+    fileTotal: 0,
+    importedTotal: 0,
   }
 
   if (rows.length === 0) {
@@ -865,6 +874,9 @@ export async function importarPayables(
         description: description,
       }
 
+      // Calculate Total File Value for Integrity Check (summing amount)
+      results.fileTotal += dbItem.amount || 0
+
       if (!companiesMap.has(companyId)) {
         companiesMap.set(companyId, [])
       }
@@ -896,6 +908,8 @@ export async function importarPayables(
       if (data && data.success) {
         results.success += data.inserted
         results.deleted += data.deleted
+        // Collect actual inserted amount from DB for Integrity Check
+        results.importedTotal += data.inserted_amount || 0
       } else {
         throw new Error(data?.error || 'Erro desconhecido ao substituir dados.')
       }

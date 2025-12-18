@@ -45,6 +45,11 @@ export function ImportDialog({
   const [result, setResult] = useState<{
     success: boolean
     message: string
+    stats?: {
+      fileTotal: number
+      importedTotal: number
+      records: number
+    }
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -144,15 +149,10 @@ export function ImportDialog({
           // Auto close on success and trigger callback
           onImported?.()
 
-          // Small delay to let the user see the progress bar hit 100%
-          setTimeout(() => {
-            onOpenChange(false)
-            removeFile()
-          }, 500)
+          // If showing stats, we might want to keep the dialog open for a bit or let the user close it
+          // Based on user story, we need to show feedback. So let's NOT close automatically if we have stats to show.
         } else {
           toast.error(res.message || 'Falha na importação.')
-          // Clear input even on failure per requirements
-          removeFile()
         }
       }
 
@@ -171,6 +171,8 @@ export function ImportDialog({
   }
 
   const showWarning = type === 'receivable' || type === 'payable'
+  const formatCurrency = (val: number) =>
+    val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -264,25 +266,70 @@ export function ImportDialog({
               </div>
 
               {result && (
-                <Alert
-                  variant={result.success ? 'default' : 'destructive'}
-                  className={cn(
-                    result.success &&
-                      'border-success bg-success/10 text-success',
+                <div className="space-y-2">
+                  <Alert
+                    variant={result.success ? 'default' : 'destructive'}
+                    className={cn(
+                      result.success &&
+                        'border-success bg-success/10 text-success',
+                    )}
+                  >
+                    {result.success ? (
+                      <CheckCircle className="h-4 w-4" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4" />
+                    )}
+                    <AlertTitle>
+                      {result.success ? 'Sucesso' : 'Atenção'}
+                    </AlertTitle>
+                    <AlertDescription className="max-h-24 overflow-y-auto text-xs mt-1">
+                      {result.message}
+                    </AlertDescription>
+                  </Alert>
+
+                  {result.stats && (
+                    <div className="rounded-md bg-muted p-3 text-sm grid gap-1">
+                      <p className="font-semibold text-xs text-muted-foreground uppercase mb-1">
+                        Resumo da Integridade
+                      </p>
+                      <div className="flex justify-between">
+                        <span>Registros Importados:</span>
+                        <span className="font-mono">
+                          {result.stats.records}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Valor Total no Arquivo:</span>
+                        <span className="font-mono text-blue-600 dark:text-blue-400">
+                          {formatCurrency(result.stats.fileTotal)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Valor Total Importado:</span>
+                        <span
+                          className={cn(
+                            'font-mono font-bold',
+                            Math.abs(
+                              result.stats.fileTotal -
+                                result.stats.importedTotal,
+                            ) < 0.1
+                              ? 'text-success'
+                              : 'text-destructive',
+                          )}
+                        >
+                          {formatCurrency(result.stats.importedTotal)}
+                        </span>
+                      </div>
+                      {Math.abs(
+                        result.stats.fileTotal - result.stats.importedTotal,
+                      ) >= 0.1 && (
+                        <p className="text-destructive text-xs mt-1 font-semibold">
+                          Divergência detectada! Verifique o log de erros.
+                        </p>
+                      )}
+                    </div>
                   )}
-                >
-                  {result.success ? (
-                    <CheckCircle className="h-4 w-4" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4" />
-                  )}
-                  <AlertTitle>
-                    {result.success ? 'Sucesso' : 'Atenção'}
-                  </AlertTitle>
-                  <AlertDescription className="max-h-24 overflow-y-auto text-xs mt-1">
-                    {result.message}
-                  </AlertDescription>
-                </Alert>
+                </div>
               )}
             </div>
           )}
