@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase/client'
 import { parse, isValid, format } from 'date-fns'
 import { performanceMonitor } from '@/lib/performance'
 import { isGarbageCompany } from '@/lib/utils'
+import { ImportBatchSummary, ImportReject } from '@/lib/types'
 
 // --- Types ---
 export interface PaginatedResult<T> {
@@ -25,12 +26,14 @@ export interface ImportResult {
     minCreatedAt?: string
     maxCreatedAt?: string
     distinctBatches?: number
+    // New fields for robust import
+    batchId?: string
+    rejectedRows?: number
   }
   failures: any[]
 }
 
-// --- Fetching Helpers (Optimized with Logging) ---
-
+// ... existing fetch helpers ...
 export async function fetchPaginatedReceivables(
   companyId: string,
   page: number,
@@ -101,10 +104,8 @@ export async function fetchPaginatedReceivables(
 
       // Created At Range Filter
       if (filters.createdAtRange?.from) {
-        // Created at is timestampz, so we need to handle full day range
         const fromStr = filters.createdAtRange.from.toISOString()
         const toDate = filters.createdAtRange.to || filters.createdAtRange.from
-        // Set to end of day for the 'to' date
         const toStr = new Date(
           toDate.getFullYear(),
           toDate.getMonth(),
@@ -198,7 +199,6 @@ export async function fetchPaginatedPayables(
   )
 }
 
-// RPC Wrappers
 export async function getDashboardKPIs(companyId: string) {
   return performanceMonitor.measurePromise(
     'dashboard',
@@ -261,18 +261,13 @@ export function n(value: any): number {
   if (!value) return 0
   let str = String(value).trim()
 
-  // Handle currency symbols
   str = str.replace(/^R\$\s?/, '').replace(/\s/g, '')
-
-  // Check format
   const lastComma = str.lastIndexOf(',')
   const lastDot = str.lastIndexOf('.')
 
   if (lastComma > lastDot) {
-    // BR Format: remove dots, replace comma with dot
     str = str.replace(/\./g, '').replace(',', '.')
   } else {
-    // US Format: remove commas
     str = str.replace(/,/g, '')
   }
 
@@ -285,8 +280,6 @@ export function d(value: any): string | null {
   if (value instanceof Date) return value.toISOString().split('T')[0]
   const str = String(value).trim()
   if (!str) return null
-
-  // Try parsing common formats
   const formats = [
     'dd/MM/yyyy',
     'dd-MM-yyyy',
@@ -294,14 +287,11 @@ export function d(value: any): string | null {
     'dd/MM/yy',
     'MM/dd/yyyy',
   ]
-
   for (const fmt of formats) {
     const parsed = parse(str, fmt, new Date())
     if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
   }
-
   if (str.match(/^\d{4}-\d{2}-\d{2}/)) return str.substring(0, 10)
-
   return null
 }
 
@@ -474,7 +464,7 @@ export async function fetchAllRecords(
   return data || []
 }
 
-// Imports
+// Imports Helpers
 const getCol = (row: any, keys: string[]) => {
   for (const key of keys) {
     if (row[key] !== undefined) return row[key]
@@ -487,10 +477,84 @@ const getCol = (row: any, keys: string[]) => {
   return undefined
 }
 
+// --- NEW ROBUST IMPORT IMPLEMENTATION ---
+export async function importReceivablesRobust(
+  userId: string,
+  companyId: string,
+  data: any[],
+  fileName: string,
+): Promise<ImportBatchSummary> {
+  // Normalize fields slightly before sending to ensure JSON integrity,
+  // but let SQL handle validation
+  const sanitized = data.map((d) => {
+    // Helper to try and get keys regardless of case
+    const get = (k: string[]) => getCol(d, k)
+    return {
+      invoice_number: normalizeText(
+        get(['Nota Fiscal', 'NF', 'invoice_number', 'Doc']),
+      ),
+      order_number: normalizeText(get(['Pedido', 'order_number', 'PO'])),
+      customer: normalizeText(get(['Cliente', 'customer', 'Razão Social'])),
+      customer_doc: normalizeText(get(['CNPJ', 'CPF', 'customer_doc'])),
+      issue_date: get(['Emissão', 'issue_date', 'Data Emissão']), // Send as string, SQL parses
+      due_date: get(['Vencimento', 'due_date', 'Data Vencimento']),
+      payment_prediction: get(['Previsão', 'payment_prediction']),
+      principal_value: get(['Valor', 'principal_value', 'Valor Original']),
+      fine: get(['Multa', 'fine']),
+      interest: get(['Juros', 'interest']),
+      updated_value: get(['Valor Atualizado', 'updated_value']),
+      title_status: normalizeText(get(['Status', 'title_status'])),
+      seller: normalizeText(get(['Vendedor', 'seller'])),
+      customer_code: normalizeText(get(['Cod Cliente', 'customer_code'])),
+      uf: normalizeText(get(['UF', 'uf'])),
+      regional: normalizeText(get(['Regional', 'regional'])),
+      installment: normalizeText(get(['Parcela', 'installment'])),
+      days_overdue: get(['Dias Atraso', 'days_overdue']),
+      utilization: normalizeText(get(['Utilização', 'utilization'])),
+      negativado: normalizeText(get(['Negativado', 'negativado'])),
+      description: normalizeText(get(['Descrição', 'description'])),
+      customer_name: normalizeText(get(['Nome Cliente', 'customer_name'])),
+      new_status: normalizeText(get(['Novo Status', 'new_status'])),
+    }
+  })
+
+  const { data: result, error } = await supabase.rpc(
+    'import_receivables_replace',
+    {
+      p_company_id: companyId,
+      p_user_id: userId,
+      p_file_name: fileName,
+      p_rows: sanitized,
+    },
+  )
+
+  if (error) throw error
+  return result as ImportBatchSummary
+}
+
+export async function fetchImportRejects(
+  batchId: string,
+  page: number = 1,
+  pageSize: number = 20,
+) {
+  const { data, error } = await supabase.rpc('get_receivables_rejects', {
+    p_batch_id: batchId,
+    p_page: page,
+    p_page_size: pageSize,
+  })
+  if (error) throw error
+  return {
+    data: data as ImportReject[],
+    count: data && data.length > 0 ? (data[0] as any).total_count : 0,
+  }
+}
+
+// Updated importarReceivables to use Robust logic per company
 export async function importarReceivables(
   userId: string,
   data: any[],
   fallbackCompanyId?: string,
+  fileName: string = 'import.csv',
 ): Promise<ImportResult> {
   const companyGroups = new Map<string, any[]>()
   let totalRecordsProcessed = 0
@@ -498,6 +562,8 @@ export async function importarReceivables(
   let totalInserted = 0
   let totalInsertedAmount = 0
   let totalDuplicatesSkipped = 0
+  // Track specific batch ID for the last successful import to return (mainly useful for single company import)
+  let lastBatchId: string | undefined
 
   // 1. Group data by company
   for (const row of data) {
@@ -510,10 +576,7 @@ export async function importarReceivables(
       targetCompany = fallbackCompanyId
     }
 
-    if (!targetCompany) {
-      // Skip row if no company found and no fallback
-      continue
-    }
+    if (!targetCompany) continue
 
     if (!companyGroups.has(targetCompany)) {
       companyGroups.set(targetCompany, [])
@@ -533,7 +596,6 @@ export async function importarReceivables(
   // 2. Process each company group
   for (const [companyNameOrId, rows] of companyGroups.entries()) {
     try {
-      // Resolve Company ID
       let companyId = companyNameOrId
       // If it looks like a name (not a UUID), resolve it
       if (
@@ -544,209 +606,42 @@ export async function importarReceivables(
         companyId = await ensureCompanyAndLink(userId, companyNameOrId)
       }
 
-      const mappedData = rows
-        .map((row: any) => ({
-          invoice_number: normalizeText(
-            getCol(row, [
-              'Nota Fiscal',
-              'NF',
-              'Documento',
-              'invoice_number',
-              'Doc',
-              'Nº Nota',
-            ]),
-          ),
-          order_number: normalizeText(
-            getCol(row, ['Pedido', 'order_number', 'PO', 'Ped']),
-          ),
-          customer: normalizeText(
-            getCol(row, [
-              'Cliente',
-              'Nome Fantasia',
-              'customer',
-              'Nome',
-              'Razão Social',
-            ]),
-          ),
-          customer_name: normalizeText(
-            getCol(row, [
-              'Razão Social',
-              'Nome Cliente',
-              'Nome',
-              'customer_name',
-            ]),
-          ),
-          customer_doc: normalizeText(
-            getCol(row, [
-              'CNPJ',
-              'CPF',
-              'Documento Cliente',
-              'customer_doc',
-              'CNPJ/CPF',
-              'Doc Cliente',
-            ]),
-          ),
-          issue_date: d(
-            getCol(row, [
-              'Emissão',
-              'Data Emissão',
-              'issue_date',
-              'Data de Emissão',
-              'Dt Emissão',
-            ]),
-          ),
-          due_date: d(
-            getCol(row, [
-              'Vencimento',
-              'Data Vencimento',
-              'due_date',
-              'Data de Vencimento',
-              'Dt Vencimento',
-              'Vcto',
-            ]),
-          ),
-          payment_prediction: d(
-            getCol(row, [
-              'Previsão',
-              'Data Previsão',
-              'payment_prediction',
-              'Prev. Pagto',
-              'Previsão Pagto',
-            ]),
-          ),
-          principal_value: n(
-            getCol(row, [
-              'Valor',
-              'Valor Original',
-              'Principal',
-              'principal_value',
-              'Valor Título',
-              'Valor Liquido',
-              'Valor Líquido',
-              'Valor Total',
-            ]),
-          ),
-          fine: n(getCol(row, ['Multa', 'fine'])),
-          interest: n(getCol(row, ['Juros', 'interest'])),
-          updated_value: n(
-            getCol(row, [
-              'Valor Atualizado',
-              'Valor Total',
-              'updated_value',
-              'Saldo',
-              'Total',
-            ]),
-          ),
-          title_status: normalizeText(
-            getCol(row, [
-              'Status',
-              'Situação',
-              'title_status',
-              'Estado',
-              'Status Título',
-            ]),
-          ),
-          new_status: normalizeText(
-            getCol(row, [
-              'Novo Status',
-              'Status Secundário',
-              'new_status',
-              'Sub Status',
-            ]),
-          ),
-          seller: normalizeText(
-            getCol(row, ['Vendedor', 'seller', 'Comercial']),
-          ),
-          customer_code: normalizeText(
-            getCol(row, [
-              'Cod Cliente',
-              'Código',
-              'customer_code',
-              'Cód.',
-              'Cod.',
-            ]),
-          ),
-          uf: normalizeText(getCol(row, ['UF', 'uf', 'Estado'])),
-          regional: normalizeText(getCol(row, ['Regional', 'regional'])),
-          installment: normalizeText(getCol(row, ['Parcela', 'installment'])),
-          days_overdue: n(
-            getCol(row, ['Dias Atraso', 'days_overdue', 'Atraso']),
-          ),
-          utilization: normalizeText(
-            getCol(row, ['Utilização', 'Uso', 'utilization']),
-          ),
-          negativado: normalizeText(getCol(row, ['Negativado', 'negativado'])),
-          description: normalizeText(
-            getCol(row, ['Descrição', 'Obs', 'description', 'Histórico']),
-          ),
-        }))
-        .filter((r: any) => r.customer && !isGarbageCompany(r.customer))
-
-      if (mappedData.length === 0) continue
-
-      // Deduplication Logic
-      const uniqueRows = new Map()
-      let duplicateCount = 0
-
-      mappedData.forEach((row: any) => {
-        const key = `${row.invoice_number || ''}|${row.order_number || ''}|${row.installment || ''}|${row.principal_value}`
-        if (uniqueRows.has(key)) {
-          duplicateCount++
-        } else {
-          uniqueRows.set(key, row)
-        }
-      })
-
-      const cleanData = Array.from(uniqueRows.values())
-
-      const { data: result, error } = await supabase.rpc(
-        'strict_replace_receivables',
-        {
-          p_company_id: companyId,
-          p_rows: cleanData,
-        },
+      // CALL NEW ROBUST RPC
+      const summary = await importReceivablesRobust(
+        userId,
+        companyId,
+        rows,
+        fileName,
       )
 
-      if (error) {
-        console.error(`Error processing company ${companyNameOrId}:`, error)
-        globalFailures.push({ company: companyNameOrId, error: error.message })
-        continue
+      if (summary.success) {
+        totalInserted += summary.imported_rows
+        totalInsertedAmount += summary.imported_amount
+        totalDuplicatesSkipped += summary.rejected_rows
+        totalRecordsProcessed += summary.total_rows
+        lastBatchId = summary.batch_id
+      } else {
+        globalFailures.push({ company: companyNameOrId, error: 'RPC Failed' })
       }
-
-      const rpcResponse = result as any
-      if (!rpcResponse.success) {
-        globalFailures.push({
-          company: companyNameOrId,
-          error: rpcResponse.error,
-        })
-        continue
-      }
-
-      const stats = rpcResponse.stats
-      totalInserted += stats?.inserted || 0
-      totalInsertedAmount += stats?.inserted_amount || 0
-      totalDuplicatesSkipped += duplicateCount + (stats?.skipped || 0)
-      totalRecordsProcessed += rows.length
     } catch (err: any) {
       console.error(`Exception processing company ${companyNameOrId}:`, err)
       globalFailures.push({ company: companyNameOrId, error: err.message })
     }
   }
 
-  // Return aggregated stats
-  // Note: integrity stats per company are not returned in aggregated view to keep it simple,
-  // but could be fetched if only 1 company was processed.
   return {
     success: totalInserted > 0 || globalFailures.length === 0,
-    message: `Processado com sucesso. ${totalInserted} registros inseridos. ${totalDuplicatesSkipped} duplicatas.`,
+    message: `Processado com sucesso. ${totalInserted} registros inseridos. ${totalDuplicatesSkipped} rejeitados/duplicados.`,
     stats: {
       records: totalInserted,
       importedTotal: totalInsertedAmount,
-      fileTotal: 0,
+      fileTotal: totalRecordsProcessed,
       fileTotalPrincipal: 0,
       importedPrincipal: 0,
       failuresTotal: globalFailures.length,
       duplicatesSkipped: totalDuplicatesSkipped,
+      batchId: lastBatchId,
+      rejectedRows: totalDuplicatesSkipped,
     },
     failures: globalFailures,
   }

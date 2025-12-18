@@ -17,13 +17,14 @@ import {
   Download,
   Info,
   CheckCircle2,
+  Eye,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
 import { cn, parseCSV } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { format } from 'date-fns'
+import { ImportRejectsDialog } from '@/components/financial/ImportRejectsDialog'
 
 interface ImportDialogProps {
   open: boolean
@@ -49,18 +50,15 @@ export function ImportDialog({
     success: boolean
     message: string
     stats?: {
-      fileTotal: number
-      importedTotal: number
-      fileTotalPrincipal?: number
-      importedPrincipal?: number
       records: number
+      importedTotal: number
       failuresTotal?: number
       duplicatesSkipped?: number
-      minCreatedAt?: string
-      maxCreatedAt?: string
-      distinctBatches?: number
+      batchId?: string
+      rejectedRows?: number
     }
   } | null>(null)
+  const [showRejects, setShowRejects] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -149,7 +147,6 @@ export function ImportDialog({
 
   const handleImport = async () => {
     if (!selectedFile) return
-    // Removed company selection check
 
     setIsProcessing(true)
     setProgress(0)
@@ -194,10 +191,10 @@ export function ImportDialog({
 
         if (res.success) {
           const count = res.stats?.records || 0
-          const duplicates = res.stats?.duplicatesSkipped || 0
+          const rejected = res.stats?.rejectedRows || 0
           let msg = `Importação concluída! ${count} registros inseridos.`
-          if (duplicates > 0) {
-            msg += ` (${duplicates} duplicatas removidas)`
+          if (rejected > 0) {
+            msg += ` (${rejected} rejeitados/duplicados)`
           }
           toast.success(msg)
 
@@ -221,205 +218,236 @@ export function ImportDialog({
   }
 
   const showWarning = type === 'receivable' || type === 'payable'
+  const hasRejects =
+    result?.stats?.batchId && (result?.stats?.rejectedRows || 0) > 0
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(val) => {
-        if (!isProcessing) {
-          onOpenChange(val)
-          if (!val) {
-            setTimeout(() => {
-              setResult(null)
-              setSelectedFile(null)
-              setProgress(0)
-            }, 300)
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(val) => {
+          if (!isProcessing) {
+            onOpenChange(val)
+            if (!val) {
+              setTimeout(() => {
+                setResult(null)
+                setSelectedFile(null)
+                setProgress(0)
+              }, 300)
+            }
           }
-        }
-      }}
-    >
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            Faça upload de arquivo CSV para atualizar a base de dados.
-            <br />O sistema identificará automaticamente a empresa pelo campo
-            "Empresa".
-          </DialogDescription>
-        </DialogHeader>
+        }}
+      >
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>
+              Faça upload de arquivo CSV para atualizar a base de dados.
+              <br />O sistema identificará automaticamente a empresa pelo campo
+              "Empresa".
+            </DialogDescription>
+          </DialogHeader>
 
-        {showWarning && (
-          <Alert
-            variant="destructive"
-            className="py-2 bg-destructive/5 border-destructive/20 text-destructive"
-          >
-            <AlertTriangle className="h-4 w-4 text-destructive" />
-            <AlertTitle className="text-sm font-semibold">
-              Substituição por Empresa
-            </AlertTitle>
-            <AlertDescription className="text-xs text-destructive/90">
-              A importação substituirá <strong>todos</strong> os títulos
-              existentes para cada empresa identificada no arquivo.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <div className="grid gap-4 py-2">
-          {!selectedFile ? (
-            <div
-              className={cn(
-                'border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all',
-                isDragging
-                  ? 'border-primary bg-primary/5'
-                  : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50',
-              )}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={triggerFileInput}
+          {showWarning && (
+            <Alert
+              variant="destructive"
+              className="py-2 bg-destructive/5 border-destructive/20 text-destructive"
             >
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept=".csv,.xlsx,.txt"
-                onChange={handleFileSelect}
-              />
-              <Upload className="h-10 w-10 text-muted-foreground mb-4" />
-              <p className="text-sm font-medium">
-                Clique para selecionar ou arraste o arquivo
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Suporta CSV (Excel via Salvar Como CSV)
-              </p>
-              <Button
-                variant="link"
-                size="sm"
-                className="mt-4 h-auto p-0 text-xs text-primary"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  downloadTemplate()
-                }}
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+              <AlertTitle className="text-sm font-semibold">
+                Substituição por Empresa
+              </AlertTitle>
+              <AlertDescription className="text-xs text-destructive/90">
+                A importação substituirá <strong>todos</strong> os títulos
+                existentes para cada empresa identificada no arquivo.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="grid gap-4 py-2">
+            {!selectedFile ? (
+              <div
+                className={cn(
+                  'border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all',
+                  isDragging
+                    ? 'border-primary bg-primary/5'
+                    : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50',
+                )}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={triggerFileInput}
               >
-                <Download className="mr-1 h-3 w-3" />
-                Baixar modelo CSV
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="border rounded-lg p-4 bg-muted/10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary/10 text-primary rounded">
-                      <FileSpreadsheet className="h-6 w-6" />
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept=".csv,.xlsx,.txt"
+                  onChange={handleFileSelect}
+                />
+                <Upload className="h-10 w-10 text-muted-foreground mb-4" />
+                <p className="text-sm font-medium">
+                  Clique para selecionar ou arraste o arquivo
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Suporta CSV (Excel via Salvar Como CSV)
+                </p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="mt-4 h-auto p-0 text-xs text-primary"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    downloadTemplate()
+                  }}
+                >
+                  <Download className="mr-1 h-3 w-3" />
+                  Baixar modelo CSV
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="border rounded-lg p-4 bg-muted/10">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 text-primary rounded">
+                        <FileSpreadsheet className="h-6 w-6" />
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="font-medium truncate max-w-[250px]">
+                          {selectedFile.name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {(selectedFile.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
                     </div>
-                    <div className="overflow-hidden">
-                      <p className="font-medium truncate max-w-[250px]">
-                        {selectedFile.name}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {(selectedFile.size / 1024).toFixed(2)} KB
-                      </p>
-                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={removeFile}
+                      disabled={isProcessing}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={removeFile}
-                    disabled={isProcessing}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+
+                  {isProcessing && (
+                    <div className="mt-4 space-y-2">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Processando...</span>
+                        <span>{progress}%</span>
+                      </div>
+                      <Progress value={progress} className="h-2" />
+                    </div>
+                  )}
                 </div>
 
-                {isProcessing && (
-                  <div className="mt-4 space-y-2">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Processando...</span>
-                      <span>{progress}%</span>
+                {result && !result.success && (
+                  <div className="space-y-2 animate-fade-in">
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Erro na importação</AlertTitle>
+                      <AlertDescription className="text-xs mt-1 font-medium">
+                        {result.message}
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+
+                {result && result.success && (
+                  <div className="space-y-3 animate-fade-in">
+                    <Alert
+                      variant="default"
+                      className="border-green-500/50 bg-green-500/10 text-green-700"
+                    >
+                      <Info className="h-4 w-4 text-green-600" />
+                      <AlertTitle>Importação Concluída</AlertTitle>
+                      <AlertDescription className="text-xs mt-1">
+                        {result.message}
+                      </AlertDescription>
+                    </Alert>
+
+                    {/* Verification Stats */}
+                    <div className="rounded-md border p-4 bg-card text-card-foreground shadow-sm space-y-3">
+                      <h4 className="text-sm font-semibold flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
+                        Resumo da Operação
+                      </h4>
+                      <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs">
+                        <div>
+                          <span className="text-muted-foreground">
+                            Inseridos:
+                          </span>
+                          <div className="font-medium text-lg">
+                            {result.stats?.records}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">
+                            Valor Total:
+                          </span>
+                          <div className="font-medium">
+                            {(result.stats?.importedTotal || 0).toLocaleString(
+                              'pt-BR',
+                              { style: 'currency', currency: 'BRL' },
+                            )}
+                          </div>
+                        </div>
+                        {result.stats?.rejectedRows ? (
+                          <div className="col-span-2 mt-2 pt-2 border-t">
+                            <span className="text-destructive font-medium flex items-center gap-2">
+                              Rejeitados / Duplicados:
+                              <span className="text-lg">
+                                {result.stats.rejectedRows}
+                              </span>
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                      {hasRejects && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full mt-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+                          onClick={() => setShowRejects(true)}
+                        >
+                          <Eye className="mr-2 h-4 w-4" />
+                          Ver Detalhes dos Rejeitados
+                        </Button>
+                      )}
                     </div>
-                    <Progress value={progress} className="h-2" />
                   </div>
                 )}
               </div>
-
-              {result && !result.success && (
-                <div className="space-y-2 animate-fade-in">
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Erro na importação</AlertTitle>
-                    <AlertDescription className="text-xs mt-1 font-medium">
-                      {result.message}
-                    </AlertDescription>
-                  </Alert>
-                </div>
-              )}
-
-              {result && result.success && (
-                <div className="space-y-3 animate-fade-in">
-                  <Alert
-                    variant="default"
-                    className="border-green-500/50 bg-green-500/10 text-green-700"
-                  >
-                    <Info className="h-4 w-4 text-green-600" />
-                    <AlertTitle>Importação Concluída</AlertTitle>
-                    <AlertDescription className="text-xs mt-1">
-                      {result.message}
-                    </AlertDescription>
-                  </Alert>
-
-                  {/* Verification Stats */}
-                  <div className="rounded-md border p-4 bg-card text-card-foreground shadow-sm space-y-3">
-                    <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-primary" />
-                      Resumo da Operação
-                    </h4>
-                    <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs">
-                      <div>
-                        <span className="text-muted-foreground">
-                          Registros:
-                        </span>
-                        <div className="font-medium">
-                          {result.stats?.records}
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">
-                          Valor Total:
-                        </span>
-                        <div className="font-medium">
-                          {(result.stats?.importedTotal || 0).toLocaleString(
-                            'pt-BR',
-                            { style: 'currency', currency: 'BRL' },
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        <div className="flex justify-end gap-2">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isProcessing}
-          >
-            Fechar
-          </Button>
-          {!result?.success && (
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
             <Button
-              onClick={handleImport}
-              disabled={!selectedFile || isProcessing}
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isProcessing}
             >
-              {isProcessing ? 'Importando...' : 'Confirmar Importação'}
-              {!isProcessing && <Play className="ml-2 h-4 w-4" />}
+              Fechar
             </Button>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+            {!result?.success && (
+              <Button
+                onClick={handleImport}
+                disabled={!selectedFile || isProcessing}
+              >
+                {isProcessing ? 'Importando...' : 'Confirmar Importação'}
+                {!isProcessing && <Play className="ml-2 h-4 w-4" />}
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ImportRejectsDialog
+        batchId={result?.stats?.batchId || null}
+        open={showRejects}
+        onOpenChange={setShowRejects}
+      />
+    </>
   )
 }

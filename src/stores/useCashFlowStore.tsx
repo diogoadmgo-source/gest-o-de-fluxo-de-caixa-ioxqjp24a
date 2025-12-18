@@ -118,7 +118,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchData = useCallback(async () => {
     if (!user) return
-    // Avoid loading state flickering for realtime updates
     if (cashFlowEntries.length === 0) setLoading(true)
 
     try {
@@ -380,7 +379,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         : undefined
 
     if (type === 'receivable') {
-      result = await importarReceivables(user.id, data, fallback)
+      result = await importarReceivables(
+        user.id,
+        data,
+        fallback,
+        filename || 'import.csv',
+      )
       queryClient.invalidate('receivables')
     } else {
       result = await importarPayables(user.id, data, fallback)
@@ -389,9 +393,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
     onProgress?.(90)
 
+    // Note: Logging logic for rejected rows is handled within the new RPC/Service
+    // We can still log a generic entry to legacy table if desired, or rely on new tables
+    // For now, keeping legacy behavior as supplement
     if (result.success) {
-      // If we had a selected company, log it there, otherwise log with the first success or similar logic
-      // Since we might have imported multiple, we can log generally or skip strict association in UI log
       const logCompanyId = fallback || (companies[0] ? companies[0].id : null)
 
       if (logCompanyId) {

@@ -249,3 +249,19 @@ export interface ProductImport {
   created_at?: string
   updated_at?: string
 }
+
+export interface ImportBatchSummary {
+  success: boolean
+  batch_id: string
+  total_rows: number
+  imported_rows: number
+  rejected_rows: number
+  imported_amount: number
+}
+
+export interface ImportReject {
+  id: string
+  row_number: number
+  reason: string
+  raw_data: any
+}
