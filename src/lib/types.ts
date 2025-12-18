@@ -259,6 +259,8 @@ export interface ImportBatchSummary {
   imported_amount: number
   total_amount: number
   rejected_amount: number
+  total_value?: number
+  rejected_value?: number
 }
 
 export interface ImportReject {

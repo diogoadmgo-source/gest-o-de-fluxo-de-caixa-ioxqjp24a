@@ -23,10 +23,6 @@ export interface ImportResult {
     failuresTotal: number
     duplicatesSkipped?: number
     // Integrity Stats
-    minCreatedAt?: string
-    maxCreatedAt?: string
-    distinctBatches?: number
-    // New fields for robust import
     batchId?: string
     rejectedRows?: number
     rejectedAmount?: number
@@ -221,9 +217,11 @@ export async function fetchPaginatedReceivables(
         query = query.gte('created_at', fromStr).lte('created_at', toStr)
       }
 
-      // Sorting
+      // Sorting - Force default sorting by due_date ASC and invoice_number for consistency
       const sortCol = filters.sortBy || 'due_date'
-      query = query.order(sortCol, { ascending: filters.sortOrder === 'asc' })
+      query = query
+        .order(sortCol, { ascending: filters.sortOrder === 'asc' })
+        .order('invoice_number', { ascending: true })
 
       // Pagination
       const from = (page - 1) * pageSize
@@ -650,14 +648,24 @@ export async function fetchImportRejects(
   }
 }
 
-// Updated importarReceivables to use Robust logic per company
+// Updated importarReceivables to use Robust logic and strictly require company context
 export async function importarReceivables(
   userId: string,
   data: any[],
   fallbackCompanyId?: string,
   fileName: string = 'import.csv',
 ): Promise<ImportResult> {
-  // 0. Validate Layout (Layout must be valid for at least one row, but usually all rows share layout)
+  // STRICT GOVERNANCE: Force company selection
+  if (!fallbackCompanyId || fallbackCompanyId === 'all') {
+    return {
+      success: false,
+      message:
+        'Erro de Governança: Uma empresa deve ser selecionada para realizar a importação.',
+      failures: [],
+    }
+  }
+
+  // 0. Validate Layout
   if (data && data.length > 0) {
     const missingColumns = validateReceivablesLayout(data[0])
     if (missingColumns.length > 0) {
@@ -669,88 +677,49 @@ export async function importarReceivables(
     }
   }
 
-  const companyGroups = new Map<string, any[]>()
-  let totalRecordsProcessed = 0
-  let globalFailures: any[] = []
   let totalInserted = 0
   let totalInsertedAmount = 0
   let totalRejectedAmount = 0
   let totalFileAmount = 0
   let totalDuplicatesSkipped = 0
-  // Track specific batch ID for the last successful import to return (mainly useful for single company import)
   let lastBatchId: string | undefined
+  let globalFailures: any[] = []
 
-  // 1. Group data by company
-  for (const row of data) {
-    const companyName = normalizeText(getCol(row, RECEIVABLE_MAPPINGS.company))
+  try {
+    // CALL NEW ROBUST RPC for strict replacement on the selected company
+    const summary = await importReceivablesRobust(
+      userId,
+      fallbackCompanyId,
+      data,
+      fileName,
+    )
 
-    let targetCompany = companyName
-    if (!targetCompany && fallbackCompanyId) {
-      targetCompany = fallbackCompanyId
+    if (summary.success) {
+      totalInserted = summary.imported_rows
+      totalInsertedAmount = summary.imported_amount
+      totalDuplicatesSkipped = summary.rejected_rows
+      totalFileAmount = summary.total_value || 0 // New field from strict compliance RPC
+      totalRejectedAmount = summary.rejected_value || 0
+      lastBatchId = summary.batch_id
+    } else {
+      globalFailures.push({ company: fallbackCompanyId, error: 'RPC Failed' })
     }
-
-    if (!targetCompany) continue
-
-    if (!companyGroups.has(targetCompany)) {
-      companyGroups.set(targetCompany, [])
-    }
-    companyGroups.get(targetCompany)?.push(row)
-  }
-
-  if (companyGroups.size === 0) {
+  } catch (err: any) {
+    console.error(`Exception processing import:`, err)
     return {
       success: false,
-      message:
-        'Nenhuma empresa identificada no arquivo e nenhuma empresa selecionada.',
-      failures: [],
-    }
-  }
-
-  // 2. Process each company group
-  for (const [companyNameOrId, rows] of companyGroups.entries()) {
-    try {
-      let companyId = companyNameOrId
-      // If it looks like a name (not a UUID), resolve it
-      if (
-        !companyNameOrId.match(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-        )
-      ) {
-        companyId = await ensureCompanyAndLink(userId, companyNameOrId)
-      }
-
-      // CALL NEW ROBUST RPC
-      const summary = await importReceivablesRobust(
-        userId,
-        companyId,
-        rows,
-        fileName,
-      )
-
-      if (summary.success) {
-        totalInserted += summary.imported_rows
-        totalInsertedAmount += summary.imported_amount
-        totalDuplicatesSkipped += summary.rejected_rows
-        totalRecordsProcessed += summary.total_rows
-        totalFileAmount += summary.total_amount || 0
-        totalRejectedAmount += summary.rejected_amount || 0
-        lastBatchId = summary.batch_id
-      } else {
-        globalFailures.push({ company: companyNameOrId, error: 'RPC Failed' })
-      }
-    } catch (err: any) {
-      console.error(`Exception processing company ${companyNameOrId}:`, err)
-      globalFailures.push({ company: companyNameOrId, error: err.message })
+      message: err.message || 'Falha desconhecida no processamento do arquivo.',
+      failures: [{ error: err.message }],
     }
   }
 
   return {
-    success: totalInserted > 0 || globalFailures.length === 0,
+    success: totalInserted > 0 || totalDuplicatesSkipped > 0, // Success even if all rejected, as long as process ran
     message: `Processado com sucesso. ${totalInserted} registros inseridos. ${totalDuplicatesSkipped} rejeitados/duplicados.`,
     stats: {
       records: totalInserted,
       importedTotal: totalInsertedAmount,
-      fileTotal: totalRecordsProcessed,
+      fileTotal: data.length,
       fileTotalPrincipal: totalFileAmount,
       importedPrincipal: totalInsertedAmount,
       failuresTotal: globalFailures.length,

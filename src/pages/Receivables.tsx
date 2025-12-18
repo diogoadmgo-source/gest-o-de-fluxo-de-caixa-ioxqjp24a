@@ -20,7 +20,7 @@ export default function Receivables() {
     useCashFlowStore()
   const perf = usePerformanceMeasure('/recebiveis', 'render')
 
-  // State (v0.77 restoration configuration)
+  // State
   const [pageSize] = useState(200)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
@@ -38,7 +38,7 @@ export default function Receivables() {
 
   const debouncedSearch = useDebounce(searchTerm, 400)
 
-  // Data Fetching with full filter support to ensure integrity
+  // Data Fetching with full filter support
   const {
     data: paginatedData,
     isLoading,
@@ -236,7 +236,16 @@ export default function Receivables() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+          <Button
+            variant="outline"
+            onClick={() => setIsImportOpen(true)}
+            disabled={!selectedCompanyId || selectedCompanyId === 'all'}
+            title={
+              !selectedCompanyId || selectedCompanyId === 'all'
+                ? 'Selecione uma empresa para importar'
+                : 'Importar'
+            }
+          >
             <Upload className="mr-2 h-4 w-4" /> Importar
           </Button>
           <Button onClick={() => setEditingItem({})}>

@@ -372,7 +372,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     onProgress?.(10)
 
     let result
-    // Pass user.id and optional fallback company
+    // Pass user.id and optional fallback company from state
+    // We STRICTLY use the selected company now for receivables
     const fallback =
       selectedCompanyId && selectedCompanyId !== 'all'
         ? selectedCompanyId
@@ -393,26 +394,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
     onProgress?.(90)
 
-    // Note: Logging logic for rejected rows is handled within the new RPC/Service
-    // We can still log a generic entry to legacy table if desired, or rely on new tables
-    // For now, keeping legacy behavior as supplement
     if (result.success) {
-      const logCompanyId = fallback || (companies[0] ? companies[0].id : null)
-
-      if (logCompanyId) {
-        await supabase.from('import_logs').insert({
-          company_id: logCompanyId,
-          user_id: user.id,
-          filename: filename || 'manual_import.csv',
-          type: type,
-          status: 'success',
-          total_records: result.stats?.records || 0,
-          success_count: result.stats?.records || 0,
-          error_count: result.failures?.length || 0,
-          deleted_count: 0,
-        })
-      }
-
       queryClient.invalidate('dashboard')
       fetchData()
     }
