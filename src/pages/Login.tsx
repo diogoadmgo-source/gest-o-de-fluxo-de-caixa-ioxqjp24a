@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -23,11 +23,18 @@ export default function Login() {
   const [show2FA, setShow2FA] = useState(false)
   const [twoFACode, setTwoFACode] = useState('')
 
-  const { signIn } = useAuth()
+  const { signIn, user, loading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
   const from = location.state?.from?.pathname || '/'
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!loading && user) {
+      navigate(from, { replace: true })
+    }
+  }, [user, loading, navigate, from])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

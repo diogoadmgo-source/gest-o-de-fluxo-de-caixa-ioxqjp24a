@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -10,27 +10,15 @@ import Layout from '@/components/Layout'
 import { Loader2 } from 'lucide-react'
 
 // Code Splitting / Lazy Loading
-// Using React.lazy for Login as well to ensure consistent bundle handling
 const Login = React.lazy(() => import('@/pages/Login'))
 const Dashboard = React.lazy(() => import('@/pages/Dashboard'))
+const CashFlow = React.lazy(() => import('@/pages/CashFlow'))
 const Receivables = React.lazy(() => import('@/pages/Receivables'))
 const Payables = React.lazy(() => import('@/pages/Payables'))
 const Reports = React.lazy(() => import('@/pages/Reports'))
 const Settings = React.lazy(() => import('@/pages/Settings'))
 const PerformanceReport = React.lazy(() => import('@/pages/PerformanceReport'))
 const NotFound = React.lazy(() => import('@/pages/NotFound'))
-
-// Additional pages that might be referenced in Sidebar but not yet fully implemented
-// Assuming standard naming convention for placeholder handling if files don't exist yet,
-// but based on context provided, we stick to known files or placeholders.
-// If specific files like Balances, Imports, Adjustments, Audit, Users exist in Project Files, we should map them.
-// Checking Project Files list:
-// src/pages/Balances.tsx -> Exists
-// src/pages/Imports.tsx -> Exists
-// src/pages/Adjustments.tsx -> Exists
-// src/pages/Audit.tsx -> Exists
-// src/pages/settings/Users.tsx -> Exists
-// src/pages/PeriodClosing.tsx -> Exists
 
 const Balances = React.lazy(() => import('@/pages/Balances'))
 const Imports = React.lazy(() => import('@/pages/Imports'))
@@ -63,6 +51,7 @@ const App = () => (
                 {/* Protected Routes */}
                 <Route element={<Layout />}>
                   <Route path="/" element={<Dashboard />} />
+                  <Route path="/fluxo-de-caixa" element={<CashFlow />} />
                   <Route path="/recebiveis" element={<Receivables />} />
                   <Route path="/pagaveis" element={<Payables />} />
                   <Route path="/saldos" element={<Balances />} />
