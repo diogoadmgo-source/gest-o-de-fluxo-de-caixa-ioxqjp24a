@@ -610,6 +610,42 @@ export async function importReceivablesRobust(
     // Helper to try and get keys regardless of case
     const get = (k: string[]) => getCol(d, k)
 
+    // Safe parse for money fields to avoid client crash and allow row-level rejection
+    let principalVal = 0
+    let principalErr = null
+    try {
+      principalVal = parsePtBrFloat(
+        get(RECEIVABLE_MAPPINGS.principal_value),
+        'Valor Principal',
+      )
+    } catch (e: any) {
+      principalErr = e.message
+    }
+
+    let updatedVal = 0
+    try {
+      updatedVal = parsePtBrFloat(
+        get(RECEIVABLE_MAPPINGS.updated_value),
+        'Valor Atualizado',
+      )
+    } catch (e) {
+      updatedVal = principalVal // fallback
+    }
+
+    let fineVal = 0
+    try {
+      fineVal = parsePtBrFloat(get(RECEIVABLE_MAPPINGS.fine), 'Multa')
+    } catch (e) {
+      // ignore
+    }
+
+    let interestVal = 0
+    try {
+      interestVal = parsePtBrFloat(get(RECEIVABLE_MAPPINGS.interest), 'Juros')
+    } catch (e) {
+      // ignore
+    }
+
     return {
       invoice_number: normalizeText(get(RECEIVABLE_MAPPINGS.invoice_number)),
       order_number: normalizeText(get(RECEIVABLE_MAPPINGS.order_number)),
@@ -618,17 +654,12 @@ export async function importReceivablesRobust(
       issue_date: get(RECEIVABLE_MAPPINGS.issue_date),
       due_date: get(RECEIVABLE_MAPPINGS.due_date),
       payment_prediction: get(RECEIVABLE_MAPPINGS.payment_prediction),
-      // STRICT NUMBER PARSING
-      principal_value: parsePtBrFloat(
-        get(RECEIVABLE_MAPPINGS.principal_value),
-        'Valor Principal',
-      ),
-      fine: parsePtBrFloat(get(RECEIVABLE_MAPPINGS.fine), 'Multa'),
-      interest: parsePtBrFloat(get(RECEIVABLE_MAPPINGS.interest), 'Juros'),
-      updated_value: parsePtBrFloat(
-        get(RECEIVABLE_MAPPINGS.updated_value),
-        'Valor Atualizado',
-      ),
+      // STRICT NUMBER PARSING - Passing Error state to RPC
+      principal_value: principalVal,
+      _error_principal: principalErr,
+      fine: fineVal,
+      interest: interestVal,
+      updated_value: updatedVal,
       title_status: normalizeText(get(RECEIVABLE_MAPPINGS.title_status)),
       seller: normalizeText(get(RECEIVABLE_MAPPINGS.seller)),
       customer_code: normalizeText(get(RECEIVABLE_MAPPINGS.customer_code)),
