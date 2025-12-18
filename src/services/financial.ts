@@ -802,7 +802,7 @@ export async function importarPayables(
 
       if (!dueDate) throw new Error('Data de vencimento inválida.')
 
-      const principal = n(
+      let principal = n(
         row['Valor Principal'] || row['principal_value'] || row['Valor'],
       )
       const fine = n(row['Multa'] || row['fine'])
