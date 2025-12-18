@@ -321,7 +321,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           error_count: 0,
           deleted_count: 0, // handled in RPC stats usually but simplifying here
         })
-        fetchData() // Refresh dashboard
+
+        // Force refresh of dashboard data
+        queryClient.invalidate('receivables')
+        queryClient.invalidate('dashboard')
+        fetchData()
       }
       return result
     }

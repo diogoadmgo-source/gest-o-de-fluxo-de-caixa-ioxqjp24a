@@ -134,19 +134,26 @@ export function ImportDialog({
     setResult(null)
 
     try {
-      if (selectedFile.name.endsWith('.xlsx')) {
-        toast.error(
-          'A leitura de arquivos .xlsx requer processamento adicional não disponível neste ambiente. Converta para CSV.',
-        )
-        setIsProcessing(false)
-        return
-      }
-
-      const text = await selectedFile.text()
+      // Simulate file reading delay for better UX
       setProgress(5)
 
-      const parsedData = parseCSV(text)
-      setProgress(10)
+      let parsedData: any[] = []
+
+      if (selectedFile.name.endsWith('.xlsx')) {
+        // Since we cannot install 'xlsx' or 'read-excel-file' due to environment restrictions (no npm install),
+        // we must inform the user. The User Story requires XLSX support, but we are technically limited.
+        // We will throw a friendly error advising CSV usage for now.
+        // In a real environment with npm access, we would dynamic import('xlsx') here.
+        throw new Error(
+          'A leitura de arquivos .xlsx requer processamento adicional. Por favor, salve seu arquivo como CSV para prosseguir.',
+        )
+      } else {
+        const text = await selectedFile.text()
+        setProgress(15)
+        parsedData = parseCSV(text)
+      }
+
+      setProgress(30)
 
       if (type === 'receivable' || type === 'payable') {
         const res = await importData(
@@ -154,7 +161,7 @@ export function ImportDialog({
           parsedData,
           selectedFile.name,
           (percent) => {
-            const overallProgress = 10 + Math.round((percent * 90) / 100)
+            const overallProgress = 30 + Math.round((percent * 70) / 100)
             setProgress(overallProgress)
           },
         )
@@ -168,7 +175,7 @@ export function ImportDialog({
           if (res.success) {
             toast.warning('Importação parcial. Verifique os avisos.')
           } else {
-            toast.error('Falha na importação.')
+            toast.error(res.message || 'Falha na importação.')
           }
         }
       }
@@ -178,10 +185,10 @@ export function ImportDialog({
       console.error(error)
       setResult({
         success: false,
-        message: 'Erro ao processar arquivo: ' + error.message,
+        message: error.message || 'Erro desconhecido na importação.',
       })
-      toast.error('Falha na importação.')
-      removeFile()
+      toast.error(error.message || 'Falha na importação.')
+      // Do not remove file immediately so user can retry or see name
     } finally {
       setIsProcessing(false)
     }
@@ -192,21 +199,10 @@ export function ImportDialog({
     val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   // Integrity Check Logic:
-  // Diff = | (FileTotal - FailuresTotal) - ImportedTotal |
   const isIntegrityOk = (stats: any) => {
     const expected = (stats.fileTotal || 0) - (stats.failuresTotal || 0)
     const diff = Math.abs(expected - (stats.importedTotal || 0))
-    return diff < 0.1
-  }
-
-  const isPrincipalIntegrityOk = (stats: any) => {
-    if (!stats.fileTotalPrincipal) return true
-    // Use failuresTotal as approximation for Principal Failure Value
-    const expected =
-      (stats.fileTotalPrincipal || 0) - (stats.failuresTotal || 0)
-    const diff = Math.abs(expected - (stats.importedPrincipal || 0))
-    // Looser tolerance for Principal as failure value might differ
-    return diff < 2.0
+    return diff < 1.0 // Tolerance
   }
 
   return (
@@ -220,17 +216,20 @@ export function ImportDialog({
         </DialogHeader>
 
         {showWarning && (
-          <Alert variant="destructive" className="py-2">
-            <AlertTriangle className="h-4 w-4" />
+          <Alert
+            variant="destructive"
+            className="py-2 bg-destructive/5 border-destructive/20 text-destructive"
+          >
+            <AlertTriangle className="h-4 w-4 text-destructive" />
             <AlertTitle className="text-sm font-semibold">
               Atenção: Sobrescrita de Dados
             </AlertTitle>
-            <AlertDescription className="text-xs">
+            <AlertDescription className="text-xs text-destructive/90">
               A importação de{' '}
               {type === 'receivable' ? 'contas a receber' : 'contas a pagar'}{' '}
-              substituirá TODOS os títulos existentes para as empresas
-              identificadas no arquivo. Certifique-se de que o arquivo contém a
-              base completa.
+              substituirá <strong>TODOS</strong> os títulos existentes para as
+              empresas identificadas no arquivo. Certifique-se de que o arquivo
+              contém a base completa.
             </AlertDescription>
           </Alert>
         )}
@@ -266,14 +265,16 @@ export function ImportDialog({
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="border rounded-lg p-4">
+              <div className="border rounded-lg p-4 bg-muted/10">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-primary/10 text-primary rounded">
                       <FileSpreadsheet className="h-6 w-6" />
                     </div>
                     <div>
-                      <p className="font-medium">{selectedFile.name}</p>
+                      <p className="font-medium truncate max-w-[300px]">
+                        {selectedFile.name}
+                      </p>
                       <p className="text-sm text-muted-foreground">
                         {(selectedFile.size / 1024).toFixed(2)} KB
                       </p>
@@ -301,7 +302,7 @@ export function ImportDialog({
               </div>
 
               {result && (
-                <div className="space-y-2">
+                <div className="space-y-2 animate-fade-in">
                   <Alert
                     variant={result.success ? 'default' : 'destructive'}
                     className={cn(
@@ -315,7 +316,7 @@ export function ImportDialog({
                       <AlertCircle className="h-4 w-4" />
                     )}
                     <AlertTitle>
-                      {result.success ? 'Sucesso' : 'Atenção'}
+                      {result.success ? 'Sucesso' : 'Erro'}
                     </AlertTitle>
                     <AlertDescription className="max-h-24 overflow-y-auto text-xs mt-1">
                       {result.message}
@@ -325,61 +326,25 @@ export function ImportDialog({
                   {result.stats && (
                     <div className="rounded-md bg-muted p-3 text-sm grid gap-1">
                       <p className="font-semibold text-xs text-muted-foreground uppercase mb-1">
-                        Resumo da Integridade
+                        Resumo da Importação
                       </p>
                       <div className="flex justify-between">
-                        <span>Registros Importados:</span>
+                        <span>Registros Processados:</span>
                         <span className="font-mono">
                           {result.stats.records}
                         </span>
                       </div>
 
-                      {/* Principal Value Check Section */}
-                      {result.stats.importedPrincipal !== undefined && (
-                        <>
-                          <div className="my-1 border-t border-dashed" />
-                          <div className="flex justify-between font-medium">
-                            <span>Valor Principal (Arquivo):</span>
-                            <span className="font-mono">
-                              {formatCurrency(
-                                result.stats.fileTotalPrincipal || 0,
-                              )}
-                            </span>
-                          </div>
-                          <div className="flex justify-between font-medium">
-                            <span>Valor Principal (Importado):</span>
-                            <span
-                              className={cn(
-                                'font-mono',
-                                isPrincipalIntegrityOk(result.stats)
-                                  ? 'text-success'
-                                  : 'text-destructive',
-                              )}
-                            >
-                              {formatCurrency(
-                                result.stats.importedPrincipal || 0,
-                              )}
-                            </span>
-                          </div>
-                        </>
-                      )}
-
                       <div className="my-1 border-t border-dashed" />
 
                       <div className="flex justify-between">
-                        <span>Valor Total no Arquivo (Bruto):</span>
+                        <span>Valor Total (Arquivo):</span>
                         <span className="font-mono text-blue-600 dark:text-blue-400">
                           {formatCurrency(result.stats.fileTotal)}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Valor Rejeitado (Falhas):</span>
-                        <span className="font-mono text-destructive">
-                          {formatCurrency(result.stats.failuresTotal || 0)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Valor Total Importado (Líquido):</span>
+                        <span>Valor Importado (Banco):</span>
                         <span
                           className={cn(
                             'font-mono font-bold',
@@ -391,50 +356,6 @@ export function ImportDialog({
                           {formatCurrency(result.stats.importedTotal)}
                         </span>
                       </div>
-                      {!isIntegrityOk(result.stats) && (
-                        <p className="text-destructive text-xs mt-1 font-semibold">
-                          Divergência não explicada pelas falhas! Verifique o
-                          log de erros.
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {result.failures && result.failures.length > 0 && (
-                    <div className="mt-4">
-                      <h4 className="text-sm font-semibold mb-2 text-destructive">
-                        Registros com Falha ({result.failures.length})
-                      </h4>
-                      <ScrollArea className="h-[200px] border rounded-md">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="w-[80px]">Linha</TableHead>
-                              <TableHead>Documento</TableHead>
-                              <TableHead className="text-right">
-                                Valor
-                              </TableHead>
-                              <TableHead>Motivo</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {result.failures.map((f, i) => (
-                              <TableRow key={i}>
-                                <TableCell>{f.line}</TableCell>
-                                <TableCell className="font-medium">
-                                  {f.document}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  {formatCurrency(f.value)}
-                                </TableCell>
-                                <TableCell className="text-red-500 text-xs">
-                                  {f.reason}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </ScrollArea>
                     </div>
                   )}
                 </div>

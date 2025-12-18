@@ -870,6 +870,10 @@ export type Database = {
         Args: { p_company_id: string; p_date?: string }
         Returns: Json
       }
+      get_receivables_dashboard_stats: {
+        Args: { p_company_id: string }
+        Returns: Json
+      }
       is_admin: { Args: never; Returns: boolean }
       replace_receivables_for_company: {
         Args: { p_company_id: string; p_rows: Json }

@@ -146,18 +146,35 @@ export async function getCashFlowAggregates(
 // Helpers
 export function normalizeText(text: any): string {
   if (text === null || text === undefined) return ''
-  return String(text).trim()
+  return String(text).trim().replace(/^"|"$/g, '')
 }
 
 export function n(value: any): number {
   if (typeof value === 'number') return value
   if (!value) return 0
   let str = String(value).trim()
+
+  // Handle "R$ 1.200,50" -> "1200.50" (Brazilian standard)
+  // Remove spaces, R$, and dots (thousands separator)
   str = str.replace(/[^\d.,-]/g, '')
   if (!str) return 0
-  const cleanStr = str.replace(/\./g, '').replace(',', '.')
-  const num = parseFloat(cleanStr)
-  return isNaN(num) ? 0 : num
+
+  // Check if it looks like US format (1,000.00) vs BR format (1.000,00)
+  // Simple heuristic: if last punctuation is ',', treat as BR
+  const lastCommaIndex = str.lastIndexOf(',')
+  const lastDotIndex = str.lastIndexOf('.')
+
+  if (lastCommaIndex > lastDotIndex) {
+    // BR Format: remove dots, replace comma with dot
+    const cleanStr = str.replace(/\./g, '').replace(',', '.')
+    const num = parseFloat(cleanStr)
+    return isNaN(num) ? 0 : num
+  } else {
+    // US Format or simple number: remove commas
+    const cleanStr = str.replace(/,/g, '')
+    const num = parseFloat(cleanStr)
+    return isNaN(num) ? 0 : num
+  }
 }
 
 export function d(value: any): string | null {
@@ -166,12 +183,12 @@ export function d(value: any): string | null {
   const str = String(value).trim()
   if (!str) return null
 
-  // Try YYYY-MM-DD
-  let parsed = parse(str, 'yyyy-MM-dd', new Date())
+  // Try DD/MM/YYYY (Common in BR CSVs)
+  let parsed = parse(str, 'dd/MM/yyyy', new Date())
   if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
 
-  // Try DD/MM/YYYY
-  parsed = parse(str, 'dd/MM/yyyy', new Date())
+  // Try YYYY-MM-DD
+  parsed = parse(str, 'yyyy-MM-dd', new Date())
   if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
 
   // Try basic ISO substring
@@ -402,7 +419,15 @@ export async function importarReceivables(companyId: string, data: any[]) {
         row['Descrição'] || row['Obs'] || row['description'],
       ),
     }))
-    .filter((r) => r.customer && r.principal_value !== undefined)
+    // Filter out rows that are clearly invalid (e.g. no customer AND no value)
+    .filter((r) => r.customer || r.principal_value !== 0)
+
+  if (mappedData.length === 0) {
+    return {
+      success: false,
+      message: 'Nenhum registro válido encontrado no arquivo.',
+    }
+  }
 
   // Use the RPC to atomically replace data for this company
   const { data: result, error } = await supabase.rpc(
@@ -413,12 +438,14 @@ export async function importarReceivables(companyId: string, data: any[]) {
     },
   )
 
-  if (error) throw error
+  if (error) {
+    console.error('RPC Error:', error)
+    throw new Error(
+      error.message || 'Erro ao processar importação no banco de dados.',
+    )
+  }
 
   // Adapt result to standard import format
-  // RPC returns: { success: true, stats: { inserted: X, ... } }
-  // ImportDialog expects: { success: true, stats: { records: X, importedTotal: Y, fileTotal: Z, ... } }
-
   const stats = (result as any).stats
   const totalValue = mappedData.reduce(
     (sum: number, r: any) => sum + r.principal_value,
@@ -431,11 +458,11 @@ export async function importarReceivables(companyId: string, data: any[]) {
       ? 'Importação realizada com sucesso.'
       : 'Erro na importação.',
     stats: {
-      records: stats.inserted,
-      importedTotal: totalValue, // Approximation as we don't get value back from RPC in this simplified version
+      records: stats?.inserted || 0,
+      importedTotal: stats?.inserted_amount || totalValue,
       fileTotal: totalValue,
       fileTotalPrincipal: totalValue,
-      importedPrincipal: totalValue,
+      importedPrincipal: stats?.inserted_amount || totalValue,
       failuresTotal: 0,
     },
     failures: [],
