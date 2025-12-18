@@ -1,11 +1,6 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card'
+import { useState, useMemo } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import {
   Table,
   TableBody,
@@ -14,831 +9,205 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import {
-  Plus,
-  MoreHorizontal,
-  Upload,
-  Trash2,
-  Edit,
-  Eye,
-  AlertCircle,
-  Briefcase,
-  RefreshCcw,
-  Clock,
-  AlertTriangle,
-} from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { ReceivableFilters } from '@/components/financial/ReceivableFilters'
+import { ReceivableForm } from '@/components/financial/ReceivableForm'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { useQuery } from '@/hooks/use-query'
+import { fetchPaginatedReceivables } from '@/services/financial'
+import useCashFlowStore from '@/stores/useCashFlowStore'
+import { useDebounce } from '@/hooks/use-debounce'
+import { Loader2, Plus, RefreshCw, Upload } from 'lucide-react'
 import {
   Pagination,
   PaginationContent,
-  PaginationEllipsis,
   PaginationItem,
-  PaginationLink,
-  PaginationNext,
   PaginationPrevious,
+  PaginationNext,
+  PaginationLink,
 } from '@/components/ui/pagination'
-import { toast } from 'sonner'
-import {
-  format,
-  parseISO,
-  isSameDay,
-  startOfDay,
-  endOfDay,
-  isValid,
-} from 'date-fns'
-import { DateRange } from 'react-day-picker'
-import useCashFlowStore from '@/stores/useCashFlowStore'
-import { Receivable } from '@/lib/types'
-import { FinancialStats } from '@/components/financial/FinancialStats'
-import { ReceivableForm } from '@/components/financial/ReceivableForm'
+import { usePerformanceMeasure } from '@/lib/performance'
 import { ImportDialog } from '@/components/common/ImportDialog'
-import { ReceivableFilters } from '@/components/financial/ReceivableFilters'
-import { cn } from '@/lib/utils'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 
 export default function Receivables() {
-  const {
-    receivables,
-    updateReceivable,
-    deleteReceivable,
-    addReceivable,
-    loading,
-    recalculateCashFlow,
-  } = useCashFlowStore()
+  const { selectedCompanyId, addReceivable, updateReceivable } =
+    useCashFlowStore()
+  const perf = usePerformanceMeasure('/recebiveis', 'render')
 
-  // --- Filter States ---
+  // State
+  const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [dueDateRange, setDueDateRange] = useState<DateRange | undefined>()
-  const [issueDateRange, setIssueDateRange] = useState<DateRange | undefined>()
-  const [createdAtRange, setCreatedAtRange] = useState<DateRange | undefined>()
-  const [minValue, setMinValue] = useState('')
-  const [maxValue, setMaxValue] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [isImportOpen, setIsImportOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<any>(null)
 
-  // --- Pagination State ---
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 20
+  const debouncedSearch = useDebounce(searchTerm, 500)
 
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
-  const [editingItem, setEditingItem] = useState<Receivable | null>(null)
-  const [viewingItem, setViewingItem] = useState<Receivable | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  // Data Fetching
+  const {
+    data: paginatedData,
+    isLoading,
+    refetch,
+  } = useQuery(
+    `receivables-${selectedCompanyId}-${page}-${debouncedSearch}-${statusFilter}`,
+    () => {
+      if (!selectedCompanyId || selectedCompanyId === 'all')
+        return Promise.resolve({ data: [], count: 0 })
+      return fetchPaginatedReceivables(selectedCompanyId, page, 20, {
+        search: debouncedSearch,
+        status: statusFilter,
+      })
+    },
+    {
+      enabled: !!selectedCompanyId && selectedCompanyId !== 'all',
+      staleTime: 30000,
+    },
+  )
 
-  const hasActiveFilters =
-    searchTerm !== '' ||
-    statusFilter !== 'all' ||
-    dueDateRange !== undefined ||
-    issueDateRange !== undefined ||
-    createdAtRange !== undefined ||
-    minValue !== '' ||
-    maxValue !== ''
+  const totalPages = paginatedData ? Math.ceil(paginatedData.count / 20) : 0
 
-  const handleClearFilters = () => {
-    setSearchTerm('')
-    setStatusFilter('all')
-    setDueDateRange(undefined)
-    setIssueDateRange(undefined)
-    setCreatedAtRange(undefined)
-    setMinValue('')
-    setMaxValue('')
-    toast.info('Filtros limpos.')
-  }
+  // Finish measure
+  if (!isLoading) perf.end({ count: paginatedData?.count })
 
-  // Reset pagination when filters change
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [
-    searchTerm,
-    statusFilter,
-    dueDateRange,
-    issueDateRange,
-    createdAtRange,
-    minValue,
-    maxValue,
-  ])
-
-  const reloadReceivables = useCallback(() => {
-    recalculateCashFlow()
-  }, [recalculateCashFlow])
-
-  const filteredData = useMemo(() => {
-    return receivables.filter((t) => {
-      // 1. Search Term
-      const term = searchTerm.toLowerCase()
-      const matchesTerm =
-        (t.customer || '').toLowerCase().includes(term) ||
-        (t.invoice_number || '').toLowerCase().includes(term) ||
-        (t.order_number || '').toLowerCase().includes(term) ||
-        (t.customer_code || '').toLowerCase().includes(term)
-
-      if (!matchesTerm) return false
-
-      // 2. Status
-      let matchesStatus = true
-      const today = startOfDay(new Date())
-      const itemDate = t.due_date ? parseISO(t.due_date) : null
-
-      if (statusFilter === 'all') {
-        matchesStatus = true
-      } else if (statusFilter === 'vencida') {
-        // Overdue: Status Open AND Due Date < Today
-        matchesStatus =
-          t.title_status === 'Aberto' && !!itemDate && itemDate < today
-      } else if (statusFilter === 'a_vencer') {
-        // To Due: Status Open AND Due Date >= Today
-        matchesStatus =
-          t.title_status === 'Aberto' && !!itemDate && itemDate >= today
-      } else {
-        matchesStatus = t.title_status === statusFilter
-      }
-
-      if (!matchesStatus) return false
-
-      // 3. Due Date
-      if (dueDateRange?.from) {
-        if (!t.due_date) return false
-        const dDate = parseISO(t.due_date)
-        if (dueDateRange.to) {
-          if (
-            dDate < startOfDay(dueDateRange.from) ||
-            dDate > endOfDay(dueDateRange.to)
-          ) {
-            return false
-          }
-        } else {
-          if (!isSameDay(dDate, dueDateRange.from)) {
-            return false
-          }
-        }
-      }
-
-      // 4. Issue Date
-      if (issueDateRange?.from) {
-        if (!t.issue_date) return false
-        const iDate = parseISO(t.issue_date)
-        if (issueDateRange.to) {
-          if (
-            iDate < startOfDay(issueDateRange.from) ||
-            iDate > endOfDay(issueDateRange.to)
-          ) {
-            return false
-          }
-        } else {
-          if (!isSameDay(iDate, issueDateRange.from)) {
-            return false
-          }
-        }
-      }
-
-      // 5. Created At (Batch)
-      if (createdAtRange?.from) {
-        if (!t.created_at) return false
-        const cDate = parseISO(t.created_at)
-        if (createdAtRange.to) {
-          if (
-            cDate < startOfDay(createdAtRange.from) ||
-            cDate > endOfDay(createdAtRange.to)
-          ) {
-            return false
-          }
-        } else {
-          if (!isSameDay(cDate, createdAtRange.from)) {
-            return false
-          }
-        }
-      }
-
-      // 6. Value
-      const val = t.principal_value || 0
-      if (minValue && val < parseFloat(minValue)) return false
-      if (maxValue && val > parseFloat(maxValue)) return false
-
-      return true
-    })
-  }, [
-    receivables,
-    searchTerm,
-    statusFilter,
-    dueDateRange,
-    issueDateRange,
-    createdAtRange,
-    minValue,
-    maxValue,
-  ])
-
-  // --- Pagination Logic ---
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage)
-  const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage
-    const endIndex = startIndex + itemsPerPage
-    return filteredData.slice(startIndex, endIndex)
-  }, [filteredData, currentPage])
-
-  // --- Dashboard Logic (Calculated on Filtered Data) ---
-  const { overdueStats, toDueStats, totalStats } = useMemo(() => {
-    const today = startOfDay(new Date())
-
-    const overdue = filteredData.filter((r) => {
-      const itemDate = r.due_date ? parseISO(r.due_date) : null
-      return r.title_status === 'Aberto' && itemDate && itemDate < today
-    })
-
-    const toDue = filteredData.filter((r) => {
-      const itemDate = r.due_date ? parseISO(r.due_date) : null
-      return r.title_status === 'Aberto' && itemDate && itemDate >= today
-    })
-
-    const calculateStats = (items: Receivable[]) =>
-      items.reduce(
-        (acc, curr) => ({
-          principal: acc.principal + (curr.principal_value || 0),
-          fine: acc.fine + (curr.fine || 0),
-          interest: acc.interest + (curr.interest || 0),
-          // User Requirement: Total Updated Value
-          total: acc.total + (curr.updated_value || curr.principal_value || 0),
-        }),
-        { principal: 0, fine: 0, interest: 0, total: 0 },
-      )
-
-    return {
-      overdueStats: calculateStats(overdue),
-      toDueStats: calculateStats(toDue),
-      totalStats: calculateStats(filteredData),
-    }
-  }, [filteredData])
-
-  const handleDelete = async () => {
-    if (deletingId) {
-      await deleteReceivable(deletingId)
-      toast.success('Título removido com sucesso.')
-      setDeletingId(null)
-    }
-  }
-
-  const handleSaveEdit = async (updated: Receivable) => {
-    if (updated.id) {
-      await updateReceivable(updated)
-      // Toast handled in store
-    } else {
-      await addReceivable(updated)
-      // Toast handled in store
-    }
+  const handleSave = async (data: any) => {
+    if (data.id) await updateReceivable(data)
+    else await addReceivable(data)
     setEditingItem(null)
-  }
-
-  const formatCurrency = (val: number) =>
-    (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-  // Helper to determine status badge appearance
-  const getStatusBadge = (item: Receivable) => {
-    const today = startOfDay(new Date())
-    const dueDate = item.due_date ? parseISO(item.due_date) : null
-
-    if (item.title_status === 'Liquidado') {
-      return {
-        label: 'Liquidado',
-        className:
-          'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-transparent',
-      }
-    }
-
-    if (item.title_status === 'Cancelado') {
-      return {
-        label: 'Cancelado',
-        className: 'bg-muted text-muted-foreground hover:bg-muted/80',
-      }
-    }
-
-    if (item.title_status === 'Aberto') {
-      if (dueDate && dueDate < today) {
-        // Overdue -> Red
-        return {
-          label: 'Aberto (Vencido)',
-          className:
-            'bg-red-100 text-red-800 hover:bg-red-200 border-transparent',
-        }
-      } else {
-        // To Due -> Green
-        return {
-          label: 'Aberto (A Vencer)',
-          className:
-            'bg-green-100 text-green-800 hover:bg-green-200 border-transparent',
-        }
-      }
-    }
-
-    // Fallback
-    return {
-      label: item.title_status,
-      className: 'bg-secondary text-secondary-foreground',
-    }
-  }
-
-  const getErrorFlags = (item: Receivable) => {
-    const errors: string[] = []
-    if (
-      !item.company_id ||
-      !item.invoice_number ||
-      !item.customer ||
-      item.principal_value === undefined
-    ) {
-      errors.push('Campos obrigatórios ausentes.')
-    }
-    if ((item.principal_value || 0) < 0) {
-      errors.push('Valor principal negativo.')
-    }
-    if ((item.updated_value || 0) < (item.principal_value || 0) - 0.01) {
-      errors.push('Valor atualizado menor que principal.')
-    }
-    if (item.due_date && item.issue_date) {
-      const d = parseISO(item.due_date)
-      const i = parseISO(item.issue_date)
-      if (isValid(d) && isValid(i) && d < i) {
-        errors.push('Vencimento anterior à emissão.')
-      }
-    }
-    return errors
-  }
-
-  const renderPagination = () => {
-    if (totalPages <= 1) return null
-
-    // Determine range of page numbers to show
-    const delta = 2
-    const range = []
-    const rangeWithDots = []
-    let l
-
-    range.push(1)
-    for (let i = currentPage - delta; i <= currentPage + delta; i++) {
-      if (i < totalPages && i > 1) {
-        range.push(i)
-      }
-    }
-    if (totalPages > 1) {
-      range.push(totalPages)
-    }
-
-    for (const i of range) {
-      if (l) {
-        if (i - l === 2) {
-          rangeWithDots.push(l + 1)
-        } else if (i - l !== 1) {
-          rangeWithDots.push('...')
-        }
-      }
-      rangeWithDots.push(i)
-      l = i
-    }
-
-    return (
-      <Pagination className="justify-end mt-4">
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious
-              href="#"
-              onClick={(e) => {
-                e.preventDefault()
-                if (currentPage > 1) setCurrentPage((p) => p - 1)
-              }}
-              className={
-                currentPage === 1 ? 'pointer-events-none opacity-50' : ''
-              }
-            />
-          </PaginationItem>
-          {rangeWithDots.map((page, index) =>
-            page === '...' ? (
-              <PaginationItem key={`dots-${index}`}>
-                <PaginationEllipsis />
-              </PaginationItem>
-            ) : (
-              <PaginationItem key={page}>
-                <PaginationLink
-                  href="#"
-                  isActive={page === currentPage}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    setCurrentPage(page as number)
-                  }}
-                >
-                  {page}
-                </PaginationLink>
-              </PaginationItem>
-            ),
-          )}
-          <PaginationItem>
-            <PaginationNext
-              href="#"
-              onClick={(e) => {
-                e.preventDefault()
-                if (currentPage < totalPages) setCurrentPage((p) => p + 1)
-              }}
-              className={
-                currentPage === totalPages
-                  ? 'pointer-events-none opacity-50'
-                  : ''
-              }
-            />
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
-    )
+    refetch()
   }
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">
             Contas a Receber
           </h2>
           <p className="text-muted-foreground">
-            Gestão detalhada de títulos e importação de dados.
+            Otimizado para alto volume de dados.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => recalculateCashFlow()}
-            disabled={loading}
-          >
-            <RefreshCcw
-              className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
-            />
+          <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" /> Importar
           </Button>
-
-          <Button variant="outline" onClick={() => setIsImportDialogOpen(true)}>
-            <Upload className="mr-2 h-4 w-4" />
-            Importar Títulos
-          </Button>
-
-          <ImportDialog
-            open={isImportDialogOpen}
-            onOpenChange={setIsImportDialogOpen}
-            type="receivable"
-            title="Importar Contas a Receber"
-            onImported={reloadReceivables}
-          />
-
-          <Button onClick={() => setEditingItem({} as Receivable)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Novo Manual
+          <Button onClick={() => setEditingItem({})}>
+            <Plus className="mr-2 h-4 w-4" /> Novo Título
           </Button>
         </div>
       </div>
-
-      <FinancialStats
-        stats={[
-          {
-            label: 'A Vencer',
-            ...toDueStats,
-            color: 'primary',
-            icon: Clock,
-            onClick: () => {
-              setStatusFilter('a_vencer')
-              toast.info('Filtrando por títulos a vencer.')
-            },
-          },
-          {
-            label: 'Vencido',
-            ...overdueStats,
-            color: 'custom-red',
-            icon: AlertCircle,
-            onClick: () => {
-              setStatusFilter('vencida')
-              toast.info('Filtrando por títulos vencidos.')
-            },
-          },
-          {
-            label: 'Total Geral',
-            ...totalStats,
-            color: 'default',
-            icon: Briefcase,
-            onClick: () => {
-              setStatusFilter('all')
-              toast.info('Exibindo todos os títulos.')
-            },
-          },
-        ]}
-      />
 
       <ReceivableFilters
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         status={statusFilter}
         setStatus={setStatusFilter}
-        dueDateRange={dueDateRange}
-        setDueDateRange={setDueDateRange}
-        issueDateRange={issueDateRange}
-        setIssueDateRange={setIssueDateRange}
-        createdAtRange={createdAtRange}
-        setCreatedAtRange={setCreatedAtRange}
-        minValue={minValue}
-        setMinValue={setMinValue}
-        maxValue={maxValue}
-        setMaxValue={setMaxValue}
-        onClearFilters={handleClearFilters}
-        hasActiveFilters={hasActiveFilters}
+        dueDateRange={undefined}
+        setDueDateRange={() => {}}
+        issueDateRange={undefined}
+        setIssueDateRange={() => {}}
+        createdAtRange={undefined}
+        setCreatedAtRange={() => {}}
+        minValue=""
+        setMinValue={() => {}}
+        maxValue=""
+        setMaxValue={() => {}}
+        onClearFilters={() => {
+          setSearchTerm('')
+          setStatusFilter('all')
+        }}
+        hasActiveFilters={!!searchTerm || statusFilter !== 'all'}
       />
 
       <Card>
-        <CardHeader className="py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Listagem de Títulos</CardTitle>
-              <CardDescription>
-                Exibindo {paginatedData.length} de {filteredData.length}{' '}
-                registros
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[50px]"></TableHead>
-                  <TableHead className="w-[120px]">NF / Parc.</TableHead>
-                  <TableHead className="w-[120px]">Status</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead className="w-[50px]">UF</TableHead>
-                  <TableHead className="w-[100px]">Vencimento</TableHead>
-                  <TableHead className="text-right w-[120px]">
-                    Principal
-                  </TableHead>
-                  <TableHead className="text-right w-[120px]">
-                    Multa/Juros
-                  </TableHead>
-                  <TableHead className="text-right font-bold w-[120px]">
-                    Atualizado
-                  </TableHead>
-                  <TableHead className="text-right w-[50px]">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedData.length === 0 ? (
+          {isLoading ? (
+            <div className="h-64 flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8">
-                      {loading
-                        ? 'Carregando...'
-                        : 'Nenhum título encontrado com os filtros atuais.'}
-                    </TableCell>
+                    <TableHead>NF</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Vencimento</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ) : (
-                  paginatedData.map((item) => {
-                    const statusBadge = getStatusBadge(item)
-                    const errorFlags = getErrorFlags(item)
-                    return (
-                      <TableRow key={item.id} className="hover:bg-muted/50">
-                        <TableCell>
-                          {errorFlags.length > 0 && (
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <AlertTriangle className="h-4 w-4 text-orange-500" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {errorFlags.map((err, i) => (
-                                  <p key={i} className="text-xs">
-                                    - {err}
-                                  </p>
-                                ))}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs font-medium">
-                          {item.invoice_number}
-                          {item.installment && (
-                            <span className="text-[10px] text-muted-foreground ml-1">
-                              ({item.installment})
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              'text-[10px] px-1.5 py-0 font-medium border whitespace-nowrap',
-                              statusBadge.className,
-                            )}
-                          >
-                            {statusBadge.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell
-                          className="max-w-[200px] truncate text-xs"
-                          title={item.customer}
-                        >
-                          {item.customer}
-                          {item.customer_code && (
-                            <span className="block text-[10px] text-muted-foreground">
-                              {item.customer_code}
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {item.uf || '-'}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {item.due_date
-                            ? format(parseISO(item.due_date), 'dd/MM/yyyy')
-                            : '-'}
-                        </TableCell>
-                        <TableCell className="text-right text-xs">
-                          {formatCurrency(item.principal_value)}
-                        </TableCell>
-                        <TableCell className="text-right text-xs text-muted-foreground">
-                          {formatCurrency(
-                            (item.fine || 0) + (item.interest || 0),
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-bold text-xs">
-                          {formatCurrency(
-                            item.updated_value || item.principal_value,
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-6 w-6 p-0">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => setViewingItem(item)}
-                              >
-                                <Eye className="mr-2 h-4 w-4" /> Ver detalhes
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => setEditingItem(item)}
-                              >
-                                <Edit className="mr-2 h-4 w-4" /> Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() => setDeletingId(item.id)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" /> Excluir
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="p-4">{renderPagination()}</div>
+                </TableHeader>
+                <TableBody>
+                  {paginatedData?.data.map((item: any) => (
+                    <TableRow
+                      key={item.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setEditingItem(item)}
+                    >
+                      <TableCell>{item.invoice_number}</TableCell>
+                      <TableCell>{item.customer}</TableCell>
+                      <TableCell>{item.due_date}</TableCell>
+                      <TableCell className="text-right">
+                        {(
+                          item.updated_value || item.principal_value
+                        ).toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </TableCell>
+                      <TableCell>{item.title_status}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="p-4 border-t">
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          if (page > 1) setPage((p) => p - 1)
+                        }}
+                      />
+                    </PaginationItem>
+                    <span className="px-4 text-sm text-muted-foreground">
+                      Página {page} de {totalPages || 1}
+                    </span>
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          if (page < totalPages) setPage((p) => p + 1)
+                        }}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
-      {/* Dialogs */}
-      <Dialog
-        open={!!editingItem}
-        onOpenChange={(open) => !open && setEditingItem(null)}
-      >
+      <Dialog open={!!editingItem} onOpenChange={() => setEditingItem(null)}>
         <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>
-              {editingItem?.id ? 'Editar Título' : 'Novo Título'}
-            </DialogTitle>
-          </DialogHeader>
-          {editingItem && (
-            <ReceivableForm
-              initialData={editingItem}
-              onSave={handleSaveEdit}
-              onCancel={() => setEditingItem(null)}
-            />
-          )}
+          <ReceivableForm
+            initialData={editingItem}
+            onSave={handleSave}
+            onCancel={() => setEditingItem(null)}
+          />
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={!!viewingItem}
-        onOpenChange={(open) => !open && setViewingItem(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Detalhes do Título</DialogTitle>
-          </DialogHeader>
-          {viewingItem && (
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <span className="font-semibold">Cliente:</span>
-                <span>{viewingItem.customer}</span>
-                <span className="font-semibold">Nome Cliente (Imp.):</span>
-                <span>{viewingItem.customer_name || '-'}</span>
-                <span className="font-semibold">Código:</span>
-                <span>{viewingItem.customer_code || '-'}</span>
-                <span className="font-semibold">NF:</span>
-                <span>{viewingItem.invoice_number}</span>
-                <span className="font-semibold">Pedido:</span>
-                <span>{viewingItem.order_number || '-'}</span>
-                <span className="font-semibold">Emissão:</span>
-                <span>
-                  {viewingItem.issue_date
-                    ? format(parseISO(viewingItem.issue_date), 'dd/MM/yyyy')
-                    : '-'}
-                </span>
-                <span className="font-semibold">Vencimento:</span>
-                <span>
-                  {viewingItem.due_date
-                    ? format(parseISO(viewingItem.due_date), 'dd/MM/yyyy')
-                    : '-'}
-                </span>
-                <span className="font-semibold">UF:</span>
-                <span>{viewingItem.uf || '-'}</span>
-                <span className="font-semibold">Valor Principal:</span>
-                <span>{formatCurrency(viewingItem.principal_value)}</span>
-                <span className="font-semibold">Multa/Juros:</span>
-                <span>
-                  {formatCurrency(
-                    (viewingItem.fine || 0) + (viewingItem.interest || 0),
-                  )}
-                </span>
-                <span className="font-semibold">Valor Atualizado:</span>
-                <span className="font-bold">
-                  {formatCurrency(
-                    viewingItem.updated_value || viewingItem.principal_value,
-                  )}
-                </span>
-                <span className="font-semibold">Status:</span>
-                <span>{viewingItem.title_status}</span>
-                <span className="font-semibold">Novo Status:</span>
-                <span>{viewingItem.new_status || '-'}</span>
-                <span className="font-semibold">Parcela:</span>
-                <span>{viewingItem.installment || '-'}</span>
-                <span className="font-semibold">Vendedor:</span>
-                <span>{viewingItem.seller || '-'}</span>
-                <span className="font-semibold">Criado em:</span>
-                <span>
-                  {viewingItem.created_at
-                    ? format(
-                        parseISO(viewingItem.created_at),
-                        'dd/MM/yyyy HH:mm',
-                      )
-                    : '-'}
-                </span>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog
-        open={!!deletingId}
-        onOpenChange={(open) => !open && setDeletingId(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta ação excluirá permanentemente o título do sistema.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ImportDialog
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        type="receivable"
+        title="Importar Recebíveis"
+        onImported={refetch}
+      />
     </div>
   )
 }

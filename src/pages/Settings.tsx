@@ -2,9 +2,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProfileSettings } from '@/components/settings/ProfileSettings'
 import { SecuritySettings } from '@/components/settings/SecuritySettings'
 import { useAuth } from '@/hooks/use-auth'
-import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
-import { Users as UsersIcon, Shield, User } from 'lucide-react'
+import { Users as UsersIcon, Shield, User, Activity } from 'lucide-react'
 
 export default function Settings() {
   const { userProfile } = useAuth()
@@ -14,7 +13,7 @@ export default function Settings() {
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Configurações</h2>
         <p className="text-muted-foreground">
-          Gerencie seu perfil, segurança e preferências do sistema.
+          Gerencie seu perfil, segurança e preferências.
         </p>
       </div>
 
@@ -29,12 +28,20 @@ export default function Settings() {
             Segurança
           </TabsTrigger>
           {userProfile?.profile === 'Administrator' && (
-            <TabsTrigger value="users" asChild>
-              <Link to="/configuracoes/usuarios">
-                <UsersIcon className="mr-2 h-4 w-4" />
-                Usuários
-              </Link>
-            </TabsTrigger>
+            <>
+              <TabsTrigger value="users" asChild>
+                <Link to="/configuracoes/usuarios">
+                  <UsersIcon className="mr-2 h-4 w-4" />
+                  Usuários
+                </Link>
+              </TabsTrigger>
+              <TabsTrigger value="performance" asChild>
+                <Link to="/performance">
+                  <Activity className="mr-2 h-4 w-4" />
+                  Performance
+                </Link>
+              </TabsTrigger>
+            </>
           )}
         </TabsList>
 
