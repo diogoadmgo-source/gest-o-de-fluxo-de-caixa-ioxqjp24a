@@ -15,6 +15,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Download,
+  Info,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
@@ -52,6 +53,7 @@ export function ImportDialog({
       importedPrincipal?: number
       records: number
       failuresTotal?: number
+      duplicatesSkipped?: number
     }
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -191,16 +193,21 @@ export function ImportDialog({
 
         if (res.success) {
           const count = res.stats?.records || 0
-          toast.success(
-            `Importação concluída com sucesso! ${count} registros atualizados.`,
-          )
+          const duplicates = res.stats?.duplicatesSkipped || 0
+          let msg = `Importação concluída! ${count} registros inseridos.`
+          if (duplicates > 0) {
+            msg += ` (${duplicates} duplicatas removidas)`
+          }
+          toast.success(msg)
+
           onImported?.()
-          // Close immediately on success per requirement
+          // Close immediately on success per requirement, slightly longer delay to read success message if desired
+          // User Story says "visible ... toast ... dashboard refresh", not necessarily close immediately but close logic is here
           setTimeout(() => {
             onOpenChange(false)
-          }, 500)
+          }, 1500)
         } else {
-          toast.error(res.message || 'Falha na importação.')
+          toast.error('Falha na importação. Verifique os erros.')
         }
       }
 
@@ -347,6 +354,31 @@ export function ImportDialog({
                     <AlertTitle>Erro na importação</AlertTitle>
                     <AlertDescription className="text-xs mt-1 font-medium">
                       {result.message}
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              )}
+
+              {result && result.success && (
+                <div className="space-y-2 animate-fade-in">
+                  <Alert
+                    variant="default"
+                    className="border-green-500/50 bg-green-500/10 text-green-700"
+                  >
+                    <Info className="h-4 w-4 text-green-600" />
+                    <AlertTitle>Sucesso</AlertTitle>
+                    <AlertDescription className="text-xs mt-1">
+                      {result.message}
+                      {result.stats && (
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-xs opacity-90">
+                          <div>Registros: {result.stats.records}</div>
+                          {result.stats.duplicatesSkipped ? (
+                            <div>
+                              Duplicatas: {result.stats.duplicatesSkipped}
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
                     </AlertDescription>
                   </Alert>
                 </div>
