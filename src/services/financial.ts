@@ -29,6 +29,7 @@ export interface ImportResult {
     // New fields for robust import
     batchId?: string
     rejectedRows?: number
+    rejectedAmount?: number
   }
   failures: any[]
 }
@@ -561,6 +562,8 @@ export async function importarReceivables(
   let globalFailures: any[] = []
   let totalInserted = 0
   let totalInsertedAmount = 0
+  let totalRejectedAmount = 0
+  let totalFileAmount = 0
   let totalDuplicatesSkipped = 0
   // Track specific batch ID for the last successful import to return (mainly useful for single company import)
   let lastBatchId: string | undefined
@@ -619,6 +622,8 @@ export async function importarReceivables(
         totalInsertedAmount += summary.imported_amount
         totalDuplicatesSkipped += summary.rejected_rows
         totalRecordsProcessed += summary.total_rows
+        totalFileAmount += summary.total_amount || 0
+        totalRejectedAmount += summary.rejected_amount || 0
         lastBatchId = summary.batch_id
       } else {
         globalFailures.push({ company: companyNameOrId, error: 'RPC Failed' })
@@ -636,12 +641,13 @@ export async function importarReceivables(
       records: totalInserted,
       importedTotal: totalInsertedAmount,
       fileTotal: totalRecordsProcessed,
-      fileTotalPrincipal: 0,
-      importedPrincipal: 0,
+      fileTotalPrincipal: totalFileAmount,
+      importedPrincipal: totalInsertedAmount,
       failuresTotal: globalFailures.length,
       duplicatesSkipped: totalDuplicatesSkipped,
       batchId: lastBatchId,
       rejectedRows: totalDuplicatesSkipped,
+      rejectedAmount: totalRejectedAmount,
     },
     failures: globalFailures,
   }

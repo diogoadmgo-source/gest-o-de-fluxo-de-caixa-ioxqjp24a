@@ -257,6 +257,8 @@ export interface ImportBatchSummary {
   imported_rows: number
   rejected_rows: number
   imported_amount: number
+  total_amount: number
+  rejected_amount: number
 }
 
 export interface ImportReject {

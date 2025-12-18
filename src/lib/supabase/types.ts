@@ -332,6 +332,94 @@ export type Database = {
           },
         ]
       }
+      import_logs_receivables: {
+        Row: {
+          company_id: string
+          error_message: string | null
+          file_name: string | null
+          finished_at: string | null
+          id: string
+          imported_rows: number | null
+          rejected_rows: number | null
+          started_at: string | null
+          status: string | null
+          total_amount_imported: number | null
+          total_rows: number | null
+          user_id: string | null
+        }
+        Insert: {
+          company_id: string
+          error_message?: string | null
+          file_name?: string | null
+          finished_at?: string | null
+          id?: string
+          imported_rows?: number | null
+          rejected_rows?: number | null
+          started_at?: string | null
+          status?: string | null
+          total_amount_imported?: number | null
+          total_rows?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          company_id?: string
+          error_message?: string | null
+          file_name?: string | null
+          finished_at?: string | null
+          id?: string
+          imported_rows?: number | null
+          rejected_rows?: number | null
+          started_at?: string | null
+          status?: string | null
+          total_amount_imported?: number | null
+          total_rows?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'import_logs_receivables_company_id_fkey'
+            columns: ['company_id']
+            isOneToOne: false
+            referencedRelation: 'companies'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      import_receivables_rejects: {
+        Row: {
+          batch_id: string | null
+          created_at: string | null
+          id: string
+          raw_data: Json | null
+          reason: string | null
+          row_number: number | null
+        }
+        Insert: {
+          batch_id?: string | null
+          created_at?: string | null
+          id?: string
+          raw_data?: Json | null
+          reason?: string | null
+          row_number?: number | null
+        }
+        Update: {
+          batch_id?: string | null
+          created_at?: string | null
+          id?: string
+          raw_data?: Json | null
+          reason?: string | null
+          row_number?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'import_receivables_rejects_batch_id_fkey'
+            columns: ['batch_id']
+            isOneToOne: false
+            referencedRelation: 'import_logs_receivables'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       payables: {
         Row: {
           company_id: string
@@ -527,6 +615,7 @@ export type Database = {
           due_date: string | null
           fine: number | null
           id: string
+          import_batch_id: string | null
           installment: string | null
           interest: number | null
           invoice_number: string | null
@@ -539,6 +628,8 @@ export type Database = {
           raw_status: string | null
           regional: string | null
           seller: string | null
+          source_file_name: string | null
+          source_row_num: number | null
           title_status: string | null
           uf: string | null
           updated_value: number | null
@@ -556,6 +647,7 @@ export type Database = {
           due_date?: string | null
           fine?: number | null
           id?: string
+          import_batch_id?: string | null
           installment?: string | null
           interest?: number | null
           invoice_number?: string | null
@@ -568,6 +660,8 @@ export type Database = {
           raw_status?: string | null
           regional?: string | null
           seller?: string | null
+          source_file_name?: string | null
+          source_row_num?: number | null
           title_status?: string | null
           uf?: string | null
           updated_value?: number | null
@@ -585,6 +679,7 @@ export type Database = {
           due_date?: string | null
           fine?: number | null
           id?: string
+          import_batch_id?: string | null
           installment?: string | null
           interest?: number | null
           invoice_number?: string | null
@@ -597,6 +692,8 @@ export type Database = {
           raw_status?: string | null
           regional?: string | null
           seller?: string | null
+          source_file_name?: string | null
+          source_row_num?: number | null
           title_status?: string | null
           uf?: string | null
           updated_value?: number | null
@@ -881,7 +978,28 @@ export type Database = {
         Args: { p_company_id: string }
         Returns: Json
       }
+      get_receivables_rejects: {
+        Args: { p_batch_id: string; p_page?: number; p_page_size?: number }
+        Returns: {
+          id: string
+          raw_data: Json
+          reason: string
+          row_number: number
+          total_count: number
+        }[]
+      }
+      import_receivables_replace: {
+        Args: {
+          p_company_id: string
+          p_file_name: string
+          p_rows: Json
+          p_user_id: string
+        }
+        Returns: Json
+      }
       is_admin: { Args: never; Returns: boolean }
+      normalize_installment: { Args: { p_inst: string }; Returns: string }
+      parse_date_br: { Args: { p_date_text: string }; Returns: string }
       replace_receivables_for_company: {
         Args: { p_company_id: string; p_rows: Json }
         Returns: Json
