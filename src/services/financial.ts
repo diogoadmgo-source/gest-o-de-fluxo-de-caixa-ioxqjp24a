@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { parse, isValid, format } from 'date-fns'
+import { performanceMonitor } from '@/lib/performance'
 
 // --- Types ---
 export interface PaginatedResult<T> {
@@ -23,7 +24,7 @@ export interface ImportResult {
   failures: any[]
 }
 
-// --- Fetching Helpers (Optimized) ---
+// --- Fetching Helpers (Optimized with Logging) ---
 
 export async function fetchPaginatedReceivables(
   companyId: string,
@@ -37,54 +38,61 @@ export async function fetchPaginatedReceivables(
     sortOrder?: 'asc' | 'desc'
   },
 ): Promise<PaginatedResult<any>> {
-  let query = supabase
-    .from('receivables')
-    .select(
-      'id, invoice_number, order_number, customer, principal_value, updated_value, due_date, issue_date, title_status, uf, installment, fine, interest',
-      { count: 'exact' },
-    )
-    .eq('company_id', companyId)
+  return performanceMonitor.measurePromise(
+    '/receivables',
+    'fetch_paginated',
+    (async () => {
+      let query = supabase
+        .from('receivables')
+        .select(
+          'id, invoice_number, order_number, customer, principal_value, updated_value, due_date, issue_date, title_status, uf, installment, fine, interest',
+          { count: 'exact' },
+        )
+        .eq('company_id', companyId)
 
-  // Filters
-  if (filters.status && filters.status !== 'all') {
-    if (filters.status === 'vencida') {
-      query = query
-        .eq('title_status', 'Aberto')
-        .lt('due_date', new Date().toISOString())
-    } else if (filters.status === 'a_vencer') {
-      query = query
-        .eq('title_status', 'Aberto')
-        .gte('due_date', new Date().toISOString())
-    } else {
-      query = query.eq('title_status', filters.status)
-    }
-  }
+      // Filters
+      if (filters.status && filters.status !== 'all') {
+        if (filters.status === 'vencida') {
+          query = query
+            .eq('title_status', 'Aberto')
+            .lt('due_date', new Date().toISOString())
+        } else if (filters.status === 'a_vencer') {
+          query = query
+            .eq('title_status', 'Aberto')
+            .gte('due_date', new Date().toISOString())
+        } else {
+          query = query.eq('title_status', filters.status)
+        }
+      }
 
-  if (filters.search) {
-    const term = `%${filters.search}%`
-    query = query.or(
-      `customer.ilike.${term},invoice_number.ilike.${term},order_number.ilike.${term}`,
-    )
-  }
+      if (filters.search) {
+        const term = `%${filters.search}%`
+        query = query.or(
+          `customer.ilike.${term},invoice_number.ilike.${term},order_number.ilike.${term}`,
+        )
+      }
 
-  if (filters.dateRange?.from && filters.dateRange?.to) {
-    query = query
-      .gte('due_date', filters.dateRange.from.toISOString())
-      .lte('due_date', filters.dateRange.to.toISOString())
-  }
+      if (filters.dateRange?.from && filters.dateRange?.to) {
+        query = query
+          .gte('due_date', filters.dateRange.from.toISOString())
+          .lte('due_date', filters.dateRange.to.toISOString())
+      }
 
-  // Sorting
-  const sortCol = filters.sortBy || 'due_date'
-  query = query.order(sortCol, { ascending: filters.sortOrder === 'asc' })
+      // Sorting
+      const sortCol = filters.sortBy || 'due_date'
+      query = query.order(sortCol, { ascending: filters.sortOrder === 'asc' })
 
-  // Pagination
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
-  query = query.range(from, to)
+      // Pagination
+      const from = (page - 1) * pageSize
+      const to = from + pageSize - 1
+      query = query.range(from, to)
 
-  const { data, count, error } = await query
+      const { data, count, error } = await query
 
-  return { data: data || [], count: count || 0, error }
+      return { data: data || [], count: count || 0, error }
+    })(),
+    { companyId, page, filters },
+  )
 }
 
 export async function fetchPaginatedPayables(
@@ -94,54 +102,92 @@ export async function fetchPaginatedPayables(
   filters: {
     status?: string
     search?: string
+    supplier?: string
+    dateRange?: { from: Date; to: Date }
   },
 ): Promise<PaginatedResult<any>> {
-  let query = supabase
-    .from('transactions')
-    .select(
-      'id, document_number, entity_name, amount, principal_value, due_date, issue_date, status, fine, interest, category, description',
-      { count: 'exact' },
-    )
-    .eq('company_id', companyId)
-    .eq('type', 'payable')
+  return performanceMonitor.measurePromise(
+    '/payables',
+    'fetch_paginated',
+    (async () => {
+      let query = supabase
+        .from('transactions')
+        .select(
+          'id, document_number, entity_name, amount, principal_value, due_date, issue_date, status, fine, interest, category, description, company_id',
+          { count: 'exact' },
+        )
+        .eq('company_id', companyId)
+        .eq('type', 'payable')
 
-  if (filters.status && filters.status !== 'all') {
-    // Implement specific status filters if needed
-    query = query.eq('status', filters.status)
-  }
+      if (filters.status && filters.status !== 'all') {
+        if (filters.status === 'overdue') {
+          query = query
+            .eq('status', 'pending')
+            .lt('due_date', new Date().toISOString())
+        } else if (filters.status === 'upcoming') {
+          query = query
+            .eq('status', 'pending')
+            .gte('due_date', new Date().toISOString())
+        } else {
+          query = query.eq('status', filters.status)
+        }
+      }
 
-  if (filters.search) {
-    query = query.or(
-      `entity_name.ilike.%${filters.search}%,document_number.ilike.%${filters.search}%`,
-    )
-  }
+      if (filters.search) {
+        query = query.ilike('document_number', `%${filters.search}%`)
+      }
 
-  query = query
-    .order('due_date', { ascending: true })
-    .range((page - 1) * pageSize, page * pageSize - 1)
+      if (filters.supplier) {
+        query = query.ilike('entity_name', `%${filters.supplier}%`)
+      }
 
-  const { data, count, error } = await query
-  return { data: data || [], count: count || 0, error }
+      if (filters.dateRange?.from && filters.dateRange?.to) {
+        query = query
+          .gte('due_date', filters.dateRange.from.toISOString())
+          .lte('due_date', filters.dateRange.to.toISOString())
+      }
+
+      query = query
+        .order('due_date', { ascending: true })
+        .range((page - 1) * pageSize, page * pageSize - 1)
+
+      const { data, count, error } = await query
+      return { data: data || [], count: count || 0, error }
+    })(),
+    { companyId, page, filters },
+  )
 }
 
 // RPC Wrappers
 export async function getDashboardKPIs(companyId: string) {
-  const { data, error } = await supabase.rpc('get_dashboard_kpis', {
-    p_company_id: companyId,
-  })
-  if (error) throw error
-  return data
+  return performanceMonitor.measurePromise(
+    'dashboard',
+    'get_kpis',
+    (async () => {
+      const { data, error } = await supabase.rpc('get_dashboard_kpis', {
+        p_company_id: companyId,
+      })
+      if (error) throw error
+      return data
+    })(),
+  )
 }
 
 export async function getReceivablesDashboardStats(companyId: string) {
-  const { data, error } = await supabase.rpc(
-    'get_receivables_dashboard_stats',
-    {
-      p_company_id: companyId,
-    },
+  return performanceMonitor.measurePromise(
+    'receivables',
+    'get_stats',
+    (async () => {
+      const { data, error } = await supabase.rpc(
+        'get_receivables_dashboard_stats',
+        {
+          p_company_id: companyId,
+        },
+      )
+      if (error) throw error
+      return data
+    })(),
   )
-  if (error) throw error
-  return data
 }
 
 export async function getCashFlowAggregates(
@@ -149,13 +195,19 @@ export async function getCashFlowAggregates(
   startDate: Date,
   endDate: Date,
 ) {
-  const { data, error } = await supabase.rpc('get_cash_flow_aggregates', {
-    p_company_id: companyId,
-    p_start_date: format(startDate, 'yyyy-MM-dd'),
-    p_end_date: format(endDate, 'yyyy-MM-dd'),
-  })
-  if (error) throw error
-  return data
+  return performanceMonitor.measurePromise(
+    'cashflow',
+    'get_aggregates',
+    (async () => {
+      const { data, error } = await supabase.rpc('get_cash_flow_aggregates', {
+        p_company_id: companyId,
+        p_start_date: format(startDate, 'yyyy-MM-dd'),
+        p_end_date: format(endDate, 'yyyy-MM-dd'),
+      })
+      if (error) throw error
+      return data
+    })(),
+  )
 }
 
 // Helpers
@@ -173,8 +225,6 @@ export function n(value: any): number {
   str = str.replace(/^R\$\s?/, '').replace(/\s/g, '')
 
   // Check format
-  // 1.234,56 (BR) -> Last separator is comma
-  // 1,234.56 (US) -> Last separator is dot
   const lastComma = str.lastIndexOf(',')
   const lastDot = str.lastIndexOf('.')
 
@@ -210,7 +260,6 @@ export function d(value: any): string | null {
     if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
   }
 
-  // Fallback for basic ISO substring
   if (str.match(/^\d{4}-\d{2}-\d{2}/)) return str.substring(0, 10)
 
   return null
@@ -315,6 +364,11 @@ export async function salvarPayableManual(payload: any, userId: string) {
     status: payload.status || 'pending',
     due_date: d(payload.due_date),
     issue_date: d(payload.issue_date),
+    category: payload.category,
+    description: payload.description,
+    principal_value: payload.principal_value,
+    fine: payload.fine,
+    interest: payload.interest,
   }
   if (payload.id) {
     return supabase
@@ -376,13 +430,10 @@ export async function importarReceivables(
   companyId: string,
   data: any[],
 ): Promise<ImportResult> {
-  // Column aliases to support various CSV formats
   const getCol = (row: any, keys: string[]) => {
-    // Try exact match first
     for (const key of keys) {
       if (row[key] !== undefined) return row[key]
     }
-    // Try case insensitive match
     const rowKeys = Object.keys(row)
     for (const key of keys) {
       const found = rowKeys.find((k) => k.toLowerCase() === key.toLowerCase())
@@ -391,7 +442,6 @@ export async function importarReceivables(
     return undefined
   }
 
-  // Normalize and map data
   const mappedData = data
     .map((row: any) => ({
       invoice_number: normalizeText(
@@ -513,33 +563,23 @@ export async function importarReceivables(
         getCol(row, ['Descrição', 'Obs', 'description', 'Histórico']),
       ),
     }))
-    // Filter out rows that are clearly invalid (must have customer)
     .filter((r) => r.customer)
 
   if (mappedData.length === 0) {
     return {
       success: false,
-      message:
-        'Nenhum registro válido encontrado no arquivo. Verifique se o arquivo não está vazio e se as colunas estão corretas.',
+      message: 'Nenhum registro válido encontrado no arquivo.',
       failures: [],
     }
   }
 
-  // Client-side Deduplication
-  // This satisfies the requirement to verify data does not contain internal duplicates
   const uniqueRows = new Map()
   let duplicateCount = 0
 
   mappedData.forEach((row) => {
-    // Unique key based on the database unique constraint
     const key = `${row.invoice_number}|${row.order_number}|${row.installment}|${row.principal_value}`
-
     if (uniqueRows.has(key)) {
       duplicateCount++
-      // Keep the last one or skip? We'll keep the first one found (simpler)
-      // Actually, updating with the latest found might be better behavior for "replace" logic if sorted.
-      // But typically we just want to avoid the crash.
-      // Let's stick with: if key exists, we skip it as it's a duplicate in the same batch.
     } else {
       uniqueRows.set(key, row)
     }
@@ -547,8 +587,6 @@ export async function importarReceivables(
 
   const cleanData = Array.from(uniqueRows.values())
 
-  // Use the RPC to atomically replace data for this company
-  // Note: We use the supabase client directly to handle errors properly
   const { data: result, error } = await supabase.rpc(
     'strict_replace_receivables',
     {
@@ -559,71 +597,37 @@ export async function importarReceivables(
 
   if (error) {
     console.error('RPC Error:', error)
-    // Map friendly error message
-    let message =
-      error.message ||
-      'Erro de conexão ao processar importação. Tente novamente.'
-
-    if (
-      message.includes('duplicate key') ||
-      message.includes('receivables_unique_import_v2')
-    ) {
-      message =
-        'Erro de dados duplicados: O arquivo contém registros duplicados (mesma nota, parcela e valor) que violam as regras do banco de dados.'
-    }
-
     return {
       success: false,
-      message: message,
+      message: error.message || 'Erro de conexão.',
       failures: [],
     }
   }
 
   const rpcResponse = result as any
-
   if (!rpcResponse.success) {
-    // Handle error from inside the function
-    let message =
-      rpcResponse.error ||
-      'Erro no processamento dos dados pelo banco. Verifique o formato do arquivo.'
-
-    if (
-      message.includes('duplicate key') ||
-      message.includes('receivables_unique_import_v2')
-    ) {
-      message =
-        'Erro de dados duplicados: O arquivo contém registros duplicados (mesma nota, parcela e valor) que conflitam com dados existentes ou internos.'
-    }
-
     return {
       success: false,
-      message: message,
+      message: rpcResponse.error || 'Erro no processamento.',
       failures: [],
     }
   }
 
-  // Adapt result to standard import format
   const stats = rpcResponse.stats
-  const totalValue = cleanData.reduce(
-    (sum: number, r: any) => sum + r.principal_value,
-    0,
-  )
-
-  // Combine client-side and server-side skipped counts
   const totalSkipped = duplicateCount + (stats?.skipped || 0)
 
   return {
     success: true,
     message:
       totalSkipped > 0
-        ? `Importação realizada com sucesso. ${totalSkipped} duplicatas internas removidas.`
+        ? `Importação realizada. ${totalSkipped} duplicatas removidas.`
         : 'Importação realizada com sucesso.',
     stats: {
       records: stats?.inserted || 0,
-      importedTotal: stats?.inserted_amount || totalValue,
-      fileTotal: totalValue, // Approximation
-      fileTotalPrincipal: totalValue,
-      importedPrincipal: stats?.inserted_amount || totalValue,
+      importedTotal: stats?.inserted_amount || 0,
+      fileTotal: 0,
+      fileTotalPrincipal: 0,
+      importedPrincipal: stats?.inserted_amount || 0,
       failuresTotal: 0,
       duplicatesSkipped: totalSkipped,
     },
@@ -635,8 +639,10 @@ export const importarPayables = async (): Promise<ImportResult> => ({
   success: false,
   message: 'Não implementado',
   failures: [],
-}) // Placeholder for payables
+})
+
 export const salvarBankManual = async (p: any, u: string) => {
+  // Just a wrapper
   return { id: '1', ...p }
 }
 export const salvarImportLogManual = async (p: any, u: string) => {

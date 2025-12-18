@@ -1,14 +1,6 @@
 import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { ReceivableFilters } from '@/components/financial/ReceivableFilters'
 import { ReceivableForm } from '@/components/financial/ReceivableForm'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
@@ -17,18 +9,12 @@ import { fetchPaginatedReceivables } from '@/services/financial'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { useDebounce } from '@/hooks/use-debounce'
 import { Loader2, Plus, Upload } from 'lucide-react'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationPrevious,
-  PaginationNext,
-} from '@/components/ui/pagination'
 import { usePerformanceMeasure } from '@/lib/performance'
 import { ImportDialog } from '@/components/common/ImportDialog'
 import { ReceivableStats } from '@/components/financial/ReceivableStats'
 import { format } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
+import { VirtualTable, VirtualTableColumn } from '@/components/ui/virtual-table'
 
 export default function Receivables() {
   const { selectedCompanyId, addReceivable, updateReceivable } =
@@ -36,6 +22,8 @@ export default function Receivables() {
   const perf = usePerformanceMeasure('/recebiveis', 'render')
 
   // State
+  // We increase page size for better virtualization UX, effectively handling a "large" page
+  const [pageSize] = useState(200)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -49,7 +37,7 @@ export default function Receivables() {
   const [minValue, setMinValue] = useState('')
   const [maxValue, setMaxValue] = useState('')
 
-  const debouncedSearch = useDebounce(searchTerm, 500)
+  const debouncedSearch = useDebounce(searchTerm, 400) // 400ms delay per requirement
 
   // Data Fetching
   const {
@@ -61,7 +49,7 @@ export default function Receivables() {
     () => {
       if (!selectedCompanyId || selectedCompanyId === 'all')
         return Promise.resolve({ data: [], count: 0 })
-      return fetchPaginatedReceivables(selectedCompanyId, page, 20, {
+      return fetchPaginatedReceivables(selectedCompanyId, page, pageSize, {
         search: debouncedSearch,
         status: statusFilter,
         dateRange: dueDateRange,
@@ -69,11 +57,9 @@ export default function Receivables() {
     },
     {
       enabled: !!selectedCompanyId && selectedCompanyId !== 'all',
-      staleTime: 30000,
+      staleTime: 60000, // 1 min cache
     },
   )
-
-  const totalPages = paginatedData ? Math.ceil(paginatedData.count / 20) : 0
 
   // Finish measure
   if (!isLoading) perf.end({ count: paginatedData?.count })
@@ -107,9 +93,77 @@ export default function Receivables() {
     )
   }
 
+  const columns: VirtualTableColumn<any>[] = [
+    {
+      header: 'NF / Pedido',
+      width: '20%',
+      cell: (item) => (
+        <div className="flex flex-col">
+          <span className="font-medium">{item.invoice_number}</span>
+          {item.order_number && (
+            <span className="text-xs text-muted-foreground">
+              Ped: {item.order_number}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: 'Cliente',
+      width: '30%',
+      cell: (item) => (
+        <span className="truncate block" title={item.customer}>
+          {item.customer}
+        </span>
+      ),
+    },
+    {
+      header: 'Vencimento',
+      width: '15%',
+      cell: (item) => (
+        <span>
+          {item.due_date ? format(new Date(item.due_date), 'dd/MM/yyyy') : '-'}
+        </span>
+      ),
+    },
+    {
+      header: 'Emissão',
+      width: '15%',
+      cell: (item) => (
+        <span>
+          {item.issue_date
+            ? format(new Date(item.issue_date), 'dd/MM/yyyy')
+            : '-'}
+        </span>
+      ),
+    },
+    {
+      header: 'Valor',
+      width: '10%',
+      className: 'text-right',
+      cell: (item) => (
+        <span className="font-medium">
+          {(item.updated_value || item.principal_value).toLocaleString(
+            'pt-BR',
+            {
+              style: 'currency',
+              currency: 'BRL',
+            },
+          )}
+        </span>
+      ),
+    },
+    {
+      header: 'Status',
+      width: '10%',
+      className: 'text-center',
+      cell: (item) => getStatusBadge(item.title_status, item.due_date),
+    },
+  ]
+
   return (
-    <div className="space-y-6 animate-fade-in pb-10">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
+      <div className="flex justify-between items-center shrink-0">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">
             Contas a Receber
@@ -129,140 +183,84 @@ export default function Receivables() {
       </div>
 
       {/* Dashboard Stats Panel */}
-      <ReceivableStats companyId={selectedCompanyId} />
+      <div className="shrink-0">
+        <ReceivableStats companyId={selectedCompanyId} />
+      </div>
 
-      <ReceivableFilters
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        status={statusFilter}
-        setStatus={setStatusFilter}
-        dueDateRange={dueDateRange}
-        setDueDateRange={setDueDateRange}
-        issueDateRange={issueDateRange}
-        setIssueDateRange={setIssueDateRange}
-        createdAtRange={createdAtRange}
-        setCreatedAtRange={setCreatedAtRange}
-        minValue={minValue}
-        setMinValue={setMinValue}
-        maxValue={maxValue}
-        setMaxValue={setMaxValue}
-        onClearFilters={() => {
-          setSearchTerm('')
-          setStatusFilter('all')
-          setDueDateRange(undefined)
-        }}
-        hasActiveFilters={
-          !!searchTerm || statusFilter !== 'all' || !!dueDateRange
-        }
-      />
+      <div className="shrink-0">
+        <ReceivableFilters
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          status={statusFilter}
+          setStatus={setStatusFilter}
+          dueDateRange={dueDateRange}
+          setDueDateRange={setDueDateRange}
+          issueDateRange={issueDateRange}
+          setIssueDateRange={setIssueDateRange}
+          createdAtRange={createdAtRange}
+          setCreatedAtRange={setCreatedAtRange}
+          minValue={minValue}
+          setMinValue={setMinValue}
+          maxValue={maxValue}
+          setMaxValue={setMaxValue}
+          onClearFilters={() => {
+            setSearchTerm('')
+            setStatusFilter('all')
+            setDueDateRange(undefined)
+          }}
+          hasActiveFilters={
+            !!searchTerm || statusFilter !== 'all' || !!dueDateRange
+          }
+        />
+      </div>
 
-      <Card>
-        <CardContent className="p-0">
+      <Card className="flex-1 overflow-hidden flex flex-col">
+        <CardContent className="p-0 flex-1">
           {isLoading ? (
-            <div className="h-64 flex items-center justify-center">
+            <div className="h-full flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : !selectedCompanyId || selectedCompanyId === 'all' ? (
-            <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
               <p>Selecione uma empresa para visualizar os dados.</p>
             </div>
-          ) : paginatedData?.data.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
-              <p>Nenhum título encontrado.</p>
-            </div>
           ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>NF / Pedido</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Vencimento</TableHead>
-                    <TableHead>Emissão</TableHead>
-                    <TableHead className="text-right">Valor</TableHead>
-                    <TableHead className="text-center">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedData?.data.map((item: any) => (
-                    <TableRow
-                      key={item.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setEditingItem(item)}
-                    >
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium">
-                            {item.invoice_number}
-                          </span>
-                          {item.order_number && (
-                            <span className="text-xs text-muted-foreground">
-                              Ped: {item.order_number}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell
-                        className="max-w-[200px] truncate"
-                        title={item.customer}
-                      >
-                        {item.customer}
-                      </TableCell>
-                      <TableCell>
-                        {item.due_date
-                          ? format(new Date(item.due_date), 'dd/MM/yyyy')
-                          : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {item.issue_date
-                          ? format(new Date(item.issue_date), 'dd/MM/yyyy')
-                          : '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {(
-                          item.updated_value || item.principal_value
-                        ).toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {getStatusBadge(item.title_status, item.due_date)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <div className="p-4 border-t">
-                <Pagination>
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        href="#"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          if (page > 1) setPage((p) => p - 1)
-                        }}
-                      />
-                    </PaginationItem>
-                    <span className="px-4 text-sm text-muted-foreground">
-                      Página {page} de {totalPages || 1}
-                    </span>
-                    <PaginationItem>
-                      <PaginationNext
-                        href="#"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          if (page < totalPages) setPage((p) => p + 1)
-                        }}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              </div>
-            </>
+            <div className="h-full">
+              <VirtualTable
+                data={paginatedData?.data || []}
+                columns={columns}
+                rowHeight={60}
+                visibleHeight="100%"
+                onRowClick={setEditingItem}
+                className="h-full border-0 rounded-none"
+              />
+            </div>
           )}
         </CardContent>
+        {/* Simple pagination for large sets if needed, though virtualization handles scroll within the set */}
+        <div className="p-2 border-t text-xs text-muted-foreground text-center shrink-0">
+          Mostrando {paginatedData?.data.length} de {paginatedData?.count}{' '}
+          registros (Página {page})
+          {/* Pagination controls could be added here if dataset > 200 */}
+          <div className="flex justify-center gap-2 mt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              Ant
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!paginatedData || paginatedData.data.length < pageSize}
+            >
+              Próx
+            </Button>
+          </div>
+        </div>
       </Card>
 
       <Dialog open={!!editingItem} onOpenChange={() => setEditingItem(null)}>

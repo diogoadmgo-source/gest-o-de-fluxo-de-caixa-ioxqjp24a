@@ -39,6 +39,23 @@ class PerformanceMonitor {
     }
   }
 
+  public async measurePromise<T>(
+    route: string,
+    action: string,
+    promise: Promise<T>,
+    meta?: any,
+  ): Promise<T> {
+    const start = performance.now()
+    try {
+      const result = await promise
+      this.log(route, action, start, { ...meta, status: 'success' })
+      return result
+    } catch (error) {
+      this.log(route, action, start, { ...meta, status: 'error' })
+      throw error
+    }
+  }
+
   private async flush() {
     if (this.queue.length === 0) return
 
@@ -49,6 +66,7 @@ class PerformanceMonitor {
       const {
         data: { user },
       } = await supabase.auth.getUser()
+
       if (user) {
         await supabase.from('performance_logs').insert(
           itemsToFlush.map((item) => ({
@@ -62,7 +80,10 @@ class PerformanceMonitor {
       }
     } catch (error) {
       console.error('Failed to flush performance logs', error)
-      // Re-queue items if needed, or drop to avoid memory leak
+      // Limit queue size to prevent memory leaks if flush keeps failing
+      if (this.queue.length > 100) {
+        this.queue = this.queue.slice(-50)
+      }
     }
   }
 
