@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Card,
   CardContent,
@@ -26,6 +26,7 @@ import {
   Upload,
   Copy,
   Download,
+  FilePlus,
 } from 'lucide-react'
 import {
   Dialog,
@@ -56,6 +57,7 @@ import { Transaction } from '@/lib/types'
 import { PayableForm } from '@/components/financial/PayableForm'
 import { PayableStats } from '@/components/financial/PayableStats'
 import { PayableFilters } from '@/components/financial/PayableFilters'
+import { PayablesChart } from '@/components/financial/PayablesChart'
 import {
   format,
   parseISO,
@@ -161,7 +163,7 @@ export default function Payables() {
       .sort(
         (a, b) =>
           new Date(a.due_date).getTime() - new Date(b.due_date).getTime(),
-      ) // Default sort: Maturity Ascending
+      ) // Always sort by Due Date Ascending
   }, [
     payables,
     searchTerm,
@@ -186,7 +188,8 @@ export default function Payables() {
     const next7 = addDays(today, 7)
     const next30 = addDays(today, 30)
 
-    // Find next maturity date (first future date)
+    // Find next maturity date (first future date from sorted list)
+    // List is already sorted by date asc. We just need the first one >= today
     const futureItems = filteredData.filter(
       (t) => parseISO(t.due_date) >= today,
     )
@@ -416,8 +419,8 @@ export default function Payables() {
             variant="default"
             onClick={() => setEditingItem({} as Transaction)}
           >
-            <Plus className="mr-2 h-4 w-4" />
-            Nova Conta
+            <FilePlus className="mr-2 h-4 w-4" />
+            Lançamento Manual
           </Button>
         </div>
       </div>
@@ -442,6 +445,8 @@ export default function Payables() {
         onClearFilters={handleClearFilters}
         hasActiveFilters={hasActiveFilters}
       />
+
+      <PayablesChart data={filteredData} />
 
       <Card>
         <CardHeader className="py-4">
@@ -598,8 +603,11 @@ export default function Payables() {
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>
-              {editingItem?.id ? 'Editar Obrigação' : 'Nova Obrigação'}
+              {editingItem?.id ? 'Editar Obrigação' : 'Lançamento Manual'}
             </DialogTitle>
+            <CardDescription className="text-xs">
+              Preencha os dados da conta a pagar.
+            </CardDescription>
           </DialogHeader>
           {editingItem && (
             <PayableForm
