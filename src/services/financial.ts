@@ -585,7 +585,9 @@ export async function importarReceivables(
     }[],
     lastCompanyId: '' as string,
     fileTotal: 0,
+    fileTotalPrincipal: 0, // NEW: Track principal specifically
     importedTotal: 0,
+    importedPrincipal: 0, // NEW: Track inserted principal
   }
 
   if (rows.length === 0) {
@@ -606,8 +608,13 @@ export async function importarReceivables(
     const row = rows[i]
     let currentDoc = ''
     let currentVal = 0
+    let currentPrincipal = 0
 
     // Capture value early for File Total integrity checks
+    currentPrincipal = n(
+      row['Vlr Principal'] || row['principal_value'] || row['valor_principal'],
+    )
+
     currentVal = n(
       row['Vlr Atualizado'] ||
         row['updated_value'] ||
@@ -637,6 +644,7 @@ export async function importarReceivables(
 
       // Add to File Total (Gross) after garbage check
       results.fileTotal += currentVal
+      results.fileTotalPrincipal += currentPrincipal
 
       if (companyNameInRow) {
         if (companyIdCache.has(companyNameInRow)) {
@@ -697,11 +705,7 @@ export async function importarReceivables(
             row['payment_prediction'] ||
             row['previsao_de_pagamento'],
         ),
-        principal_value: n(
-          row['Vlr Principal'] ||
-            row['principal_value'] ||
-            row['valor_principal'],
-        ),
+        principal_value: currentPrincipal,
         fine: n(row['Multa'] || row['fine'] || row['multa']),
         interest: n(row['Juros'] || row['interest'] || row['juros']),
         updated_value: currentVal,
@@ -731,10 +735,11 @@ export async function importarReceivables(
       }
 
       // Check Duplicates within the file
-      // UPDATED: Now includes principal_value to allow same-installment duplicates if values differ
-      const key = `${companyId}|${dbItem.invoice_number}|${dbItem.order_number}|${dbItem.installment}|${dbItem.principal_value}`
+      // UPDATED: Now includes principal_value to allow same-installment duplicates if values differ.
+      // UPDATED: Removed order_number from key to enforce stricter deduplication per AC.
+      const key = `${companyId}|${dbItem.invoice_number}|${dbItem.installment}|${dbItem.principal_value}`
       if (uniqueKeys.has(key)) {
-        throw new Error('Registro duplicado no arquivo.')
+        throw new Error('Registro duplicado no arquivo (NF/Parcela/Valor).')
       }
       uniqueKeys.add(key)
 
@@ -777,6 +782,7 @@ export async function importarReceivables(
         results.deleted += data.stats?.deleted || 0
         // Use the actual inserted amount from DB for accuracy
         results.importedTotal += data.stats?.inserted_amount || 0
+        results.importedPrincipal += data.stats?.inserted_principal || 0 // NEW
       } else {
         throw new Error(data?.error || 'Erro desconhecido ao substituir dados.')
       }
@@ -818,7 +824,9 @@ export async function importarPayables(
     }[],
     lastCompanyId: '' as string,
     fileTotal: 0,
+    fileTotalPrincipal: 0,
     importedTotal: 0,
+    importedPrincipal: 0,
   }
 
   if (rows.length === 0) {
@@ -875,6 +883,7 @@ export async function importarPayables(
 
       // Add to file total (Gross)
       results.fileTotal += currentVal
+      results.fileTotalPrincipal += principal
 
       if (companyNameInRow) {
         if (companyIdCache.has(companyNameInRow)) {
@@ -997,7 +1006,12 @@ export async function importarPayables(
           (sum: number, r: any) => sum + (r.amount || 0),
           0,
         )
+        const insertedPrincipal = companyRows.reduce(
+          (sum: number, r: any) => sum + (r.principal_value || 0),
+          0,
+        )
         results.importedTotal += insertedAmount
+        results.importedPrincipal += insertedPrincipal
       } else {
         throw new Error(data?.error || 'Erro desconhecido ao processar dados.')
       }

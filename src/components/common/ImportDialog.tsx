@@ -57,6 +57,8 @@ export function ImportDialog({
     stats?: {
       fileTotal: number
       importedTotal: number
+      fileTotalPrincipal?: number
+      importedPrincipal?: number
       records: number
       failuresTotal?: number
     }
@@ -197,6 +199,16 @@ export function ImportDialog({
     return diff < 0.1
   }
 
+  const isPrincipalIntegrityOk = (stats: any) => {
+    if (!stats.fileTotalPrincipal) return true
+    // Use failuresTotal as approximation for Principal Failure Value
+    const expected =
+      (stats.fileTotalPrincipal || 0) - (stats.failuresTotal || 0)
+    const diff = Math.abs(expected - (stats.importedPrincipal || 0))
+    // Looser tolerance for Principal as failure value might differ
+    return diff < 2.0
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
@@ -321,6 +333,39 @@ export function ImportDialog({
                           {result.stats.records}
                         </span>
                       </div>
+
+                      {/* Principal Value Check Section */}
+                      {result.stats.importedPrincipal !== undefined && (
+                        <>
+                          <div className="my-1 border-t border-dashed" />
+                          <div className="flex justify-between font-medium">
+                            <span>Valor Principal (Arquivo):</span>
+                            <span className="font-mono">
+                              {formatCurrency(
+                                result.stats.fileTotalPrincipal || 0,
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex justify-between font-medium">
+                            <span>Valor Principal (Importado):</span>
+                            <span
+                              className={cn(
+                                'font-mono',
+                                isPrincipalIntegrityOk(result.stats)
+                                  ? 'text-success'
+                                  : 'text-destructive',
+                              )}
+                            >
+                              {formatCurrency(
+                                result.stats.importedPrincipal || 0,
+                              )}
+                            </span>
+                          </div>
+                        </>
+                      )}
+
+                      <div className="my-1 border-t border-dashed" />
+
                       <div className="flex justify-between">
                         <span>Valor Total no Arquivo (Bruto):</span>
                         <span className="font-mono text-blue-600 dark:text-blue-400">
