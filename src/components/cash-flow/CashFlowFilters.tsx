@@ -7,8 +7,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Filter } from 'lucide-react'
+import useCashFlowStore from '@/stores/useCashFlowStore'
 
 export function CashFlowFilters() {
+  const { companies, selectedCompanyId, setSelectedCompanyId } =
+    useCashFlowStore()
+
   return (
     <div className="space-y-4 mb-6">
       <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center justify-between">
@@ -25,15 +29,23 @@ export function CashFlowFilters() {
               </SelectContent>
             </Select>
           </div>
-          <div className="w-[180px]">
-            <Select defaultValue="all_branches">
+          <div className="w-[240px]">
+            <Select
+              value={selectedCompanyId || 'all_branches'}
+              onValueChange={(val) =>
+                setSelectedCompanyId(val === 'all_branches' ? null : val)
+              }
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Filial" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all_branches">Todas as Filiais</SelectItem>
-                <SelectItem value="matriz">Matriz</SelectItem>
-                <SelectItem value="sp">Filial SP</SelectItem>
+                {companies.map((company) => (
+                  <SelectItem key={company.id} value={company.id}>
+                    {company.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

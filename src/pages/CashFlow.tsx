@@ -26,6 +26,7 @@ import {
   ArrowDown,
   ArrowUp,
   CalendarIcon,
+  Landmark,
 } from 'lucide-react'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import {
@@ -62,6 +63,7 @@ export default function CashFlow() {
     receivables,
     payables,
     accountPayables,
+    adjustments,
   } = useCashFlowStore()
   const [loading, setLoading] = useState(false)
 
@@ -194,24 +196,38 @@ export default function CashFlow() {
   // Daily Calculations for Cards based on selectedDate
   const dailyReceivables = receivables
     .filter((r) => r.due_date && isSameDay(parseISO(r.due_date), selectedDate))
-    .reduce((sum, r) => sum + (r.principal_value || 0), 0)
+    .reduce((sum, r) => sum + (r.updated_value || r.principal_value || 0), 0)
 
   const dailyPayablesTransactions = payables
     .filter(
       (p) =>
         p.due_date &&
         isSameDay(parseISO(p.due_date), selectedDate) &&
-        p.status !== 'paid' &&
         p.status !== 'cancelled',
     )
-    .reduce((sum, p) => sum + (p.principal_value || p.amount || 0), 0)
+    .reduce((sum, p) => sum + (p.amount || 0), 0)
 
   const dailyAccountPayables = accountPayables
     .filter((p) => p.due_date && isSameDay(parseISO(p.due_date), selectedDate))
     .reduce((sum, p) => sum + (p.principal_value || 0), 0)
 
   const totalDailyPayables = dailyPayablesTransactions + dailyAccountPayables
-  const dailyBalance = dailyReceivables - totalDailyPayables
+
+  // Adjustments
+  const dailyAdjustments = adjustments.filter(
+    (a) => isSameDay(parseISO(a.date), selectedDate) && a.status === 'approved',
+  )
+  const adjustmentsNet = dailyAdjustments.reduce(
+    (sum, a) => sum + (a.type === 'credit' ? a.amount : -a.amount),
+    0,
+  )
+
+  const dailyBalance = dailyReceivables - totalDailyPayables + adjustmentsNet
+
+  // Find the calculated entry for selected date to display aggregated Accumulated Balance
+  const selectedEntry = cashFlowEntries.find((e) =>
+    isSameDay(parseISO(e.date), selectedDate),
+  )
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
@@ -296,7 +312,7 @@ export default function CashFlow() {
       </div>
 
       {/* Categorized Dashboard - Daily Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-success">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -364,6 +380,27 @@ export default function CashFlow() {
                 style: 'currency',
                 currency: 'BRL',
               })}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-l-4 border-l-blue-500 bg-blue-50/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Landmark className="h-4 w-4 text-blue-500" />
+              Saldo Projetado
+            </CardTitle>
+            <CardDescription>
+              {format(selectedDate, 'dd/MM/yyyy')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">
+              {selectedEntry
+                ? selectedEntry.accumulated_balance.toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })
+                : '---'}
             </div>
           </CardContent>
         </Card>

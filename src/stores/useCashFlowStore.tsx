@@ -16,8 +16,15 @@ import {
   FinancialAdjustment,
   Payable,
 } from '@/lib/types'
-import { generateCashFlowData } from '@/lib/mock-data'
-import { isSameDay, parseISO } from 'date-fns'
+import {
+  isSameDay,
+  parseISO,
+  startOfDay,
+  subDays,
+  addDays,
+  isAfter,
+  isBefore,
+} from 'date-fns'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -40,7 +47,7 @@ interface CashFlowContextType {
 
   receivables: Receivable[]
   payables: Transaction[]
-  accountPayables: Payable[] // From payables table
+  accountPayables: Payable[]
   bankBalances: BankBalance[]
   adjustments: FinancialAdjustment[]
   cashFlowEntries: CashFlowEntry[]
@@ -137,14 +144,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return
 
     setLoading(true)
-    setReceivables([])
-    setPayables([])
-    setAccountPayables([])
-    setBanks([])
-    setBankBalances([])
-    setAdjustments([])
-    setCashFlowEntries([])
-    setImportHistory([])
+    // Clear data only if changing scope significantly to avoid flash
+    // But for safety let's clear to avoid mixing data
+    if (!selectedCompanyId) {
+      // Logic could be refined to not clear if just refreshing
+    }
 
     try {
       const visibleIds = await getVisibleCompanyIds(
@@ -205,7 +209,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .select(
           'id, name, code, type, institution, agency, account_number, account_digit, company_id, active, created_at',
         )
-        .eq('active', true)
+        // We fetch inactive too to calculate history if needed, but for "Active Balance" user story says "active: true".
+        // Let's fetch all and filter in memory.
         .order('created_at', { ascending: false })
 
       if (visibleIds.length > 0) {
@@ -294,18 +299,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       : companies.filter((c) => allowedCompanyIds.includes(c.id))
 
   useEffect(() => {
-    if (
-      selectedCompanyId &&
-      userProfile?.profile !== 'Administrator' &&
-      !allowedCompanyIds.includes(selectedCompanyId)
-    ) {
-      if (allowedCompanyIds.length > 0) {
-        setSelectedCompanyId(null)
-      }
-    }
-  }, [selectedCompanyId, allowedCompanyIds, userProfile])
-
-  useEffect(() => {
     performRecalculation()
   }, [
     receivables,
@@ -314,120 +307,179 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     bankBalances,
     adjustments,
     selectedCompanyId,
-    companies,
+    banks, // Added dependency
   ])
 
   const performRecalculation = () => {
-    if (
-      receivables.length === 0 &&
-      payables.length === 0 &&
-      accountPayables.length === 0 &&
-      bankBalances.length === 0 &&
-      adjustments.length === 0
-    ) {
-      setCashFlowEntries([])
-      return
+    // Determine Scope
+    const today = startOfDay(new Date())
+    const startGenDate = subDays(today, 60) // 2 months back for history
+    const endGenDate = addDays(today, 180) // 6 months forward for projection
+
+    // 1. Identify active banks for current scope
+    const activeBanks = banks.filter((b) => b.active)
+    const scopeBanks =
+      selectedCompanyId && selectedCompanyId !== 'all'
+        ? activeBanks.filter((b) => b.company_id === selectedCompanyId)
+        : activeBanks
+
+    // 2. Calculate Anchor Balance (Latest balance <= Today)
+    let anchorBalance = 0
+    scopeBanks.forEach((bank) => {
+      const bankBals = bankBalances.filter((b) => b.bank_id === bank.id)
+
+      // Find latest balance strictly before or on today
+      const sorted = bankBals
+        .filter((b) => !isAfter(parseISO(b.date), today))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+      if (sorted.length > 0) {
+        anchorBalance += sorted[0].balance
+      }
+    })
+
+    // 3. Generate Daily Flows
+    const dates: Date[] = []
+    let curr = startGenDate
+    while (curr <= endGenDate) {
+      dates.push(curr)
+      curr = addDays(curr, 1)
     }
 
-    const baseEntries = generateCashFlowData(90)
-
-    const sortedEntries = [...baseEntries].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    )
-
-    let currentAccumulated = 0
-
-    const newEntries = sortedEntries.map((entry, index) => {
-      const entryDate = parseISO(entry.date)
-
-      // Sum Receivables
+    const flowData = dates.map((date) => {
+      // Filter Receivables
       const dayReceivables = receivables
         .filter(
           (r) =>
-            isSameDay(parseISO(r.due_date), entryDate) &&
-            r.title_status === 'Aberto',
+            isSameDay(parseISO(r.due_date), date) &&
+            r.title_status !== 'Cancelado' &&
+            // Exclude paid items in future (unlikely but safe)
+            (isBefore(date, today) ? true : r.title_status === 'Aberto'),
         )
         .reduce(
           (sum, r) => sum + (r.updated_value || r.principal_value || 0),
           0,
         )
 
-      // Sum Payables (Transactions)
+      // Filter Payables (Transactions)
       const dayPayablesTransactions = payables
         .filter(
           (p) =>
-            isSameDay(parseISO(p.due_date), entryDate) &&
-            p.status !== 'paid' &&
-            p.status !== 'cancelled',
+            isSameDay(parseISO(p.due_date), date) &&
+            p.status !== 'cancelled' &&
+            (isBefore(date, today) ? true : p.status !== 'paid'),
         )
         .reduce((sum, p) => sum + (p.amount || 0), 0)
 
-      // Sum Payables (Table)
+      // Filter Payables (Table)
       const dayAccountPayables = accountPayables
-        .filter((p) => p.due_date && isSameDay(parseISO(p.due_date), entryDate))
+        .filter((p) => p.due_date && isSameDay(parseISO(p.due_date), date))
         .reduce((sum, p) => sum + (p.principal_value || 0), 0)
 
       const totalDayPayables = dayPayablesTransactions + dayAccountPayables
 
-      // Sum Adjustments
-      const dayAdjustments = adjustments.filter((a) =>
-        isSameDay(parseISO(a.date), entryDate),
+      // Filter Adjustments
+      const dayAdjustments = adjustments.filter(
+        (a) => isSameDay(parseISO(a.date), date) && a.status === 'approved',
       )
       const adjustmentsCredit = dayAdjustments
-        .filter((a) => a.type === 'credit' && a.status === 'approved')
+        .filter((a) => a.type === 'credit')
         .reduce((sum, a) => sum + a.amount, 0)
-
       const adjustmentsDebit = dayAdjustments
-        .filter((a) => a.type === 'debit' && a.status === 'approved')
+        .filter((a) => a.type === 'debit')
         .reduce((sum, a) => sum + a.amount, 0)
-
-      // Bank Balances (Initial/Opening for Day 0)
-      const dayBalances = bankBalances.filter((b) =>
-        isSameDay(parseISO(b.date), entryDate),
-      )
-
-      const manualBalanceSum = dayBalances.reduce(
-        (sum, b) => sum + b.balance,
-        0,
-      )
-      const hasManualBalance = dayBalances.length > 0
-
-      let openingBalance = 0
-      if (index === 0) {
-        openingBalance = hasManualBalance ? manualBalanceSum : 0
-      } else {
-        openingBalance = currentAccumulated
-      }
 
       const dailyBalance =
         dayReceivables - totalDayPayables + adjustmentsCredit - adjustmentsDebit
 
-      let accumulatedBalance = openingBalance + dailyBalance
-
-      if (hasManualBalance) {
-        accumulatedBalance = manualBalanceSum
-      }
-
-      currentAccumulated = accumulatedBalance
+      // Check imports/other (using 0 for now as they are not fully implemented in flow calculation yet)
+      const imports = 0
+      const other_expenses = 0
 
       return {
-        ...entry,
-        opening_balance: openingBalance,
-        total_receivables: dayReceivables,
-        total_payables: totalDayPayables,
-        imports: 0,
-        other_expenses: 0,
-        adjustments_credit: adjustmentsCredit,
-        adjustments_debit: adjustmentsDebit,
-        daily_balance: dailyBalance,
-        accumulated_balance: accumulatedBalance,
-        has_alert: accumulatedBalance < 0,
-        alert_message:
-          accumulatedBalance < 0 ? 'Saldo negativo projetado' : undefined,
+        date,
+        dayReceivables,
+        totalDayPayables,
+        imports,
+        other_expenses,
+        adjustmentsCredit,
+        adjustmentsDebit,
+        dailyBalance,
       }
     })
 
-    setCashFlowEntries(newEntries)
+    // 4. Calculate Accumulated Balances using Anchor
+    const todayIndex = flowData.findIndex((f) => isSameDay(f.date, today))
+
+    // Initialize map
+    const entriesMap: Record<string, CashFlowEntry> = {}
+
+    if (todayIndex !== -1) {
+      // A. Forward from Today
+      let currentAccumulated = anchorBalance
+      for (let i = todayIndex; i < flowData.length; i++) {
+        const flow = flowData[i]
+        const opening = currentAccumulated
+        const accumulated = opening + flow.dailyBalance
+
+        entriesMap[flow.date.toISOString()] = {
+          date: flow.date.toISOString(),
+          opening_balance: opening,
+          total_receivables: flow.dayReceivables,
+          total_payables: flow.totalDayPayables,
+          imports: flow.imports,
+          other_expenses: flow.other_expenses,
+          adjustments_credit: flow.adjustmentsCredit,
+          adjustments_debit: flow.adjustmentsDebit,
+          daily_balance: flow.dailyBalance,
+          accumulated_balance: accumulated,
+          has_alert: accumulated < 0,
+          alert_message: accumulated < 0 ? 'Saldo negativo' : undefined,
+          is_projected: true,
+          is_weekend: flow.date.getDay() === 0 || flow.date.getDay() === 6,
+        }
+
+        currentAccumulated = accumulated
+      }
+
+      // B. Backward from Today (Reconstruction)
+      // Open(Today) = Anchor.
+      // Close(Yesterday) = Open(Today).
+      // Open(Yesterday) = Close(Yesterday) - DailyFlow(Yesterday).
+      let nextOpening = anchorBalance
+      for (let i = todayIndex - 1; i >= 0; i--) {
+        const flow = flowData[i]
+        const accumulated = nextOpening // Yesterday's close is Today's open
+        const opening = accumulated - flow.dailyBalance
+
+        entriesMap[flow.date.toISOString()] = {
+          date: flow.date.toISOString(),
+          opening_balance: opening,
+          total_receivables: flow.dayReceivables,
+          total_payables: flow.totalDayPayables,
+          imports: flow.imports,
+          other_expenses: flow.other_expenses,
+          adjustments_credit: flow.adjustmentsCredit,
+          adjustments_debit: flow.adjustmentsDebit,
+          daily_balance: flow.dailyBalance,
+          accumulated_balance: accumulated,
+          has_alert: accumulated < 0,
+          alert_message:
+            accumulated < 0 ? 'Saldo negativo histórico' : undefined,
+          is_projected: false,
+          is_weekend: flow.date.getDay() === 0 || flow.date.getDay() === 6,
+        }
+
+        nextOpening = opening
+      }
+    }
+
+    // Convert map to sorted array
+    const finalEntries = Object.values(entriesMap).sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    )
+
+    setCashFlowEntries(finalEntries)
   }
 
   const logAudit = async (
@@ -537,7 +589,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     )
     if (visibleIds.length > 0) {
       await supabase
-        .from('bank_balances_v2') // Updated
+        .from('bank_balances_v2')
         .delete()
         .in('company_id', visibleIds)
     }
@@ -702,7 +754,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       // Integrity Check
       const integrityDiff = Math.abs(fileTotal - importedTotal)
-      const isIntegrityError = integrityDiff > 0.1 // Tolerance for floating point
+      const isIntegrityError = integrityDiff > 0.1
 
       if (isIntegrityError) {
         importResults.errors.push(
@@ -803,7 +855,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const recalculateCashFlow = () => {
-    fetchData()
+    performRecalculation()
   }
 
   return (
