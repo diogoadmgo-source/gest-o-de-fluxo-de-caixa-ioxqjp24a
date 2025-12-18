@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 interface ReceivableStatsProps {
   companyId: string | null
-  lastUpdate?: number // Trigger to force refetch
+  lastUpdate?: number
 }
 
 export function ReceivableStats({
@@ -21,8 +21,8 @@ export function ReceivableStats({
     },
     {
       enabled: !!companyId && companyId !== 'all',
-      staleTime: 60000, // 1 minute
-      dependencies: [lastUpdate], // Ensure explicit dependency
+      staleTime: 60000,
+      dependencies: [lastUpdate],
     },
   )
 

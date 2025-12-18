@@ -34,6 +34,8 @@ export async function fetchPaginatedReceivables(
     status?: string
     search?: string
     dateRange?: { from: Date; to: Date }
+    issueDateRange?: { from: Date; to: Date }
+    createdAtRange?: { from: Date; to: Date }
     sortBy?: string
     sortOrder?: 'asc' | 'desc'
   },
@@ -43,7 +45,6 @@ export async function fetchPaginatedReceivables(
     'fetch_paginated',
     (async () => {
       // MANDATORY: Strict company_id filter
-      // Selecting all required columns for the grid
       let query = supabase
         .from('receivables')
         .select(
@@ -52,7 +53,7 @@ export async function fetchPaginatedReceivables(
         )
         .eq('company_id', companyId)
 
-      // Filters
+      // Status Filters
       if (filters.status && filters.status !== 'all') {
         if (filters.status === 'vencida') {
           query = query
@@ -67,6 +68,7 @@ export async function fetchPaginatedReceivables(
         }
       }
 
+      // Search Filter
       if (filters.search) {
         const term = `%${filters.search}%`
         query = query.or(
@@ -74,10 +76,25 @@ export async function fetchPaginatedReceivables(
         )
       }
 
+      // Due Date Range Filter
       if (filters.dateRange?.from && filters.dateRange?.to) {
         query = query
           .gte('due_date', filters.dateRange.from.toISOString())
           .lte('due_date', filters.dateRange.to.toISOString())
+      }
+
+      // Issue Date Range Filter
+      if (filters.issueDateRange?.from && filters.issueDateRange?.to) {
+        query = query
+          .gte('issue_date', filters.issueDateRange.from.toISOString())
+          .lte('issue_date', filters.issueDateRange.to.toISOString())
+      }
+
+      // Created At Range Filter
+      if (filters.createdAtRange?.from && filters.createdAtRange?.to) {
+        query = query
+          .gte('created_at', filters.createdAtRange.from.toISOString())
+          .lte('created_at', filters.createdAtRange.to.toISOString())
       }
 
       // Sorting
@@ -582,7 +599,6 @@ export async function importarReceivables(
   mappedData.forEach((row) => {
     // Treat empty strings as potentially matching nulls or empty strings
     // Key matches the Unique Constraint: company_id + invoice + order + installment + principal
-    // Use fallback to '' for keys to ensure consistent hashing
     const key = `${row.invoice_number || ''}|${row.order_number || ''}|${row.installment || ''}|${row.principal_value}`
 
     if (uniqueRows.has(key)) {
@@ -631,7 +647,7 @@ export async function importarReceivables(
         : 'Importação realizada com sucesso.',
     stats: {
       records: stats?.inserted || 0,
-      importedTotal: stats?.inserted_amount || 0, // RPC might not return amount, careful
+      importedTotal: stats?.inserted_amount || 0,
       fileTotal: 0,
       fileTotalPrincipal: 0,
       importedPrincipal: 0,

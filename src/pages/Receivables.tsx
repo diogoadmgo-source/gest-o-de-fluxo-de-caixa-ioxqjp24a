@@ -12,25 +12,22 @@ import { Loader2, Plus, Upload } from 'lucide-react'
 import { usePerformanceMeasure } from '@/lib/performance'
 import { ImportDialog } from '@/components/common/ImportDialog'
 import { ReceivableStats } from '@/components/financial/ReceivableStats'
-import { format } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { VirtualTable, VirtualTableColumn } from '@/components/ui/virtual-table'
 
 export default function Receivables() {
   const { selectedCompanyId, addReceivable, updateReceivable } =
     useCashFlowStore()
-  // Maintain performance instrumentation
   const perf = usePerformanceMeasure('/recebiveis', 'render')
 
-  // State
-  // Large page size for virtualization efficiency
+  // State (v0.77 restoration configuration)
   const [pageSize] = useState(200)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<any>(null)
-  const [dataVersion, setDataVersion] = useState(0) // Control version for dashboard sync
+  const [dataVersion, setDataVersion] = useState(0)
 
   // Advanced filters state
   const [dueDateRange, setDueDateRange] = useState<any>(undefined)
@@ -39,16 +36,15 @@ export default function Receivables() {
   const [minValue, setMinValue] = useState('')
   const [maxValue, setMaxValue] = useState('')
 
-  // Debounce for filter inputs (required 300-500ms)
   const debouncedSearch = useDebounce(searchTerm, 400)
 
-  // Data Fetching with company_id enforcement
+  // Data Fetching with full filter support to ensure integrity
   const {
     data: paginatedData,
     isLoading,
     refetch,
   } = useQuery(
-    `receivables-${selectedCompanyId}-${page}-${debouncedSearch}-${statusFilter}-${JSON.stringify(dueDateRange)}`,
+    `receivables-${selectedCompanyId}-${page}-${debouncedSearch}-${statusFilter}-${JSON.stringify(dueDateRange)}-${JSON.stringify(issueDateRange)}-${JSON.stringify(createdAtRange)}`,
     () => {
       if (!selectedCompanyId || selectedCompanyId === 'all')
         return Promise.resolve({ data: [], count: 0 })
@@ -56,15 +52,16 @@ export default function Receivables() {
         search: debouncedSearch,
         status: statusFilter,
         dateRange: dueDateRange,
+        issueDateRange: issueDateRange,
+        createdAtRange: createdAtRange,
       })
     },
     {
       enabled: !!selectedCompanyId && selectedCompanyId !== 'all',
-      staleTime: 60000, // 1 min cache for stable entities
+      staleTime: 60000,
     },
   )
 
-  // Finish measure
   if (!isLoading) perf.end({ count: paginatedData?.count })
 
   const handleSave = async (data: any) => {
@@ -72,11 +69,22 @@ export default function Receivables() {
     else await addReceivable(data)
     setEditingItem(null)
     refetch()
-    setDataVersion((v) => v + 1) // Refresh stats
+    setDataVersion((v) => v + 1)
+  }
+
+  // Safe Date Formatting to avoid timezone issues
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return '-'
+    // Assuming YYYY-MM-DD format from DB
+    const [y, m, d] = dateStr.split('-')
+    if (!y || !m || !d) return dateStr
+    return `${d}/${m}/${y}`
   }
 
   const getStatusBadge = (status: string, dueDate: string) => {
-    const isOverdue = new Date(dueDate) < new Date() && status === 'Aberto'
+    const today = new Date().toISOString().split('T')[0]
+    const isOverdue = dueDate < today && status === 'Aberto'
+
     if (status === 'Liquidado')
       return <Badge className="bg-emerald-500">Liquidado</Badge>
     if (status === 'Cancelado')
@@ -148,15 +156,10 @@ export default function Receivables() {
       cell: (item) => (
         <div className="flex flex-col">
           <span className="text-xs font-medium">
-            {item.due_date
-              ? format(new Date(item.due_date), 'dd/MM/yyyy')
-              : '-'}
+            {formatDate(item.due_date)}
           </span>
           <span className="text-[10px] text-muted-foreground">
-            Emis:{' '}
-            {item.issue_date
-              ? format(new Date(item.issue_date), 'dd/MM/yyyy')
-              : '-'}
+            Emis: {formatDate(item.issue_date)}
           </span>
         </div>
       ),
@@ -221,7 +224,6 @@ export default function Receivables() {
     },
   ]
 
-  // Clean, standard layout (v0.77 functional state)
   return (
     <div className="space-y-6 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
       <div className="flex justify-between items-center shrink-0">
@@ -243,7 +245,6 @@ export default function Receivables() {
         </div>
       </div>
 
-      {/* Dashboard Stats Panel - Synchronized via dataVersion */}
       <div className="shrink-0">
         <ReceivableStats
           companyId={selectedCompanyId}
@@ -271,9 +272,18 @@ export default function Receivables() {
             setSearchTerm('')
             setStatusFilter('all')
             setDueDateRange(undefined)
+            setIssueDateRange(undefined)
+            setCreatedAtRange(undefined)
+            setMinValue('')
+            setMaxValue('')
           }}
           hasActiveFilters={
-            !!searchTerm || statusFilter !== 'all' || !!dueDateRange
+            !!searchTerm ||
+            statusFilter !== 'all' ||
+            !!dueDateRange ||
+            !!issueDateRange ||
+            !!createdAtRange ||
+            !!minValue
           }
         />
       </div>
@@ -301,7 +311,6 @@ export default function Receivables() {
             </div>
           )}
         </CardContent>
-        {/* Simple pagination footer */}
         <div className="p-2 border-t text-xs text-muted-foreground text-center shrink-0">
           Mostrando {paginatedData?.data.length} de {paginatedData?.count}{' '}
           registros (Página {page})
@@ -343,7 +352,7 @@ export default function Receivables() {
         title="Importar Recebíveis"
         onImported={() => {
           refetch()
-          setDataVersion((v) => v + 1) // Force stats refresh
+          setDataVersion((v) => v + 1)
         }}
       />
     </div>
