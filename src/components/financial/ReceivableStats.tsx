@@ -61,14 +61,14 @@ export function ReceivableStats({
   const formatCurrency = (value: number) =>
     value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-  // Correct calculation based on AC:
-  // A Vencer (Pending): Open & Due Date >= Current
-  // Vencido (Overdue): Open & Due Date < Current
-  // Total (Current Balance): Open
-  // Note: 'received_month' might be tracked if we have a transaction log, but user story asks to remove 'Received' if not supported.
-  // The 'stats' object comes from `get_receivables_dashboard_stats` RPC which I cannot see full code for in context but assuming it returns these keys.
-  // I will assume the RPC implements the logic correctly, but I will adjust labels to match User Story if needed.
-  // "Total (Current Balance)" maps to `stats?.total_open`.
+  // Data comes from getReceivablesDashboardStats which uses get_dashboard_kpis RPC
+  // Stats mapping:
+  // total_open: A Vencer + Vencido (all Open)
+  // total_overdue: Vencido
+  // received_month: Liquidado
+  // (Derived) A Vencer: total_open - total_overdue
+
+  const pendingAmount = (stats?.total_open || 0) - (stats?.total_overdue || 0)
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6 animate-fade-in">
@@ -85,7 +85,7 @@ export function ReceivableStats({
             {formatCurrency(stats?.total_open || 0)}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            {stats?.count_open || 0} títulos (Saldo Atual)
+            Saldo total de títulos em aberto
           </p>
         </CardContent>
       </Card>
@@ -100,13 +100,10 @@ export function ReceivableStats({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-amber-600">
-            {formatCurrency(
-              (stats?.total_open || 0) - (stats?.total_overdue || 0),
-            )}
+            {formatCurrency(pendingAmount)}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            {(stats?.count_open || 0) - (stats?.count_overdue || 0)} títulos no
-            prazo
+            Títulos a vencer (ou vencendo hoje)
           </p>
         </CardContent>
       </Card>
@@ -124,20 +121,16 @@ export function ReceivableStats({
             {formatCurrency(stats?.total_overdue || 0)}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            {stats?.count_overdue || 0} títulos vencidos
+            Títulos com vencimento passado
           </p>
         </CardContent>
       </Card>
 
-      {/* Received This Month - Optional per AC, but keeping as it's useful if data exists. 
-          If strictly "Remove any 'Received' ... if the system does not yet have...", 
-          assuming the RPC supports it or returns 0. I'll keep it for completeness but user story says remove if NO support. 
-          I'll assume support exists via `get_receivables_dashboard_stats`.
-      */}
+      {/* Received - Liquidado */}
       <Card className="border-l-4 border-l-emerald-500 shadow-sm hover:shadow-md transition-all opacity-80">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Recebido (Mês)
+            Recebido (Total)
           </CardTitle>
           <CheckCircle className="h-4 w-4 text-emerald-500" />
         </CardHeader>
@@ -146,7 +139,7 @@ export function ReceivableStats({
             {formatCurrency(stats?.received_month || 0)}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Liquidados neste mês
+            Total de títulos liquidados
           </p>
         </CardContent>
       </Card>

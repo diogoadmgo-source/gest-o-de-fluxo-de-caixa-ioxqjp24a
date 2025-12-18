@@ -53,6 +53,7 @@ const RECEIVABLE_MAPPINGS = {
     'Nome',
   ],
   customer_doc: [
+    'CNPJ/CPF',
     'CNPJ',
     'CPF',
     'customer_doc',
@@ -67,6 +68,7 @@ const RECEIVABLE_MAPPINGS = {
     'Dt Emissão',
   ],
   due_date: [
+    'Dt. Vencimento',
     'Vencimento',
     'Data Vencimento',
     'due_date',
@@ -75,21 +77,21 @@ const RECEIVABLE_MAPPINGS = {
     'Dt Vencimento',
   ],
   principal_value: [
+    'Vlr Principal',
     'Valor Principal',
     'Valor',
     'Principal',
     'principal_value',
     'Valor Original',
-    'Vlr Principal',
     'Valor do Título',
   ],
   fine: ['Multa', 'fine', 'Vlr Multa'],
   interest: ['Juros', 'interest', 'Vlr Juros'],
   updated_value: [
+    'Vlr Atualizado',
     'Valor Atualizado',
     'updated_value',
     'Valor Total',
-    'Vlr Atualizado',
     'Total',
   ],
   installment: ['Parcela', 'installment', 'Parc'],
@@ -98,6 +100,7 @@ const RECEIVABLE_MAPPINGS = {
   company: ['Empresa', 'Company', 'Loja', 'Unidade', 'Filial'],
   // Extra fields
   payment_prediction: [
+    'Previsão de Pgto.',
     'Previsão',
     'payment_prediction',
     'Previsão Pagto',
@@ -107,7 +110,7 @@ const RECEIVABLE_MAPPINGS = {
   customer_code: ['Cod Cliente', 'customer_code', 'Código Cliente'],
   uf: ['UF', 'uf', 'Estado'],
   regional: ['Regional', 'regional'],
-  days_overdue: ['Dias Atraso', 'days_overdue', 'Atraso'],
+  days_overdue: ['Dias', 'Dias Atraso', 'days_overdue', 'Atraso'],
   utilization: ['Utilização', 'utilization'],
   negativado: ['Negativado', 'negativado'],
   customer_name: ['Nome Cliente', 'customer_name', 'Razão Social Cliente'],
@@ -220,7 +223,9 @@ export async function fetchPaginatedReceivables(
       // Sorting - AC 5: Default sorting by due_date (ASC)
       const sortCol = filters.sortBy || 'due_date'
       query = query
-        .order(sortCol, { ascending: filters.sortOrder === 'asc' })
+        .order(sortCol, {
+          ascending: filters.sortOrder === 'desc' ? false : true,
+        })
         .order('invoice_number', { ascending: true })
 
       // Pagination
@@ -319,14 +324,23 @@ export async function getReceivablesDashboardStats(companyId: string) {
     'receivables',
     'get_stats',
     (async () => {
-      const { data, error } = await supabase.rpc(
-        'get_receivables_dashboard_stats',
-        {
-          p_company_id: companyId,
-        },
-      )
+      // Re-use get_dashboard_kpis for robust synced data
+      const { data, error } = await supabase.rpc('get_dashboard_kpis', {
+        p_company_id: companyId,
+      })
       if (error) throw error
-      return data
+
+      const kpi = data as KPI
+      // Map KPI to stats format expected by component
+      return {
+        total_open:
+          (kpi.receivables_amount_open || 0) +
+          (kpi.receivables_amount_overdue || 0),
+        count_open: 0, // Not provided by simplified KPI RPC, UI should handle missing counts
+        total_overdue: kpi.receivables_amount_overdue || 0,
+        count_overdue: 0,
+        received_month: kpi.receivables_amount_received || 0,
+      }
     })(),
   )
 }
@@ -587,8 +601,6 @@ export async function importReceivablesRobust(
 ): Promise<ImportBatchSummary> {
   // Normalize fields slightly before sending to ensure JSON integrity,
   // but let SQL handle validation.
-  // AC 6: Company Isolation - We do NOT map 'company' column here.
-  // We strictly use the companyId passed to this function.
   const sanitized = data.map((d) => {
     // Helper to try and get keys regardless of case
     const get = (k: string[]) => getCol(d, k)
@@ -722,7 +734,7 @@ export async function importarReceivables(
     stats: {
       records: totalInserted,
       importedTotal: totalInsertedAmount,
-      fileTotal: data.length,
+      fileTotal: data.length, // Rough count before validation
       fileTotalPrincipal: totalFileAmount,
       importedPrincipal: totalInsertedAmount,
       failuresTotal: globalFailures.length,

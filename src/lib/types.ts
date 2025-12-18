@@ -105,6 +105,7 @@ export interface KPI {
   receivables_amount_overdue: number // Vencido
   receivables_amount_received: number // Recebido
   payables_amount_pending: number
+  runway_days?: number
 }
 
 export interface DailyBalance {
