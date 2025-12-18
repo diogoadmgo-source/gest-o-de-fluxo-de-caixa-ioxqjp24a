@@ -10,20 +10,30 @@ export function normalizeText(text: any): string {
 // Alias for backward compatibility
 export const s = normalizeText
 
+export function isGarbageCompanyName(text: any): boolean {
+  if (text === null || text === undefined) return true
+  const s = String(text).trim().toLowerCase()
+  if (s === '') return true
+
+  if (s.startsWith('total')) return true
+  if (s.startsWith('valor')) return true
+  if (s.includes('filtros aplicados')) return true
+  if (s.includes('intercompany')) return true
+
+  return false
+}
+
 export function n(value: any): number {
   if (typeof value === 'number') return value
   if (!value) return 0
   let str = String(value).trim()
 
   // Remove currency symbols (e.g., R$, $) and any other non-numeric chars except digits, dot, comma, minus
-  // This helps cleaning "R$ 1.234,56" to "1.234,56"
   str = str.replace(/[^\d.,-]/g, '')
 
   if (!str) return 0
 
   // Handle Brazilian format (dots as thousands separators, comma as decimal)
-  // "1.234,56" -> "1234.56"
-  // If we just remove dots and replace comma with dot, we cover most BR cases.
   const cleanStr = str.replace(/\./g, '').replace(',', '.')
   const num = parseFloat(cleanStr)
   return isNaN(num) ? 0 : num
@@ -145,7 +155,6 @@ export function normalizePayableStatus(
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    // If due date is strictly before today (midnight)
     if (due < today) return 'overdue'
   }
 
@@ -285,7 +294,6 @@ export async function upsertBankBalance(payload: {
   reference_date: string
   amount: number
 }) {
-  // Service-level validation
   if (payload.amount < 0) {
     throw new Error('O saldo não pode ser negativo.')
   }
@@ -312,7 +320,6 @@ export async function upsertBankBalance(payload: {
 
   if (error) {
     if (error.code === '23514') {
-      // Check constraint violation code
       throw new Error(`Erro: O saldo não pode ser negativo.`)
     }
     throw new Error(`Erro ao salvar saldo: ${error.message}`)
@@ -595,6 +602,28 @@ export async function importarReceivables(
         row['Empresa'] || row['company'] || row['id_da_empresa'],
       )
 
+      // Garbage Check
+      if (isGarbageCompanyName(companyNameInRow)) {
+        if (companyNameInRow !== '') {
+          // It has text content but is identified as garbage (e.g. "Total")
+          if (!fallbackCompanyId) {
+            throw new Error(
+              'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
+            )
+          }
+          // If fallback exists, we skip this row as it's likely a summary row
+          continue
+        } else {
+          // Empty content (also identified as garbage by utility)
+          if (!fallbackCompanyId) {
+            throw new Error(
+              'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
+            )
+          }
+          // If fallback exists, we proceed using fallback
+        }
+      }
+
       if (companyNameInRow) {
         if (companyIdCache.has(companyNameInRow)) {
           companyId = companyIdCache.get(companyNameInRow)!
@@ -642,7 +671,7 @@ export async function importarReceivables(
             row['Data de Emissão'] ||
               row['issue_date'] ||
               row['data_de_emissao'],
-          ) || new Date().toISOString(),
+          ) || new Date().toISOString().split('T')[0],
         due_date: d(
           row['Dt. Vencimento'] || row['due_date'] || row['data_de_vencimento'],
         ),
@@ -789,6 +818,28 @@ export async function importarPayables(
         row['Empresa'] || row['company'] || row['id_da_empresa'],
       )
 
+      // Garbage Check
+      if (isGarbageCompanyName(companyNameInRow)) {
+        if (companyNameInRow !== '') {
+          // It has text content but is identified as garbage (e.g. "Total")
+          if (!fallbackCompanyId) {
+            throw new Error(
+              'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
+            )
+          }
+          // If fallback exists, we skip this row as it's likely a summary row
+          continue
+        } else {
+          // Empty content (also identified as garbage by utility)
+          if (!fallbackCompanyId) {
+            throw new Error(
+              'Coluna Empresa contém texto inválido (ex: Total/Filtros aplicados). Corrija a planilha.',
+            )
+          }
+          // If fallback exists, we proceed using fallback
+        }
+      }
+
       if (companyNameInRow) {
         if (companyIdCache.has(companyNameInRow)) {
           companyId = companyIdCache.get(companyNameInRow)!
@@ -817,7 +868,7 @@ export async function importarPayables(
       )
       const issueDate =
         d(row['Emissao'] || row['issue_date'] || row['data_emissao']) ||
-        new Date().toISOString()
+        new Date().toISOString().split('T')[0]
       const dueDate = d(
         row['Vencimento'] || row['due_date'] || row['data_vencimento'],
       )
@@ -906,10 +957,10 @@ export async function importarPayables(
       if (error) throw error
 
       if (data && data.success) {
-        results.success += data.inserted
-        results.deleted += data.deleted
+        results.success += data.stats?.inserted || 0
+        results.deleted += data.stats?.deleted || 0
         // Collect actual inserted amount from DB for Integrity Check
-        results.importedTotal += data.inserted_amount || 0
+        results.importedTotal += data.stats?.inserted_amount || 0
       } else {
         throw new Error(data?.error || 'Erro desconhecido ao substituir dados.')
       }
