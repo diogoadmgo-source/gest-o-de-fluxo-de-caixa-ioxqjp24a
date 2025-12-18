@@ -34,6 +34,108 @@ export interface ImportResult {
   failures: any[]
 }
 
+// --- Mappings & Validation Definitions ---
+
+const RECEIVABLE_MAPPINGS = {
+  invoice_number: [
+    'Nota Fiscal',
+    'Fatura',
+    'Documento',
+    'NF',
+    'invoice_number',
+    'Doc',
+    'Nº Nota',
+    'Num Nota',
+  ],
+  order_number: ['Pedido', 'Ordem', 'order_number', 'PO', 'Nº Pedido'],
+  customer: [
+    'Cliente',
+    'customer',
+    'Razão Social',
+    'Nome Fantasia',
+    'Sacado',
+    'Nome',
+  ],
+  customer_doc: [
+    'CNPJ',
+    'CPF',
+    'customer_doc',
+    'Documento Cliente',
+    'CNPJ/CPF',
+  ],
+  issue_date: [
+    'Emissão',
+    'Data Emissão',
+    'issue_date',
+    'Data de Emissão',
+    'Dt Emissão',
+  ],
+  due_date: [
+    'Vencimento',
+    'Data Vencimento',
+    'due_date',
+    'Data de Vencimento',
+    'Vcto',
+    'Dt Vencimento',
+  ],
+  principal_value: [
+    'Valor Principal',
+    'Valor',
+    'Principal',
+    'principal_value',
+    'Valor Original',
+    'Vlr Principal',
+    'Valor do Título',
+  ],
+  fine: ['Multa', 'fine', 'Vlr Multa'],
+  interest: ['Juros', 'interest', 'Vlr Juros'],
+  updated_value: [
+    'Valor Atualizado',
+    'updated_value',
+    'Valor Total',
+    'Vlr Atualizado',
+    'Total',
+  ],
+  installment: ['Parcela', 'installment', 'Parc'],
+  title_status: ['Status', 'title_status', 'Situação'],
+  description: ['Descrição', 'Observação', 'description', 'Obs', 'Histórico'],
+  company: ['Empresa', 'Company', 'Loja', 'Unidade', 'Filial'],
+  // Extra fields
+  payment_prediction: [
+    'Previsão',
+    'payment_prediction',
+    'Previsão Pagto',
+    'Data Previsão',
+  ],
+  seller: ['Vendedor', 'seller', 'Representante'],
+  customer_code: ['Cod Cliente', 'customer_code', 'Código Cliente'],
+  uf: ['UF', 'uf', 'Estado'],
+  regional: ['Regional', 'regional'],
+  days_overdue: ['Dias Atraso', 'days_overdue', 'Atraso'],
+  utilization: ['Utilização', 'utilization'],
+  negativado: ['Negativado', 'negativado'],
+  customer_name: ['Nome Cliente', 'customer_name', 'Razão Social Cliente'],
+  new_status: ['Novo Status', 'new_status'],
+}
+
+const REQUIRED_FIELDS = [
+  { key: 'invoice_number', label: 'Nota Fiscal' },
+  { key: 'customer', label: 'Cliente' },
+  { key: 'due_date', label: 'Vencimento' },
+  { key: 'principal_value', label: 'Valor' },
+]
+
+function validateReceivablesLayout(row: any): string[] {
+  const missing: string[] = []
+  for (const field of REQUIRED_FIELDS) {
+    const mapping = (RECEIVABLE_MAPPINGS as any)[field.key]
+    if (getCol(row, mapping) === undefined) {
+      missing.push(field.label)
+    }
+  }
+  return missing
+}
+
 // ... existing fetch helpers ...
 export async function fetchPaginatedReceivables(
   companyId: string,
@@ -491,31 +593,29 @@ export async function importReceivablesRobust(
     // Helper to try and get keys regardless of case
     const get = (k: string[]) => getCol(d, k)
     return {
-      invoice_number: normalizeText(
-        get(['Nota Fiscal', 'NF', 'invoice_number', 'Doc']),
-      ),
-      order_number: normalizeText(get(['Pedido', 'order_number', 'PO'])),
-      customer: normalizeText(get(['Cliente', 'customer', 'Razão Social'])),
-      customer_doc: normalizeText(get(['CNPJ', 'CPF', 'customer_doc'])),
-      issue_date: get(['Emissão', 'issue_date', 'Data Emissão']), // Send as string, SQL parses
-      due_date: get(['Vencimento', 'due_date', 'Data Vencimento']),
-      payment_prediction: get(['Previsão', 'payment_prediction']),
-      principal_value: get(['Valor', 'principal_value', 'Valor Original']),
-      fine: get(['Multa', 'fine']),
-      interest: get(['Juros', 'interest']),
-      updated_value: get(['Valor Atualizado', 'updated_value']),
-      title_status: normalizeText(get(['Status', 'title_status'])),
-      seller: normalizeText(get(['Vendedor', 'seller'])),
-      customer_code: normalizeText(get(['Cod Cliente', 'customer_code'])),
-      uf: normalizeText(get(['UF', 'uf'])),
-      regional: normalizeText(get(['Regional', 'regional'])),
-      installment: normalizeText(get(['Parcela', 'installment'])),
-      days_overdue: get(['Dias Atraso', 'days_overdue']),
-      utilization: normalizeText(get(['Utilização', 'utilization'])),
-      negativado: normalizeText(get(['Negativado', 'negativado'])),
-      description: normalizeText(get(['Descrição', 'description'])),
-      customer_name: normalizeText(get(['Nome Cliente', 'customer_name'])),
-      new_status: normalizeText(get(['Novo Status', 'new_status'])),
+      invoice_number: normalizeText(get(RECEIVABLE_MAPPINGS.invoice_number)),
+      order_number: normalizeText(get(RECEIVABLE_MAPPINGS.order_number)),
+      customer: normalizeText(get(RECEIVABLE_MAPPINGS.customer)),
+      customer_doc: normalizeText(get(RECEIVABLE_MAPPINGS.customer_doc)),
+      issue_date: get(RECEIVABLE_MAPPINGS.issue_date),
+      due_date: get(RECEIVABLE_MAPPINGS.due_date),
+      payment_prediction: get(RECEIVABLE_MAPPINGS.payment_prediction),
+      principal_value: get(RECEIVABLE_MAPPINGS.principal_value),
+      fine: get(RECEIVABLE_MAPPINGS.fine),
+      interest: get(RECEIVABLE_MAPPINGS.interest),
+      updated_value: get(RECEIVABLE_MAPPINGS.updated_value),
+      title_status: normalizeText(get(RECEIVABLE_MAPPINGS.title_status)),
+      seller: normalizeText(get(RECEIVABLE_MAPPINGS.seller)),
+      customer_code: normalizeText(get(RECEIVABLE_MAPPINGS.customer_code)),
+      uf: normalizeText(get(RECEIVABLE_MAPPINGS.uf)),
+      regional: normalizeText(get(RECEIVABLE_MAPPINGS.regional)),
+      installment: normalizeText(get(RECEIVABLE_MAPPINGS.installment)),
+      days_overdue: get(RECEIVABLE_MAPPINGS.days_overdue),
+      utilization: normalizeText(get(RECEIVABLE_MAPPINGS.utilization)),
+      negativado: normalizeText(get(RECEIVABLE_MAPPINGS.negativado)),
+      description: normalizeText(get(RECEIVABLE_MAPPINGS.description)),
+      customer_name: normalizeText(get(RECEIVABLE_MAPPINGS.customer_name)),
+      new_status: normalizeText(get(RECEIVABLE_MAPPINGS.new_status)),
     }
   })
 
@@ -557,6 +657,18 @@ export async function importarReceivables(
   fallbackCompanyId?: string,
   fileName: string = 'import.csv',
 ): Promise<ImportResult> {
+  // 0. Validate Layout (Layout must be valid for at least one row, but usually all rows share layout)
+  if (data && data.length > 0) {
+    const missingColumns = validateReceivablesLayout(data[0])
+    if (missingColumns.length > 0) {
+      return {
+        success: false,
+        message: `Layout inválido. Colunas obrigatórias não encontradas: ${missingColumns.join(', ')}.`,
+        failures: [],
+      }
+    }
+  }
+
   const companyGroups = new Map<string, any[]>()
   let totalRecordsProcessed = 0
   let globalFailures: any[] = []
@@ -570,9 +682,7 @@ export async function importarReceivables(
 
   // 1. Group data by company
   for (const row of data) {
-    const companyName = normalizeText(
-      getCol(row, ['Empresa', 'Company', 'Loja', 'Unidade', 'company']),
-    )
+    const companyName = normalizeText(getCol(row, RECEIVABLE_MAPPINGS.company))
 
     let targetCompany = companyName
     if (!targetCompany && fallbackCompanyId) {
