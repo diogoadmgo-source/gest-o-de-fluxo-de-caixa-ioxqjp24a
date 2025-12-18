@@ -202,18 +202,21 @@ export type Database = {
           created_at: string | null
           id: string
           name: string
+          name_norm: string
           origin: string | null
         }
         Insert: {
           created_at?: string | null
           id?: string
           name: string
+          name_norm: string
           origin?: string | null
         }
         Update: {
           created_at?: string | null
           id?: string
           name?: string
+          name_norm?: string
           origin?: string | null
         }
         Relationships: []
@@ -485,6 +488,7 @@ export type Database = {
           customer: string | null
           customer_code: string | null
           customer_doc: string | null
+          customer_name: string | null
           days_overdue: number | null
           description: string | null
           due_date: string | null
@@ -495,6 +499,7 @@ export type Database = {
           invoice_number: string | null
           issue_date: string | null
           negativado: string | null
+          new_status: string | null
           order_number: string | null
           payment_prediction: string | null
           principal_value: number | null
@@ -512,6 +517,7 @@ export type Database = {
           customer?: string | null
           customer_code?: string | null
           customer_doc?: string | null
+          customer_name?: string | null
           days_overdue?: number | null
           description?: string | null
           due_date?: string | null
@@ -522,6 +528,7 @@ export type Database = {
           invoice_number?: string | null
           issue_date?: string | null
           negativado?: string | null
+          new_status?: string | null
           order_number?: string | null
           payment_prediction?: string | null
           principal_value?: number | null
@@ -539,6 +546,7 @@ export type Database = {
           customer?: string | null
           customer_code?: string | null
           customer_doc?: string | null
+          customer_name?: string | null
           days_overdue?: number | null
           description?: string | null
           due_date?: string | null
@@ -549,6 +557,7 @@ export type Database = {
           invoice_number?: string | null
           issue_date?: string | null
           negativado?: string | null
+          new_status?: string | null
           order_number?: string | null
           payment_prediction?: string | null
           principal_value?: number | null
@@ -808,8 +817,16 @@ export type Database = {
         Args: { p_company_name: string; p_user_id: string }
         Returns: string
       }
+      ensure_company_for_user: {
+        Args: { p_company_name: string; p_user_id: string }
+        Returns: string
+      }
       is_admin: { Args: never; Returns: boolean }
       replace_receivables_for_company: {
+        Args: { p_company_id: string; p_rows: Json }
+        Returns: Json
+      }
+      strict_replace_receivables: {
         Args: { p_company_id: string; p_rows: Json }
         Returns: Json
       }

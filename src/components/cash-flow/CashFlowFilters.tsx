@@ -6,8 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
-import { Filter, Search, Download } from 'lucide-react'
+import { Filter } from 'lucide-react'
 
 export function CashFlowFilters() {
   return (
@@ -38,24 +37,8 @@ export function CashFlowFilters() {
               </SelectContent>
             </Select>
           </div>
-          <div className="w-[180px]">
-            <Select>
-              <SelectTrigger>
-                <SelectValue placeholder="Categoria" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="op">Operacional</SelectItem>
-                <SelectItem value="fin">Financeiro</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           <Button variant="outline" size="icon">
             <Filter className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" /> Exportar
           </Button>
         </div>
       </div>

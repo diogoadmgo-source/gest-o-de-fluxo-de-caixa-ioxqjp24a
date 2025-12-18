@@ -17,6 +17,7 @@ import {
   parseISO,
   startOfDay,
   endOfDay,
+  isSameDay,
 } from 'date-fns'
 import {
   RefreshCcw,
@@ -55,7 +56,13 @@ const STORAGE_KEYS = {
 }
 
 export default function CashFlow() {
-  const { cashFlowEntries, recalculateCashFlow } = useCashFlowStore()
+  const {
+    cashFlowEntries,
+    recalculateCashFlow,
+    receivables,
+    payables,
+    accountPayables,
+  } = useCashFlowStore()
   const [loading, setLoading] = useState(false)
 
   // Initialize selectedDate from localStorage or default to today
@@ -111,6 +118,50 @@ export default function CashFlow() {
     }, 800)
   }
 
+  const handleExport = () => {
+    if (!filteredEntries || filteredEntries.length === 0) {
+      toast.error('Não há dados para exportar.')
+      return
+    }
+
+    const headers = [
+      'Data',
+      'Saldo Inicial',
+      'Entradas',
+      'Saídas',
+      'Saldo do Dia',
+      'Saldo Acumulado',
+    ]
+
+    const csvContent = [headers.join(';')]
+
+    filteredEntries.forEach((e) => {
+      const row = [
+        format(parseISO(e.date), 'dd/MM/yyyy'),
+        e.opening_balance.toFixed(2).replace('.', ','),
+        e.total_receivables.toFixed(2).replace('.', ','),
+        e.total_payables.toFixed(2).replace('.', ','),
+        e.daily_balance.toFixed(2).replace('.', ','),
+        e.accumulated_balance.toFixed(2).replace('.', ','),
+      ]
+      csvContent.push(row.join(';'))
+    })
+
+    const blob = new Blob([csvContent.join('\n')], {
+      type: 'text/csv;charset=utf-8;',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute(
+      'download',
+      `fluxo_caixa_${format(new Date(), 'dd-MM-yyyy')}.csv`,
+    )
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   // Filter Data based on Date Range
   const filteredEntries = cashFlowEntries.filter((entry) => {
     if (!dateRange.from || !dateRange.to) return true
@@ -128,17 +179,6 @@ export default function CashFlow() {
     },
   }
 
-  const totalReceivables = filteredEntries.reduce(
-    (acc, curr) => acc + curr.total_receivables,
-    0,
-  )
-  const totalPayables = filteredEntries.reduce(
-    (acc, curr) => acc + curr.total_payables,
-    0,
-  )
-  const lastBalance =
-    filteredEntries[filteredEntries.length - 1]?.accumulated_balance || 0
-
   const chartData = filteredEntries.map((entry) => ({
     day: format(parseISO(entry.date), 'dd/MM'),
     balance: entry.accumulated_balance,
@@ -150,6 +190,28 @@ export default function CashFlow() {
       to: addDays(new Date(), days),
     })
   }
+
+  // Daily Calculations for Cards based on selectedDate
+  const dailyReceivables = receivables
+    .filter((r) => r.due_date && isSameDay(parseISO(r.due_date), selectedDate))
+    .reduce((sum, r) => sum + (r.principal_value || 0), 0)
+
+  const dailyPayablesTransactions = payables
+    .filter(
+      (p) =>
+        p.due_date &&
+        isSameDay(parseISO(p.due_date), selectedDate) &&
+        p.status !== 'paid' &&
+        p.status !== 'cancelled',
+    )
+    .reduce((sum, p) => sum + (p.principal_value || p.amount || 0), 0)
+
+  const dailyAccountPayables = accountPayables
+    .filter((p) => p.due_date && isSameDay(parseISO(p.due_date), selectedDate))
+    .reduce((sum, p) => sum + (p.principal_value || 0), 0)
+
+  const totalDailyPayables = dailyPayablesTransactions + dailyAccountPayables
+  const dailyBalance = dailyReceivables - totalDailyPayables
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
@@ -167,7 +229,7 @@ export default function CashFlow() {
             />
             Atualizar
           </Button>
-          <Button>
+          <Button onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" /> Exportar
           </Button>
         </div>
@@ -233,18 +295,20 @@ export default function CashFlow() {
         </div>
       </div>
 
-      {/* Categorized Dashboard */}
+      {/* Categorized Dashboard - Daily Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="border-l-4 border-l-success">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <ArrowUp className="h-4 w-4 text-success" />
-              Contas a Receber (Período)
+              <ArrowUp className="h-4 w-4 text-success" />A Receber (Daily)
             </CardTitle>
+            <CardDescription>
+              {format(selectedDate, 'dd/MM/yyyy')}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-success">
-              {totalReceivables.toLocaleString('pt-BR', {
+              {dailyReceivables.toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL',
               })}
@@ -254,29 +318,49 @@ export default function CashFlow() {
         <Card className="border-l-4 border-l-destructive">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <ArrowDown className="h-4 w-4 text-destructive" />
-              Contas a Pagar (Período)
+              <ArrowDown className="h-4 w-4 text-destructive" />A Pagar (Daily)
             </CardTitle>
+            <CardDescription>
+              {format(selectedDate, 'dd/MM/yyyy')}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">
-              {totalPayables.toLocaleString('pt-BR', {
+              {totalDailyPayables.toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL',
               })}
             </div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-primary">
+        <Card
+          className={cn(
+            'border-l-4',
+            dailyBalance >= 0 ? 'border-l-primary' : 'border-l-destructive',
+          )}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              Saldo Projetado (Final)
+              <TrendingUp
+                className={cn(
+                  'h-4 w-4',
+                  dailyBalance >= 0 ? 'text-primary' : 'text-destructive',
+                )}
+              />
+              Saldo do Dia
             </CardTitle>
+            <CardDescription>
+              {format(selectedDate, 'dd/MM/yyyy')}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">
-              {lastBalance.toLocaleString('pt-BR', {
+            <div
+              className={cn(
+                'text-2xl font-bold',
+                dailyBalance >= 0 ? 'text-primary' : 'text-destructive',
+              )}
+            >
+              {dailyBalance.toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL',
               })}

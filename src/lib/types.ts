@@ -66,6 +66,23 @@ export interface Receivable {
   new_status?: string
 }
 
+export interface Payable {
+  id: string
+  company_id: string
+  description?: string
+  due_date: string | null
+  fine?: number
+  interest?: number
+  issue_date?: string | null
+  nf?: string | null
+  payment_prediction?: string | null
+  principal_value?: number
+  supplier_cnpj?: string | null
+  supplier_name?: string | null
+  title_status?: string | null
+  created_at?: string
+}
+
 export interface FinancialAdjustment {
   id: string
   company_id: string

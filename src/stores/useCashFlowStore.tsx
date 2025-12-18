@@ -14,6 +14,7 @@ import {
   ImportHistoryEntry,
   Company,
   FinancialAdjustment,
+  Payable,
 } from '@/lib/types'
 import { generateCashFlowData } from '@/lib/mock-data'
 import { isSameDay, parseISO } from 'date-fns'
@@ -39,6 +40,7 @@ interface CashFlowContextType {
 
   receivables: Receivable[]
   payables: Transaction[]
+  accountPayables: Payable[] // From payables table
   bankBalances: BankBalance[]
   adjustments: FinancialAdjustment[]
   cashFlowEntries: CashFlowEntry[]
@@ -111,6 +113,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [payables, setPayables] = useState<Transaction[]>([])
+  const [accountPayables, setAccountPayables] = useState<Payable[]>([])
   const [bankBalances, setBankBalances] = useState<BankBalance[]>([])
   const [banks, setBanks] = useState<Bank[]>([])
   const [adjustments, setAdjustments] = useState<FinancialAdjustment[]>([])
@@ -128,6 +131,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true)
     setReceivables([])
     setPayables([])
+    setAccountPayables([])
     setBanks([])
     setBankBalances([])
     setAdjustments([])
@@ -170,7 +174,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       )
       setReceivables(allReceivables as any)
 
-      // 3. Fetch ALL Payables
+      // 3. Fetch ALL Payables (Transactions)
       const allPayables = await fetchAllRecords(
         supabase,
         'transactions',
@@ -178,6 +182,14 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         (q) => q.eq('type', 'payable'),
       )
       setPayables(allPayables as any)
+
+      // 3b. Fetch Account Payables (Payables Table)
+      const allAccountPayables = await fetchAllRecords(
+        supabase,
+        'payables',
+        visibleIds,
+      )
+      setAccountPayables(allAccountPayables as any)
 
       // 4. Fetch Banks (Active Only)
       let banksQuery = supabase
@@ -196,7 +208,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       if (banksData) setBanks(banksData as any)
 
       // 5. Fetch Bank Balances
-      // Modified to join with banks to get name
       let balancesQuery = supabase
         .from('bank_balances')
         .select('*, banks(name, account_number)')
@@ -291,6 +302,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }, [
     receivables,
     payables,
+    accountPayables,
     bankBalances,
     adjustments,
     selectedCompanyId,
@@ -301,6 +313,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     if (
       receivables.length === 0 &&
       payables.length === 0 &&
+      accountPayables.length === 0 &&
       bankBalances.length === 0 &&
       adjustments.length === 0
     ) {
@@ -319,6 +332,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     const newEntries = sortedEntries.map((entry, index) => {
       const entryDate = parseISO(entry.date)
 
+      // Sum Receivables
       const dayReceivables = receivables
         .filter(
           (r) =>
@@ -330,7 +344,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           0,
         )
 
-      const dayPayables = payables
+      // Sum Payables (Transactions)
+      const dayPayablesTransactions = payables
         .filter(
           (p) =>
             isSameDay(parseISO(p.due_date), entryDate) &&
@@ -339,6 +354,14 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         )
         .reduce((sum, p) => sum + (p.amount || 0), 0)
 
+      // Sum Payables (Table)
+      const dayAccountPayables = accountPayables
+        .filter((p) => p.due_date && isSameDay(parseISO(p.due_date), entryDate))
+        .reduce((sum, p) => sum + (p.principal_value || 0), 0)
+
+      const totalDayPayables = dayPayablesTransactions + dayAccountPayables
+
+      // Sum Adjustments
       const dayAdjustments = adjustments.filter((a) =>
         isSameDay(parseISO(a.date), entryDate),
       )
@@ -350,6 +373,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         .filter((a) => a.type === 'debit' && a.status === 'approved')
         .reduce((sum, a) => sum + a.amount, 0)
 
+      // Bank Balances (Initial/Opening for Day 0)
       const dayBalances = bankBalances.filter((b) =>
         isSameDay(parseISO(b.date), entryDate),
       )
@@ -368,7 +392,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const dailyBalance =
-        dayReceivables - dayPayables + adjustmentsCredit - adjustmentsDebit
+        dayReceivables - totalDayPayables + adjustmentsCredit - adjustmentsDebit
 
       let accumulatedBalance = openingBalance + dailyBalance
 
@@ -382,7 +406,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         ...entry,
         opening_balance: openingBalance,
         total_receivables: dayReceivables,
-        total_payables: dayPayables,
+        total_payables: totalDayPayables,
         imports: 0,
         other_expenses: 0,
         adjustments_credit: adjustmentsCredit,
@@ -743,6 +767,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         setSelectedCompanyId,
         receivables: receivables,
         payables: payables,
+        accountPayables,
         bankBalances: bankBalances,
         adjustments: adjustments,
         cashFlowEntries,
