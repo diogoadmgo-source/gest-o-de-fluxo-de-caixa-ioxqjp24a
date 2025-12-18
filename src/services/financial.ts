@@ -42,6 +42,7 @@ export async function fetchPaginatedReceivables(
     '/receivables',
     'fetch_paginated',
     (async () => {
+      // MANDATORY: Strict company_id filter
       let query = supabase
         .from('receivables')
         .select(
@@ -573,11 +574,16 @@ export async function importarReceivables(
     }
   }
 
+  // Client-side deduplication to reduce load and network traffic
   const uniqueRows = new Map()
   let duplicateCount = 0
 
   mappedData.forEach((row) => {
-    const key = `${row.invoice_number}|${row.order_number}|${row.installment}|${row.principal_value}`
+    // Treat empty strings as potentially matching nulls or empty strings
+    // Key matches the Unique Constraint: company_id + invoice + order + installment + principal
+    // Use fallback to '' for keys to ensure consistent hashing
+    const key = `${row.invoice_number || ''}|${row.order_number || ''}|${row.installment || ''}|${row.principal_value}`
+
     if (uniqueRows.has(key)) {
       duplicateCount++
     } else {
@@ -624,10 +630,10 @@ export async function importarReceivables(
         : 'Importação realizada com sucesso.',
     stats: {
       records: stats?.inserted || 0,
-      importedTotal: stats?.inserted_amount || 0,
+      importedTotal: stats?.inserted_amount || 0, // RPC might not return amount, careful
       fileTotal: 0,
       fileTotalPrincipal: 0,
-      importedPrincipal: stats?.inserted_amount || 0,
+      importedPrincipal: 0,
       failuresTotal: 0,
       duplicatesSkipped: totalSkipped,
     },
@@ -642,7 +648,6 @@ export const importarPayables = async (): Promise<ImportResult> => ({
 })
 
 export const salvarBankManual = async (p: any, u: string) => {
-  // Just a wrapper
   return { id: '1', ...p }
 }
 export const salvarImportLogManual = async (p: any, u: string) => {

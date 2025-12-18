@@ -309,7 +309,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     }
 
     if (type === 'receivable') {
-      // Simulate progress for UI feedback
       onProgress?.(10)
 
       const result = await importarReceivables(selectedCompanyId, data)

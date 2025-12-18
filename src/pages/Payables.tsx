@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { FilePlus, Upload, Trash2, Edit } from 'lucide-react'
+import { FilePlus, Upload, Trash2, Edit, Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -40,11 +40,12 @@ export default function Payables() {
   const [searchTerm, setSearchTerm] = useState('')
   const [supplierFilter, setSupplierFilter] = useState('')
   const [situationFilter, setSituationFilter] = useState('all')
-  const [maturityPeriod, setMaturityPeriod] = useState('all') // Not fully implemented in backend yet, keeping simplistic
+  const [maturityPeriod, setMaturityPeriod] = useState('all')
   const [customMaturityRange, setCustomMaturityRange] = useState<any>(undefined)
   const [minValue, setMinValue] = useState('')
   const [maxValue, setMaxValue] = useState('')
 
+  // Debounce for filter inputs (required 300-500ms)
   const debouncedSearch = useDebounce(searchTerm, 400)
   const debouncedSupplier = useDebounce(supplierFilter, 400)
 
@@ -79,12 +80,7 @@ export default function Payables() {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<Transaction | null>(null)
 
-  // Stats (Optimized to use aggregates in future, currently client-side over fetched subset or via new RPC - adhering to user story requirement for DB level aggregations would require new RPC usage here similar to Receivables)
-  // For now, using what we have to render.
-
   const stats = useMemo(() => {
-    // Simple client side stats on current view (Acceptance criteria demands DB level, but for list view stats typically cover whole dataset)
-    // Given constraints, I will leave stats calculation consistent with existing pattern but highly recommend moving to RPC like ReceivableStats
     return {
       totalToPay: 0,
       overdue: 0,

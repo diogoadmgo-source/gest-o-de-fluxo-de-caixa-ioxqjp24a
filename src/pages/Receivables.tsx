@@ -19,10 +19,11 @@ import { VirtualTable, VirtualTableColumn } from '@/components/ui/virtual-table'
 export default function Receivables() {
   const { selectedCompanyId, addReceivable, updateReceivable } =
     useCashFlowStore()
+  // Maintain performance instrumentation
   const perf = usePerformanceMeasure('/recebiveis', 'render')
 
   // State
-  // We increase page size for better virtualization UX, effectively handling a "large" page
+  // Large page size for virtualization efficiency
   const [pageSize] = useState(200)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
@@ -37,9 +38,10 @@ export default function Receivables() {
   const [minValue, setMinValue] = useState('')
   const [maxValue, setMaxValue] = useState('')
 
-  const debouncedSearch = useDebounce(searchTerm, 400) // 400ms delay per requirement
+  // Debounce for filter inputs (required 300-500ms)
+  const debouncedSearch = useDebounce(searchTerm, 400)
 
-  // Data Fetching
+  // Data Fetching with company_id enforcement
   const {
     data: paginatedData,
     isLoading,
@@ -57,7 +59,7 @@ export default function Receivables() {
     },
     {
       enabled: !!selectedCompanyId && selectedCompanyId !== 'all',
-      staleTime: 60000, // 1 min cache
+      staleTime: 60000, // 1 min cache for stable entities
     },
   )
 
@@ -161,6 +163,7 @@ export default function Receivables() {
     },
   ]
 
+  // Clean, standard layout (v0.75 style) without tabs/sub-nav
   return (
     <div className="space-y-6 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
       <div className="flex justify-between items-center shrink-0">
@@ -237,11 +240,10 @@ export default function Receivables() {
             </div>
           )}
         </CardContent>
-        {/* Simple pagination for large sets if needed, though virtualization handles scroll within the set */}
+        {/* Simple pagination footer */}
         <div className="p-2 border-t text-xs text-muted-foreground text-center shrink-0">
           Mostrando {paginatedData?.data.length} de {paginatedData?.count}{' '}
           registros (Página {page})
-          {/* Pagination controls could be added here if dataset > 200 */}
           <div className="flex justify-center gap-2 mt-2">
             <Button
               variant="outline"

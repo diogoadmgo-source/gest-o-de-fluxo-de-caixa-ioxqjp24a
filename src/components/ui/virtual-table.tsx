@@ -35,6 +35,7 @@ export function VirtualTable<T>({
   useEffect(() => {
     const handleScroll = () => {
       if (rootRef.current) {
+        // Use requestAnimationFrame for smoother scroll handling
         requestAnimationFrame(() => {
           setScrollTop(rootRef.current?.scrollTop || 0)
         })
@@ -43,11 +44,24 @@ export function VirtualTable<T>({
     const element = rootRef.current
     if (element) {
       element.addEventListener('scroll', handleScroll)
-      // Initial height calc if using flex
+      // Initial height calc if using flex/auto
       if (typeof visibleHeight !== 'number') {
         setContainerHeight(element.clientHeight || 600)
       }
       return () => element.removeEventListener('scroll', handleScroll)
+    }
+  }, [visibleHeight])
+
+  // Update container height on resize if dynamic
+  useEffect(() => {
+    if (typeof visibleHeight !== 'number' && rootRef.current) {
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          setContainerHeight(entry.contentRect.height)
+        }
+      })
+      resizeObserver.observe(rootRef.current)
+      return () => resizeObserver.disconnect()
     }
   }, [visibleHeight])
 
