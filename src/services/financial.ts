@@ -605,6 +605,7 @@ export async function importReceivablesRobust(
 > {
   // Normalize fields slightly before sending to ensure JSON integrity.
   // CRITICAL: Parse Currency fields here to strictly validate numbers before DB.
+  // We use parsePtBrFloat to ensure "3.318.000,00" is correctly parsed as 3318000.00
   const sanitized = data.map((d) => {
     // Helper to try and get keys regardless of case
     const get = (k: string[]) => getCol(d, k)
