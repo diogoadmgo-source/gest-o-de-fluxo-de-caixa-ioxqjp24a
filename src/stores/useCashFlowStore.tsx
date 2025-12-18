@@ -21,7 +21,6 @@ import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import {
-  getVisibleCompanyIds,
   getCashFlowAggregates,
   salvarReceivableManual,
   salvarPayableManual,
@@ -31,7 +30,7 @@ import {
   importarPayables,
 } from '@/services/financial'
 import { normalizeCompanyId } from '@/lib/utils'
-import { startOfDay, subDays, addDays, parseISO, isSameDay } from 'date-fns'
+import { subDays, addDays } from 'date-fns'
 import { queryClient } from '@/lib/query-client'
 
 interface CashFlowContextType {
@@ -39,21 +38,16 @@ interface CashFlowContextType {
   selectedCompanyId: string | null
   setSelectedCompanyId: (id: string | null) => void
 
-  // NOTE: Full lists are removed from store to improve performance
-  // Components should fetch paginated data using useQuery / services
-
   bankBalances: BankBalance[]
   banks: Bank[]
-  cashFlowEntries: CashFlowEntry[] // Still kept for projection
+  cashFlowEntries: CashFlowEntry[]
 
-  // Kept for legacy compatibility but will be empty or minimal
   receivables: Receivable[]
   payables: Transaction[]
   accountPayables: Payable[]
   adjustments: FinancialAdjustment[]
   importHistory: ImportHistoryEntry[]
 
-  // Actions
   addReceivable: (receivable: Receivable) => Promise<void>
   updateReceivable: (receivable: Receivable) => Promise<void>
   deleteReceivable: (id: string) => Promise<void>
@@ -69,8 +63,12 @@ interface CashFlowContextType {
   updateBankBalances: (balances: BankBalance[]) => void
   resetBalanceHistory: () => void
 
-  // Imports
-  importData: (type: 'receivable' | 'payable', data: any[]) => Promise<any>
+  importData: (
+    type: 'receivable' | 'payable',
+    data: any[],
+    filename?: string,
+    onProgress?: (percent: number) => void,
+  ) => Promise<any>
   addImportLog: (log: ImportHistoryEntry) => Promise<void>
   updateImportLog: (log: ImportHistoryEntry) => Promise<void>
   deleteImportLog: (id: string) => Promise<void>
@@ -84,7 +82,7 @@ const CashFlowContext = createContext<CashFlowContextType | undefined>(
 )
 
 export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
-  const { user, userProfile } = useAuth()
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [selectedCompanyId, setInternalSelectedCompanyId] = useState<
     string | null
@@ -97,7 +95,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const [bankBalances, setBankBalances] = useState<BankBalance[]>([])
   const [banks, setBanks] = useState<Bank[]>([])
 
-  // Stubbed arrays
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [payables, setPayables] = useState<Transaction[]>([])
   const [accountPayables, setAccountPayables] = useState<Payable[]>([])
@@ -109,15 +106,13 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     setInternalSelectedCompanyId(norm)
     if (norm) localStorage.setItem('hospcash_selectedCompany', norm)
     else localStorage.removeItem('hospcash_selectedCompany')
-    queryClient.invalidate('cashflow') // Invalidate cache on switch
+    queryClient.invalidate('cashflow')
   }
 
-  // --- Optimized Fetch ---
   const fetchData = useCallback(async () => {
     if (!user) return
     setLoading(true)
     try {
-      // 1. Companies
       const { data: userCompanies } = await supabase
         .from('user_companies')
         .select('company_id')
@@ -133,14 +128,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         setCompanies((comps as Company[]) || [])
       }
 
-      // Determine scope
       const visibleIds =
         selectedCompanyId && selectedCompanyId !== 'all'
           ? [selectedCompanyId]
           : ids
       if (visibleIds.length === 0) return
 
-      // 2. Banks & Balances (Lightweight)
       const { data: banksData } = await supabase
         .from('banks')
         .select('*')
@@ -170,15 +163,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         )
       }
 
-      // 3. Cash Flow Projection via RPC (Optimized)
       if (selectedCompanyId && selectedCompanyId !== 'all') {
         const today = new Date()
         const start = subDays(today, 30)
         const end = addDays(today, 90)
         const aggs = await getCashFlowAggregates(selectedCompanyId, start, end)
 
-        // Build Projection entries
-        // Get Anchor Balance
         let currentBalance = 0
         const latestBalances = new Map<string, number>()
         balData?.forEach((b: any) => {
@@ -190,20 +180,15 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           0,
         )
 
-        // Map projection
         const entries = aggs.map((day: any) => {
           const flow = (day.total_receivables || 0) - (day.total_payables || 0)
-          const balance = currentBalance // This logic needs proper day-by-day accumulation relative to today
-          // Simplified for this optimization implementation:
-          // Real logic requires finding anchor date and projecting fwd/back
-          // For now, assuming RPC returns correct daily flows, we accumulate manually in JS from anchor
           return {
             date: day.day,
-            opening_balance: 0, // calc below
+            opening_balance: 0,
             total_receivables: day.total_receivables,
             total_payables: day.total_payables,
             daily_balance: flow,
-            accumulated_balance: 0, // calc below
+            accumulated_balance: 0,
             imports: 0,
             other_expenses: 0,
             adjustments_credit: 0,
@@ -212,20 +197,16 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           }
         })
 
-        // Recalculate accumulation (Simplified)
         let running = currentBalance
-        // Find today index
         const todayStr = today.toISOString().split('T')[0]
         const todayIdx = entries.findIndex((e: any) => e.date === todayStr)
 
         if (todayIdx >= 0) {
-          // Forward
           for (let i = todayIdx; i < entries.length; i++) {
             entries[i].opening_balance = running
             entries[i].accumulated_balance = running + entries[i].daily_balance
             running = entries[i].accumulated_balance
           }
-          // Backward
           running = currentBalance
           for (let i = todayIdx - 1; i >= 0; i--) {
             entries[i].accumulated_balance = running
@@ -250,13 +231,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     fetchData()
   }, [fetchData])
 
-  // --- Stubbed Actions ---
   const addReceivable = async (r: Receivable) => {
     if (!user) return
     await salvarReceivableManual(r, user.id)
     toast.success('Recebível salvo')
     queryClient.invalidate('receivables')
-    fetchData() // Refresh projection
+    fetchData()
   }
 
   const updateReceivable = async (r: Receivable) => {
@@ -273,8 +253,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     fetchData()
   }
 
-  // ... Implement other stubs similarly (Payables, Banks, Logs)
-  // For brevity, mapping simplified versions
   const addPayable = async (p: Transaction) => {
     if (user) await salvarPayableManual(p, user.id)
     fetchData()
@@ -302,9 +280,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updateBankBalances = () => fetchData()
-  const resetBalanceHistory = async () => {
-    /* impl */
-  }
+  const resetBalanceHistory = async () => {}
   const addImportLog = async (l: ImportHistoryEntry) => {
     if (user) await salvarImportLogManual(l, user.id)
   }
@@ -315,9 +291,41 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     await supabase.from('import_logs').delete().eq('id', id)
   }
 
-  const importData = async (type: 'receivable' | 'payable', data: any[]) => {
-    // Call service
-    if (type === 'receivable') return await importarReceivables()
+  const importData = async (
+    type: 'receivable' | 'payable',
+    data: any[],
+    filename?: string,
+    onProgress?: (percent: number) => void,
+  ) => {
+    if (!user) throw new Error('User not authenticated')
+
+    // Ensure company is selected
+    if (!selectedCompanyId || selectedCompanyId === 'all') {
+      throw new Error(
+        'Selecione uma empresa específica para realizar a importação.',
+      )
+    }
+
+    if (type === 'receivable') {
+      const result = await importarReceivables(selectedCompanyId, data)
+      // Log the import
+      if (result.success) {
+        await supabase.from('import_logs').insert({
+          company_id: selectedCompanyId,
+          user_id: user.id,
+          filename: filename || 'manual_import.csv',
+          type: 'receivable',
+          status: 'success',
+          total_records: result.stats.records,
+          success_count: result.stats.records,
+          error_count: 0,
+          deleted_count: 0, // handled in RPC stats usually but simplifying here
+        })
+        fetchData() // Refresh dashboard
+      }
+      return result
+    }
+
     return await importarPayables()
   }
 

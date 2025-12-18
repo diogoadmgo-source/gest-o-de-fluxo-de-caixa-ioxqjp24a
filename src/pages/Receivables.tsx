@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState } from 'react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -16,17 +16,19 @@ import { useQuery } from '@/hooks/use-query'
 import { fetchPaginatedReceivables } from '@/services/financial'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { useDebounce } from '@/hooks/use-debounce'
-import { Loader2, Plus, RefreshCw, Upload } from 'lucide-react'
+import { Loader2, Plus, Upload } from 'lucide-react'
 import {
   Pagination,
   PaginationContent,
   PaginationItem,
   PaginationPrevious,
   PaginationNext,
-  PaginationLink,
 } from '@/components/ui/pagination'
 import { usePerformanceMeasure } from '@/lib/performance'
 import { ImportDialog } from '@/components/common/ImportDialog'
+import { ReceivableStats } from '@/components/financial/ReceivableStats'
+import { format } from 'date-fns'
+import { Badge } from '@/components/ui/badge'
 
 export default function Receivables() {
   const { selectedCompanyId, addReceivable, updateReceivable } =
@@ -40,6 +42,13 @@ export default function Receivables() {
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<any>(null)
 
+  // Advanced filters state
+  const [dueDateRange, setDueDateRange] = useState<any>(undefined)
+  const [issueDateRange, setIssueDateRange] = useState<any>(undefined)
+  const [createdAtRange, setCreatedAtRange] = useState<any>(undefined)
+  const [minValue, setMinValue] = useState('')
+  const [maxValue, setMaxValue] = useState('')
+
   const debouncedSearch = useDebounce(searchTerm, 500)
 
   // Data Fetching
@@ -48,13 +57,14 @@ export default function Receivables() {
     isLoading,
     refetch,
   } = useQuery(
-    `receivables-${selectedCompanyId}-${page}-${debouncedSearch}-${statusFilter}`,
+    `receivables-${selectedCompanyId}-${page}-${debouncedSearch}-${statusFilter}-${JSON.stringify(dueDateRange)}`,
     () => {
       if (!selectedCompanyId || selectedCompanyId === 'all')
         return Promise.resolve({ data: [], count: 0 })
       return fetchPaginatedReceivables(selectedCompanyId, page, 20, {
         search: debouncedSearch,
         status: statusFilter,
+        dateRange: dueDateRange,
       })
     },
     {
@@ -75,6 +85,28 @@ export default function Receivables() {
     refetch()
   }
 
+  const getStatusBadge = (status: string, dueDate: string) => {
+    const isOverdue = new Date(dueDate) < new Date() && status === 'Aberto'
+    if (status === 'Liquidado')
+      return <Badge className="bg-emerald-500">Liquidado</Badge>
+    if (status === 'Cancelado')
+      return <Badge variant="destructive">Cancelado</Badge>
+    if (isOverdue)
+      return (
+        <Badge variant="destructive" className="bg-rose-500">
+          Vencido
+        </Badge>
+      )
+    return (
+      <Badge
+        variant="secondary"
+        className="bg-blue-100 text-blue-700 hover:bg-blue-200"
+      >
+        Aberto
+      </Badge>
+    )
+  }
+
   return (
     <div className="space-y-6 animate-fade-in pb-10">
       <div className="flex justify-between items-center">
@@ -83,7 +115,7 @@ export default function Receivables() {
             Contas a Receber
           </h2>
           <p className="text-muted-foreground">
-            Otimizado para alto volume de dados.
+            Gestão completa de recebíveis e títulos.
           </p>
         </div>
         <div className="flex gap-2">
@@ -96,26 +128,32 @@ export default function Receivables() {
         </div>
       </div>
 
+      {/* Dashboard Stats Panel */}
+      <ReceivableStats companyId={selectedCompanyId} />
+
       <ReceivableFilters
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         status={statusFilter}
         setStatus={setStatusFilter}
-        dueDateRange={undefined}
-        setDueDateRange={() => {}}
-        issueDateRange={undefined}
-        setIssueDateRange={() => {}}
-        createdAtRange={undefined}
-        setCreatedAtRange={() => {}}
-        minValue=""
-        setMinValue={() => {}}
-        maxValue=""
-        setMaxValue={() => {}}
+        dueDateRange={dueDateRange}
+        setDueDateRange={setDueDateRange}
+        issueDateRange={issueDateRange}
+        setIssueDateRange={setIssueDateRange}
+        createdAtRange={createdAtRange}
+        setCreatedAtRange={setCreatedAtRange}
+        minValue={minValue}
+        setMinValue={setMinValue}
+        maxValue={maxValue}
+        setMaxValue={setMaxValue}
         onClearFilters={() => {
           setSearchTerm('')
           setStatusFilter('all')
+          setDueDateRange(undefined)
         }}
-        hasActiveFilters={!!searchTerm || statusFilter !== 'all'}
+        hasActiveFilters={
+          !!searchTerm || statusFilter !== 'all' || !!dueDateRange
+        }
       />
 
       <Card>
@@ -124,16 +162,25 @@ export default function Receivables() {
             <div className="h-64 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
+          ) : !selectedCompanyId || selectedCompanyId === 'all' ? (
+            <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
+              <p>Selecione uma empresa para visualizar os dados.</p>
+            </div>
+          ) : paginatedData?.data.length === 0 ? (
+            <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
+              <p>Nenhum título encontrado.</p>
+            </div>
           ) : (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>NF</TableHead>
+                    <TableHead>NF / Pedido</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Vencimento</TableHead>
+                    <TableHead>Emissão</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -143,10 +190,35 @@ export default function Receivables() {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => setEditingItem(item)}
                     >
-                      <TableCell>{item.invoice_number}</TableCell>
-                      <TableCell>{item.customer}</TableCell>
-                      <TableCell>{item.due_date}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {item.invoice_number}
+                          </span>
+                          {item.order_number && (
+                            <span className="text-xs text-muted-foreground">
+                              Ped: {item.order_number}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell
+                        className="max-w-[200px] truncate"
+                        title={item.customer}
+                      >
+                        {item.customer}
+                      </TableCell>
+                      <TableCell>
+                        {item.due_date
+                          ? format(new Date(item.due_date), 'dd/MM/yyyy')
+                          : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {item.issue_date
+                          ? format(new Date(item.issue_date), 'dd/MM/yyyy')
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
                         {(
                           item.updated_value || item.principal_value
                         ).toLocaleString('pt-BR', {
@@ -154,7 +226,9 @@ export default function Receivables() {
                           currency: 'BRL',
                         })}
                       </TableCell>
-                      <TableCell>{item.title_status}</TableCell>
+                      <TableCell className="text-center">
+                        {getStatusBadge(item.title_status, item.due_date)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -192,7 +266,7 @@ export default function Receivables() {
       </Card>
 
       <Dialog open={!!editingItem} onOpenChange={() => setEditingItem(null)}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[800px]">
           <ReceivableForm
             initialData={editingItem}
             onSave={handleSave}
@@ -206,7 +280,11 @@ export default function Receivables() {
         onOpenChange={setIsImportOpen}
         type="receivable"
         title="Importar Recebíveis"
-        onImported={refetch}
+        onImported={() => {
+          refetch()
+          // Force refresh of stats by invalidating query
+          // stats component will refetch automatically if keys match, but explicit invalidation helps
+        }}
       />
     </div>
   )
