@@ -301,7 +301,9 @@ export function BankListManager() {
                         })
                       }
                     }}
-                    disabled={!!lockedCompanyId && !isNewCompany}
+                    // Allow changing company in edit mode regardless of locked view
+                    // This is per user requirement to be able to edit company association
+                    disabled={false}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione a empresa..." />

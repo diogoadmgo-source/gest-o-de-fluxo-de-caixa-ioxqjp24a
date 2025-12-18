@@ -24,16 +24,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Save, AlertCircle, RefreshCw, Trash2, Edit2 } from 'lucide-react'
+import {
+  Save,
+  AlertCircle,
+  RefreshCw,
+  Trash2,
+  Edit2,
+  Loader2,
+} from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
-import {
-  getBankBalance,
-  upsertBankBalance,
-  deleteBankBalance,
-} from '@/services/financial'
+import { upsertBankBalance, deleteBankBalance } from '@/services/financial'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 interface BankBalanceManagerProps {
@@ -41,13 +44,18 @@ interface BankBalanceManagerProps {
 }
 
 export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
-  const { banks, selectedCompanyId, bankBalances, recalculateCashFlow } =
-    useCashFlowStore()
+  const {
+    banks,
+    selectedCompanyId,
+    bankBalances,
+    recalculateCashFlow,
+    loading: storeLoading,
+  } = useCashFlowStore()
 
   const [selectedBankId, setSelectedBankId] = useState('')
   const [amount, setAmount] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [fetchingBalance, setFetchingBalance] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState<string | null>(null)
 
   // Filter banks for the current company selection
   const relevantBanks = selectedCompanyId
@@ -57,35 +65,32 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
   const dateStr = format(selectedDate, 'yyyy-MM-dd')
   const isGlobalView = !selectedCompanyId || selectedCompanyId === 'all'
 
-  // Reset form when context changes
+  // Load existing balance from store state instead of fetching individually
+  // This prevents the "disappearing" effect by using the synced store data
   useEffect(() => {
-    setSelectedBankId('')
-    setAmount('')
-  }, [selectedCompanyId, dateStr])
+    if (selectedBankId && dateStr) {
+      const existingBalance = bankBalances.find(
+        (b) => b.bank_id === selectedBankId && b.date === dateStr,
+      )
+      if (existingBalance) {
+        setAmount(existingBalance.balance.toString())
+      } else {
+        setAmount('')
+      }
+    } else {
+      setAmount('')
+    }
+  }, [selectedBankId, dateStr, bankBalances])
 
-  // Fetch balance when bank and date are selected
+  // Reset selected bank if company context changes heavily
   useEffect(() => {
-    if (selectedBankId && selectedCompanyId && dateStr) {
-      fetchExistingBalance(selectedCompanyId, selectedBankId, dateStr)
+    if (selectedBankId && selectedCompanyId && selectedCompanyId !== 'all') {
+      const bank = banks.find((b) => b.id === selectedBankId)
+      if (bank && bank.company_id !== selectedCompanyId) {
+        setSelectedBankId('')
+      }
     }
-  }, [selectedBankId, selectedCompanyId, dateStr])
-
-  const fetchExistingBalance = async (
-    companyId: string,
-    bankId: string,
-    date: string,
-  ) => {
-    setFetchingBalance(true)
-    try {
-      const val = await getBankBalance(companyId, bankId, date)
-      setAmount(val.toString())
-    } catch (error) {
-      console.error('Failed to fetch balance', error)
-      toast.error('Erro ao buscar saldo existente')
-    } finally {
-      setFetchingBalance(false)
-    }
-  }
+  }, [selectedCompanyId, banks, selectedBankId])
 
   const handleSave = async () => {
     if (isGlobalView) {
@@ -104,7 +109,7 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
       return
     }
 
-    setLoading(true)
+    setIsSaving(true)
     try {
       await upsertBankBalance({
         company_id: selectedCompanyId!,
@@ -115,33 +120,47 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
 
       toast.success('Saldo gravado com sucesso!')
 
+      // Trigger update of global store
       recalculateCashFlow()
-      fetchExistingBalance(selectedCompanyId!, selectedBankId, dateStr)
+
+      // We do NOT clear the input here or refetch individually.
+      // The store update will propagate and the useEffect above will verify/update the value if needed.
+      // Optimistically the value is already correct in the input.
     } catch (error: any) {
       toast.error(error.message || 'Erro ao salvar saldo.')
     } finally {
-      setLoading(false)
+      setIsSaving(false)
     }
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja remover este saldo?')) return
+    setIsDeleting(id)
 
     try {
       await deleteBankBalance(id)
       toast.success('Saldo removido com sucesso.')
       recalculateCashFlow()
-      if (selectedBankId) {
-        // If the deleted bank is currently selected, refresh input to 0
-        fetchExistingBalance(selectedCompanyId!, selectedBankId, dateStr)
+
+      // If deleting current selection, clear input
+      const deletedBalance = bankBalances.find((b) => b.id === id)
+      if (
+        deletedBalance &&
+        deletedBalance.bank_id === selectedBankId &&
+        deletedBalance.date === dateStr
+      ) {
+        setAmount('')
       }
     } catch (error: any) {
       toast.error(error.message || 'Erro ao remover saldo.')
+    } finally {
+      setIsDeleting(null)
     }
   }
 
   const handleEdit = (bankId: string) => {
     setSelectedBankId(bankId)
+    // The useEffect will populate the amount
   }
 
   // Get current day's balances from store for display
@@ -190,7 +209,7 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
               <Select
                 value={selectedBankId}
                 onValueChange={setSelectedBankId}
-                disabled={isGlobalView || loading}
+                disabled={isGlobalView || isSaving}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione..." />
@@ -224,14 +243,8 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
-                  disabled={!selectedBankId || loading || fetchingBalance}
-                  className={fetchingBalance ? 'opacity-50' : ''}
+                  disabled={!selectedBankId || isSaving}
                 />
-                {fetchingBalance && (
-                  <div className="absolute right-3 top-2.5">
-                    <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
-                  </div>
-                )}
               </div>
             </div>
 
@@ -239,16 +252,14 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
               <Button
                 onClick={handleSave}
                 className="w-full"
-                disabled={
-                  isGlobalView || !selectedBankId || loading || fetchingBalance
-                }
+                disabled={isGlobalView || !selectedBankId || isSaving}
               >
-                {loading ? (
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                {isSaving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Save className="mr-2 h-4 w-4" />
                 )}
-                Gravar Saldo
+                {isSaving ? 'Salvando...' : 'Gravar Saldo'}
               </Button>
             </div>
           </div>
@@ -282,7 +293,14 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
                       colSpan={5}
                       className="text-center text-muted-foreground py-6"
                     >
-                      Nenhum saldo registrado para esta data.
+                      {storeLoading ? (
+                        <div className="flex justify-center items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />{' '}
+                          Carregando...
+                        </div>
+                      ) : (
+                        'Nenhum saldo registrado para esta data.'
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -318,6 +336,7 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => handleEdit(balance.bank_id)}
+                            disabled={isSaving || isDeleting === balance.id}
                           >
                             <Edit2 className="h-4 w-4" />
                           </Button>
@@ -326,8 +345,13 @@ export function BankBalanceManager({ selectedDate }: BankBalanceManagerProps) {
                             size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive/90"
                             onClick={() => handleDelete(balance.id)}
+                            disabled={isSaving || isDeleting === balance.id}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            {isDeleting === balance.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>

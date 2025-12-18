@@ -195,7 +195,7 @@ export async function ensureCompanyAndLink(
 export const resolveCompanyIdFromName = ensureCompanyAndLink
 export const ensureEmpresaAndLink = ensureCompanyAndLink
 
-// --- Bank Balances Helpers ---
+// --- Bank Balances Helpers (Using bank_balances_v2) ---
 
 export async function getBankBalance(
   companyId: string,
@@ -203,7 +203,7 @@ export async function getBankBalance(
   date: string,
 ) {
   const { data, error } = await supabase
-    .from('bank_balances')
+    .from('bank_balances_v2')
     .select('amount, id')
     .eq('company_id', companyId)
     .eq('bank_id', bankId)
@@ -225,7 +225,7 @@ export async function upsertBankBalance(payload: {
   amount: number
 }) {
   const { data, error } = await supabase
-    .from('bank_balances')
+    .from('bank_balances_v2')
     .upsert(
       {
         company_id: payload.company_id,
@@ -247,7 +247,10 @@ export async function upsertBankBalance(payload: {
 }
 
 export async function deleteBankBalance(id: string) {
-  const { error } = await supabase.from('bank_balances').delete().eq('id', id)
+  const { error } = await supabase
+    .from('bank_balances_v2')
+    .delete()
+    .eq('id', id)
   if (error) {
     throw new Error(`Erro ao excluir saldo: ${error.message}`)
   }

@@ -207,9 +207,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
       if (banksData) setBanks(banksData as any)
 
-      // 5. Fetch Bank Balances
+      // 5. Fetch Bank Balances (USING v2)
       let balancesQuery = supabase
-        .from('bank_balances')
+        .from('bank_balances_v2')
         .select('*, banks(name, account_number)')
         .order('reference_date', { ascending: false })
 
@@ -528,7 +528,10 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       selectedCompanyId,
     )
     if (visibleIds.length > 0) {
-      await supabase.from('bank_balances').delete().in('company_id', visibleIds)
+      await supabase
+        .from('bank_balances_v2') // Updated
+        .delete()
+        .in('company_id', visibleIds)
     }
     await fetchData()
   }

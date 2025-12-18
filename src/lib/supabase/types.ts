@@ -826,6 +826,10 @@ export type Database = {
         Args: { p_company_id: string; p_rows: Json }
         Returns: Json
       }
+      strict_replace_payables: {
+        Args: { p_company_id: string; p_rows: Json }
+        Returns: Json
+      }
       strict_replace_receivables: {
         Args: { p_company_id: string; p_rows: Json }
         Returns: Json
