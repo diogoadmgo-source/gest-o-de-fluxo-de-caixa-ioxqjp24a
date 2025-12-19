@@ -265,7 +265,18 @@ export async function fetchPaginatedPayables(
       }
 
       if (filters.search) {
-        query = query.ilike('document_number', `%${filters.search}%`)
+        const term = `%${filters.search}%`
+        query = query.or(
+          `document_number.ilike.${term},entity_name.ilike.${term}`,
+        )
+      }
+
+      if (filters.minValue) {
+        query = query.gte('amount', filters.minValue)
+      }
+
+      if (filters.maxValue) {
+        query = query.lte('amount', filters.maxValue)
       }
 
       if (filters.dateRange?.from) {

@@ -49,6 +49,8 @@ export default function Payables() {
   // Debounce for filter inputs (required 300-500ms)
   const debouncedSearch = useDebounce(searchTerm, 400)
   const debouncedSupplier = useDebounce(supplierFilter, 400)
+  const debouncedMinValue = useDebounce(minValue, 500)
+  const debouncedMaxValue = useDebounce(maxValue, 500)
 
   // Fetching
   const {
@@ -56,7 +58,7 @@ export default function Payables() {
     isLoading,
     refetch,
   } = useQuery(
-    `payables-${selectedCompanyId}-${page}-${pageSize}-${debouncedSearch}-${debouncedSupplier}-${situationFilter}-${JSON.stringify(customMaturityRange)}`,
+    `payables-${selectedCompanyId}-${page}-${pageSize}-${debouncedSearch}-${debouncedSupplier}-${situationFilter}-${JSON.stringify(customMaturityRange)}-${debouncedMinValue}-${debouncedMaxValue}`,
     () => {
       if (!selectedCompanyId || selectedCompanyId === 'all')
         return Promise.resolve({ data: [], count: 0 })
@@ -66,6 +68,8 @@ export default function Payables() {
         supplier: debouncedSupplier,
         status: situationFilter,
         dateRange: customMaturityRange,
+        minValue: debouncedMinValue,
+        maxValue: debouncedMaxValue,
       })
     },
     {
@@ -293,12 +297,16 @@ export default function Payables() {
             setSituationFilter('all')
             setCustomMaturityRange(undefined)
             setMaturityPeriod('all')
+            setMinValue('')
+            setMaxValue('')
           }}
           hasActiveFilters={
             !!searchTerm ||
             !!supplierFilter ||
             situationFilter !== 'all' ||
-            !!customMaturityRange
+            !!customMaturityRange ||
+            !!minValue ||
+            !!maxValue
           }
         />
       </div>
