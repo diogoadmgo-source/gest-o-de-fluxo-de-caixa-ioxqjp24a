@@ -443,6 +443,31 @@ export async function ensureCompanyAndLink(
   return data as string
 }
 
+export async function saveReceivablesImportLog(data: {
+  company_id: string
+  user_id?: string | null
+  file_name?: string | null
+  total_rows: number
+  imported_rows: number
+  rejected_rows: number
+  notes?: string | null
+}) {
+  const { error } = await supabase.from('import_logs_receivables').insert({
+    company_id: data.company_id,
+    user_id: data.user_id || null,
+    file_name: data.file_name || null,
+    total_rows: data.total_rows,
+    imported_rows: data.imported_rows,
+    rejected_rows: data.rejected_rows,
+    notes: data.notes || null,
+  })
+
+  if (error) {
+    console.error('Failed to save receivables import log:', error)
+    throw error
+  }
+}
+
 export async function importReceivablesRobust(
   userId: string,
   companyId: string,
@@ -703,6 +728,21 @@ export async function importarReceivables(
       data,
       fileName,
     )
+
+    try {
+      await saveReceivablesImportLog({
+        company_id: fallbackCompanyId,
+        user_id: userId,
+        file_name: fileName,
+        total_rows: summary.total_rows,
+        imported_rows: summary.imported_rows,
+        rejected_rows: summary.rejected_rows,
+        notes: summary.message,
+      })
+    } catch (e) {
+      console.error('Error saving import log', e)
+      throw e
+    }
 
     let failures: any[] = []
 
