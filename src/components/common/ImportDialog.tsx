@@ -17,15 +17,12 @@ import {
   Download,
   Info,
   CheckCircle2,
-  Eye,
-  Database,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
 import { cn, parseCSV } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { ImportRejectsDialog } from '@/components/financial/ImportRejectsDialog'
 import { useAuth } from '@/hooks/use-auth'
 import { importarReceivables, importarPayables } from '@/services/financial'
 import { importProductImports } from '@/services/product-imports'
@@ -69,7 +66,6 @@ export function ImportDialog({
       auditDbValue?: number
     }
   } | null>(null)
-  const [showRejects, setShowRejects] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const selectedCompanyName = companies.find(
@@ -138,23 +134,23 @@ export function ImportDialog({
 
     if (type === 'product_import') {
       headers = [
-        'Processo',
-        'Descricao',
+        'Linha',
+        'Invoice',
         'Fornecedor',
-        'Valor',
-        'Moeda',
-        'Taxa',
-        'Impostos',
-        'Logistica',
-        'Nacionalizacao',
-        'Inicio',
-        'Previsao',
-        'Status',
+        'Situação',
+        'NF',
+        'Saldo',
+        'Vencimento',
+        'Previsão Desembaraço',
+        'Estimativa sem Imposto',
+        'Incidência de ICMS',
+        'Estimativa Valor Desembaraço Final',
+        'Status Desembaraço',
       ]
       content =
         headers.join(';') +
         '\n' +
-        'PROC-001;Produto Exemplo;Fornecedor XYZ;1000.00;USD;5.50;200.00;150.00;50.00;01/01/2025;15/02/2025;Pending'
+        'P&P;BR-42428100;MINDRAY;Aguardando registro DI;NF 43349;4237.00;26/12/2025;19/12/2025;3500.00;737.00;4237.00;Concluído'
     } else {
       headers = [
         'Empresa',
@@ -178,7 +174,7 @@ export function ImportDialog({
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', 'modelo_importacao.csv')
+    link.setAttribute('download', `modelo_importacao_${type}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -287,8 +283,6 @@ export function ImportDialog({
   }
 
   const showWarning = type === 'receivable'
-  const hasRejects =
-    result?.stats?.batchId && (result?.stats?.rejectedRows || 0) > 0
 
   return (
     <>

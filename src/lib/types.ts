@@ -251,6 +251,19 @@ export interface ProductImport {
   start_date: string
   expected_arrival_date?: string
   actual_arrival_date?: string
+
+  // New fields
+  line?: string
+  situation?: string
+  nf_number?: string
+  balance?: number
+  due_date?: string
+  clearance_forecast_date?: string
+  estimate_without_tax?: number
+  icms_tax?: number
+  final_clearance_estimate?: number
+  clearance_status?: string
+
   created_at?: string
   updated_at?: string
 }

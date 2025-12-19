@@ -13,6 +13,7 @@ import {
 import { ProductImport } from '@/lib/types'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { toast } from 'sonner'
+import { Calendar } from 'lucide-react'
 
 interface ProductImportFormProps {
   initialData?: Partial<ProductImport>
@@ -32,12 +33,19 @@ export function ProductImportForm({
     process_number: '',
     description: '',
     international_supplier: '',
-    foreign_currency_value: 0,
-    foreign_currency_code: 'USD',
-    exchange_rate: 1,
-    logistics_costs: 0,
-    taxes: 0,
-    nationalization_costs: 0,
+
+    line: '',
+    situation: '',
+    nf_number: '',
+    balance: 0,
+    due_date: '',
+    clearance_forecast_date: '',
+    estimate_without_tax: 0,
+    icms_tax: 0,
+    final_clearance_estimate: 0,
+    clearance_status: 'Em cotação',
+
+    // Defaults for compatibility
     status: 'Pending',
     start_date: new Date().toISOString().split('T')[0],
     ...initialData,
@@ -46,18 +54,14 @@ export function ProductImportForm({
   // Format dates for input if necessary
   useEffect(() => {
     if (initialData) {
+      const formatDate = (d: string | undefined) => (d ? d.split('T')[0] : '')
       setFormData((prev) => ({
         ...prev,
         ...initialData,
-        start_date: initialData.start_date
-          ? initialData.start_date.split('T')[0]
-          : prev.start_date,
-        expected_arrival_date: initialData.expected_arrival_date
-          ? initialData.expected_arrival_date.split('T')[0]
-          : '',
-        actual_arrival_date: initialData.actual_arrival_date
-          ? initialData.actual_arrival_date.split('T')[0]
-          : '',
+        due_date: formatDate(initialData.due_date),
+        clearance_forecast_date: formatDate(
+          initialData.clearance_forecast_date,
+        ),
       }))
     }
   }, [initialData])
@@ -73,26 +77,20 @@ export function ProductImportForm({
       toast.error('Selecione a empresa')
       return
     }
-    if (!formData.international_supplier) {
-      toast.error('Fornecedor é obrigatório')
+    if (!formData.process_number) {
+      toast.error('Invoice/Processo é obrigatório')
       return
     }
-    if (!formData.description) {
-      toast.error('Descrição é obrigatória')
+    if (!formData.international_supplier) {
+      toast.error('Fornecedor é obrigatório')
       return
     }
 
     onSave(formData)
   }
 
-  const totalValue =
-    (formData.foreign_currency_value || 0) * (formData.exchange_rate || 1) +
-    (formData.logistics_costs || 0) +
-    (formData.taxes || 0) +
-    (formData.nationalization_costs || 0)
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="company">
@@ -117,43 +115,37 @@ export function ProductImportForm({
             </SelectContent>
           </Select>
         </div>
+
         <div className="space-y-2">
-          <Label htmlFor="status">Status</Label>
-          <Select
-            value={formData.status}
-            onValueChange={(val) => handleChange('status', val)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Pending">Pendente</SelectItem>
-              <SelectItem value="In Transit">Em Trânsito</SelectItem>
-              <SelectItem value="Customs">Alfândega</SelectItem>
-              <SelectItem value="Cleared">Desembaraçado</SelectItem>
-              <SelectItem value="Completed">Concluído</SelectItem>
-              <SelectItem value="Cancelled">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
+          <Label htmlFor="line">Linha</Label>
+          <Input
+            id="line"
+            value={formData.line || ''}
+            onChange={(e) => handleChange('line', e.target.value)}
+            placeholder="Ex: P&P, VET, UIS..."
+          />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="process_number">Nº Processo</Label>
+          <Label htmlFor="process_number">
+            Invoice / Processo <span className="text-destructive">*</span>
+          </Label>
           <Input
             id="process_number"
-            value={formData.process_number}
+            value={formData.process_number || ''}
             onChange={(e) => handleChange('process_number', e.target.value)}
+            required
           />
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 md:col-span-2">
           <Label htmlFor="supplier">
-            Fornecedor Int. <span className="text-destructive">*</span>
+            Fornecedor Internacional <span className="text-destructive">*</span>
           </Label>
           <Input
             id="supplier"
-            value={formData.international_supplier}
+            value={formData.international_supplier || ''}
             onChange={(e) =>
               handleChange('international_supplier', e.target.value)
             }
@@ -164,146 +156,148 @@ export function ProductImportForm({
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="currency">Moeda</Label>
+          <Label htmlFor="situation">Situação Operacional</Label>
+          <Input
+            id="situation"
+            value={formData.situation || ''}
+            onChange={(e) => handleChange('situation', e.target.value)}
+            placeholder="Ex: Em desembaraço"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="nf_number">Nota Fiscal (NF)</Label>
+          <Input
+            id="nf_number"
+            value={formData.nf_number || ''}
+            onChange={(e) => handleChange('nf_number', e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="clearance_status">Status Desembaraço</Label>
           <Select
-            value={formData.foreign_currency_code}
-            onValueChange={(val) => handleChange('foreign_currency_code', val)}
+            value={formData.clearance_status}
+            onValueChange={(val) => handleChange('clearance_status', val)}
           >
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue placeholder="Selecione..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="USD">USD - Dólar</SelectItem>
-              <SelectItem value="EUR">EUR - Euro</SelectItem>
-              <SelectItem value="GBP">GBP - Libra</SelectItem>
+              <SelectItem value="Em cotação">Em cotação</SelectItem>
+              <SelectItem value="Em produção">Em produção</SelectItem>
+              <SelectItem value="Em Trânsito">Em Trânsito</SelectItem>
+              <SelectItem value="Desembaraço">Desembaraço</SelectItem>
+              <SelectItem value="Concluído">Concluído</SelectItem>
+              <SelectItem value="Cancelado">Cancelado</SelectItem>
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-md bg-muted/10">
         <div className="space-y-2">
-          <Label htmlFor="value_fx">Valor (ME)</Label>
+          <Label htmlFor="balance">Saldo (R$)</Label>
           <Input
-            id="value_fx"
+            id="balance"
             type="number"
             step="0.01"
-            value={formData.foreign_currency_value}
+            value={formData.balance}
             onChange={(e) =>
-              handleChange('foreign_currency_value', parseFloat(e.target.value))
+              handleChange('balance', parseFloat(e.target.value))
             }
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="rate">Taxa Câmbio</Label>
+          <Label htmlFor="estimate_without_tax">Est. sem Imposto (R$)</Label>
           <Input
-            id="rate"
+            id="estimate_without_tax"
             type="number"
-            step="0.0001"
-            value={formData.exchange_rate}
+            step="0.01"
+            value={formData.estimate_without_tax}
             onChange={(e) =>
-              handleChange('exchange_rate', parseFloat(e.target.value))
+              handleChange('estimate_without_tax', parseFloat(e.target.value))
+            }
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="icms_tax">Incidência ICMS (R$)</Label>
+          <Input
+            id="icms_tax"
+            type="number"
+            step="0.01"
+            value={formData.icms_tax}
+            onChange={(e) =>
+              handleChange('icms_tax', parseFloat(e.target.value))
+            }
+          />
+        </div>
+        <div className="space-y-2">
+          <Label
+            htmlFor="final_estimate"
+            className="font-semibold text-primary"
+          >
+            Est. Valor Final (R$)
+          </Label>
+          <Input
+            id="final_estimate"
+            type="number"
+            step="0.01"
+            className="font-semibold border-primary/30 bg-background"
+            value={formData.final_clearance_estimate}
+            onChange={(e) =>
+              handleChange(
+                'final_clearance_estimate',
+                parseFloat(e.target.value),
+              )
             }
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md bg-muted/10">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="logistics">Logística (R$)</Label>
+          <Label htmlFor="due_date" className="flex items-center gap-2">
+            <Calendar className="w-3 h-3" /> Vencimento
+          </Label>
           <Input
-            id="logistics"
-            type="number"
-            step="0.01"
-            value={formData.logistics_costs}
-            onChange={(e) =>
-              handleChange('logistics_costs', parseFloat(e.target.value))
-            }
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="taxes">Impostos (R$)</Label>
-          <Input
-            id="taxes"
-            type="number"
-            step="0.01"
-            value={formData.taxes}
-            onChange={(e) => handleChange('taxes', parseFloat(e.target.value))}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="nationalization">Nacionalização (R$)</Label>
-          <Input
-            id="nationalization"
-            type="number"
-            step="0.01"
-            value={formData.nationalization_costs}
-            onChange={(e) =>
-              handleChange('nationalization_costs', parseFloat(e.target.value))
-            }
-          />
-        </div>
-        <div className="space-y-2 md:col-span-3">
-          <Label htmlFor="total">Custo Total Estimado (R$)</Label>
-          <Input
-            id="total"
-            value={totalValue.toLocaleString('pt-BR', {
-              style: 'currency',
-              currency: 'BRL',
-            })}
-            disabled
-            className="bg-muted font-bold"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="start_date">Início</Label>
-          <Input
-            id="start_date"
+            id="due_date"
             type="date"
-            value={formData.start_date}
-            onChange={(e) => handleChange('start_date', e.target.value)}
+            value={formData.due_date || ''}
+            onChange={(e) => handleChange('due_date', e.target.value)}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="expected_date">Previsão Chegada</Label>
+          <Label
+            htmlFor="clearance_forecast_date"
+            className="flex items-center gap-2"
+          >
+            <Calendar className="w-3 h-3" /> Previsão Desembaraço
+          </Label>
           <Input
-            id="expected_date"
+            id="clearance_forecast_date"
             type="date"
-            value={formData.expected_arrival_date || ''}
+            value={formData.clearance_forecast_date || ''}
             onChange={(e) =>
-              handleChange('expected_arrival_date', e.target.value)
-            }
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="actual_date">Chegada Real</Label>
-          <Input
-            id="actual_date"
-            type="date"
-            value={formData.actual_arrival_date || ''}
-            onChange={(e) =>
-              handleChange('actual_arrival_date', e.target.value)
+              handleChange('clearance_forecast_date', e.target.value)
             }
           />
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="description">Descrição do Produto / Lote</Label>
+        <Label htmlFor="description">Descrição / Detalhes</Label>
         <Textarea
           id="description"
-          value={formData.description}
+          value={formData.description || ''}
           onChange={(e) => handleChange('description', e.target.value)}
           rows={3}
-          required
         />
       </div>
 
-      <div className="flex justify-end gap-2 pt-4">
+      <div className="flex justify-end gap-2 pt-4 border-t">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar
         </Button>
-        <Button type="submit">Salvar Importação</Button>
+        <Button type="submit">Salvar Registro</Button>
       </div>
     </form>
   )

@@ -1,8 +1,8 @@
 import { supabase } from '@/lib/supabase/client'
 import { ProductImport } from '@/lib/types'
 import { parsePtBrFloat } from '@/lib/utils'
+import { format } from 'date-fns'
 
-// Updated to support server-side pagination and filtering
 export async function fetchPaginatedProductImports(
   companyIds: string[],
   page: number,
@@ -20,13 +20,13 @@ export async function fetchPaginatedProductImports(
 
   // Filtering
   if (filters.status && filters.status !== 'all') {
-    query = query.eq('status', filters.status)
+    query = query.eq('clearance_status', filters.status)
   }
 
   if (filters.search) {
     const term = `%${filters.search}%`
     query = query.or(
-      `description.ilike.${term},international_supplier.ilike.${term},process_number.ilike.${term}`,
+      `process_number.ilike.${term},nf_number.ilike.${term},international_supplier.ilike.${term}`,
     )
   }
 
@@ -35,7 +35,7 @@ export async function fetchPaginatedProductImports(
     const toStr = filters.dateRange.to
       ? filters.dateRange.to.toISOString().split('T')[0]
       : fromStr
-    query = query.gte('start_date', fromStr).lte('start_date', toStr)
+    query = query.gte('due_date', fromStr).lte('due_date', toStr)
   }
 
   // Sorting
@@ -52,6 +52,34 @@ export async function fetchPaginatedProductImports(
   return { data: (data as ProductImport[]) || [], count: count || 0 }
 }
 
+export async function getProductImportStats(
+  companyId: string,
+  dateRange?: { from: Date; to?: Date },
+) {
+  const fromStr = dateRange?.from
+    ? dateRange.from.toISOString().split('T')[0]
+    : null
+  const toStr = dateRange?.to
+    ? dateRange.to.toISOString().split('T')[0]
+    : dateRange?.from
+      ? dateRange.from.toISOString().split('T')[0]
+      : null
+
+  const { data, error } = await supabase.rpc('get_product_import_stats', {
+    p_company_id: companyId,
+    p_start_date: fromStr,
+    p_end_date: toStr,
+  })
+
+  if (error) throw error
+  return data as {
+    status: string
+    total_balance: number
+    total_estimate: number
+    count: number
+  }[]
+}
+
 export async function saveProductImport(
   payload: Partial<ProductImport>,
   userId: string,
@@ -62,18 +90,30 @@ export async function saveProductImport(
     company_id: payload.company_id,
     user_id: userId,
     process_number: payload.process_number,
-    description: payload.description,
-    international_supplier: payload.international_supplier,
-    foreign_currency_value: payload.foreign_currency_value,
-    foreign_currency_code: payload.foreign_currency_code,
-    exchange_rate: payload.exchange_rate,
+    description: payload.description || '',
+    international_supplier: payload.international_supplier || '',
+    foreign_currency_value: payload.foreign_currency_value || 0,
+    foreign_currency_code: payload.foreign_currency_code || 'USD',
+    exchange_rate: payload.exchange_rate || 1,
     logistics_costs: payload.logistics_costs || 0,
     taxes: payload.taxes || 0,
     nationalization_costs: payload.nationalization_costs || 0,
-    status: payload.status,
-    start_date: payload.start_date,
+    status: payload.status || 'Pending',
+    start_date: payload.start_date || new Date().toISOString().split('T')[0],
     expected_arrival_date: payload.expected_arrival_date || null,
     actual_arrival_date: payload.actual_arrival_date || null,
+
+    // New fields
+    line: payload.line,
+    situation: payload.situation,
+    nf_number: payload.nf_number,
+    balance: payload.balance || 0,
+    due_date: payload.due_date || null,
+    clearance_forecast_date: payload.clearance_forecast_date || null,
+    estimate_without_tax: payload.estimate_without_tax || 0,
+    icms_tax: payload.icms_tax || 0,
+    final_clearance_estimate: payload.final_clearance_estimate || 0,
+    clearance_status: payload.clearance_status,
   }
 
   if (payload.id) {
@@ -137,27 +177,6 @@ export async function importProductImports(
       return undefined
     }
 
-    const description =
-      getVal(['description', 'descrição', 'produto']) || 'Importação via CSV'
-    const supplier =
-      getVal(['international_supplier', 'fornecedor', 'supplier']) ||
-      'Fornecedor Desconhecido'
-    const valueStr = getVal([
-      'foreign_currency_value',
-      'valor',
-      'value',
-      'amount',
-    ])
-    const rateStr = getVal(['exchange_rate', 'taxa', 'cambio', 'rate'])
-    const taxesStr = getVal(['taxes', 'impostos', 'tax'])
-    const logisticsStr = getVal(['logistics_costs', 'logistica', 'frete'])
-    const nationalizationStr = getVal([
-      'nationalization_costs',
-      'nacionalizacao',
-      'custos',
-    ])
-
-    // Date parsing helper
     const parseDate = (val: any) => {
       if (!val) return null
       if (val instanceof Date) return val.toISOString().split('T')[0]
@@ -172,33 +191,101 @@ export async function importProductImports(
       return null
     }
 
+    // Mapping based on user story excel columns
+    // Linha -> line
+    const line = getVal(['linha', 'line', 'category'])
+    // Invoice -> process_number
+    const process_number = getVal([
+      'invoice',
+      'processo',
+      'process',
+      'process_number',
+    ])
+    // Fornecedor -> international_supplier
+    const supplier = getVal([
+      'fornecedor',
+      'supplier',
+      'international_supplier',
+    ])
+    // Situação -> situation
+    const situation = getVal(['situação', 'situacao', 'situation'])
+    // NF -> nf_number
+    const nf_number = getVal(['nf', 'nota fiscal', 'nf_number'])
+    // Saldo -> balance
+    const balance = parsePtBrFloat(getVal(['saldo', 'balance']))
+    // Vencimento -> due_date
+    const due_date = parseDate(getVal(['vencimento', 'due_date']))
+    // Previsão Desembaraço -> clearance_forecast_date
+    const clearance_forecast_date = parseDate(
+      getVal([
+        'previsão desembaraço',
+        'previsao desembaraco',
+        'forecast',
+        'clearance_forecast_date',
+      ]),
+    )
+    // Estimativa sem Imposto (ICMS) -> estimate_without_tax
+    const estimate_without_tax = parsePtBrFloat(
+      getVal(['estimativa sem imposto', 'estimate_without_tax']),
+    )
+    // Incidência de ICMS -> icms_tax
+    const icms_tax = parsePtBrFloat(
+      getVal(['incidência de icms', 'incidencia de icms', 'icms', 'icms_tax']),
+    )
+    // Estimativa Valor Desembaraço Final -> final_clearance_estimate
+    const final_clearance_estimate = parsePtBrFloat(
+      getVal([
+        'estimativa valor desembaraço final',
+        'final_estimate',
+        'final_clearance_estimate',
+      ]),
+    )
+    // Status Desembaraço -> clearance_status
+    const clearance_status = getVal([
+      'status desembaraço',
+      'status desembaraco',
+      'clearance_status',
+    ])
+
+    const description =
+      getVal(['descrição', 'descricao', 'description']) ||
+      process_number ||
+      'Importação via CSV'
+
+    // Fallbacks/Defaults
     const start_date =
-      parseDate(getVal(['start_date', 'data inicio', 'inicio', 'data'])) ||
+      parseDate(getVal(['inicio', 'start_date'])) ||
       new Date().toISOString().split('T')[0]
-    const expected = parseDate(
-      getVal(['expected_arrival_date', 'previsao', 'chegada prevista']),
-    )
-    const actual = parseDate(
-      getVal(['actual_arrival_date', 'chegada', 'chegada real']),
-    )
 
     return {
       company_id: companyId,
       user_id: userId,
-      process_number: getVal(['process_number', 'processo', 'numero']) || '',
+      process_number: process_number ? String(process_number).trim() : null,
       description: String(description).substring(0, 255),
-      international_supplier: String(supplier).substring(0, 255),
-      foreign_currency_value: parsePtBrFloat(valueStr),
-      foreign_currency_code:
-        getVal(['foreign_currency_code', 'moeda', 'currency']) || 'USD',
-      exchange_rate: parsePtBrFloat(rateStr) || 1,
-      logistics_costs: parsePtBrFloat(logisticsStr),
-      taxes: parsePtBrFloat(taxesStr),
-      nationalization_costs: parsePtBrFloat(nationalizationStr),
-      status: getVal(['status', 'situacao']) || 'Pending',
+      international_supplier: supplier
+        ? String(supplier).trim()
+        : 'Fornecedor Desconhecido',
+      foreign_currency_value: 0, // Legacy, can keep 0 if not provided
+      foreign_currency_code: 'USD',
+      exchange_rate: 1,
+      logistics_costs: 0,
+      taxes: 0,
+      nationalization_costs: 0,
+      status: 'Pending', // Legacy status
       start_date,
-      expected_arrival_date: expected,
-      actual_arrival_date: actual,
+
+      line: line ? String(line).trim() : null,
+      situation: situation ? String(situation).trim() : null,
+      nf_number: nf_number ? String(nf_number).trim() : null,
+      balance,
+      due_date,
+      clearance_forecast_date,
+      estimate_without_tax,
+      icms_tax,
+      final_clearance_estimate,
+      clearance_status: clearance_status
+        ? String(clearance_status).trim()
+        : null,
     }
   })
 
