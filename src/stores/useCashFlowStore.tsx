@@ -49,6 +49,8 @@ interface CashFlowContextType {
   deleteBank: (id: string) => Promise<void>
   recalculateCashFlow: () => void
   loading: boolean
+  timeframe: number
+  setTimeframe: (days: number) => void
 }
 
 const CashFlowContext = createContext<CashFlowContextType | undefined>(
@@ -63,6 +65,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   >(() => {
     return normalizeCompanyId(localStorage.getItem('hospcash_selectedCompany'))
   })
+  const [timeframe, setTimeframe] = useState(30)
 
   const [companies, setCompanies] = useState<Company[]>([])
   const [cashFlowEntries, setCashFlowEntries] = useState<CashFlowEntry[]>([])
@@ -124,13 +127,15 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         setBankBalances(latestBalances)
 
         // 3. Fetch KPI
-        const kpiData = await getDashboardKPIs(activeId)
+        const kpiData = await getDashboardKPIs(activeId, timeframe)
         setKpis(kpiData as KPI)
 
         // 4. Calculate Cash Flow
         const today = new Date()
-        const start = subDays(today, 30)
-        const end = addDays(today, 90)
+        // Provide small history context (e.g. 7 days back) + requested timeframe
+        const historyDays = Math.min(15, timeframe)
+        const start = subDays(today, historyDays)
+        const end = addDays(today, timeframe)
 
         const aggs = await getCashFlowAggregates(activeId, start, end)
 
@@ -205,7 +210,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false)
     }
-  }, [user, selectedCompanyId])
+  }, [user, selectedCompanyId, timeframe])
 
   useEffect(() => {
     fetchData()
@@ -244,6 +249,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         deleteBank,
         recalculateCashFlow: fetchData,
         loading,
+        timeframe,
+        setTimeframe,
       }}
     >
       {children}

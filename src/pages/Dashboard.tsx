@@ -5,10 +5,17 @@ import { MetricCard } from '@/components/dashboard/MetricCard'
 import { KPIPanel } from '@/components/dashboard/KPIPanel'
 import { CashFlowEvolutionChart } from '@/components/cash-flow/CashFlowEvolutionChart'
 import { Loader2 } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export default function Dashboard() {
-  const { selectedCompanyId, cashFlowEntries, kpis, loading } =
-    useCashFlowStore()
+  const {
+    selectedCompanyId,
+    cashFlowEntries,
+    kpis,
+    loading,
+    timeframe,
+    setTimeframe,
+  } = useCashFlowStore()
 
   // Always define hooks at top level
   const kpiData = useMemo(() => {
@@ -48,11 +55,26 @@ export default function Dashboard() {
     )
   }
 
-  const showRecebido = kpiData.receivables_amount_received > 0
-
   return (
     <div className="space-y-6 animate-fade-in pb-10">
-      <h2 className="text-3xl font-bold tracking-tight">Dashboard Executivo</h2>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <h2 className="text-3xl font-bold tracking-tight">
+          Dashboard Executivo
+        </h2>
+        <Tabs
+          value={String(timeframe)}
+          onValueChange={(val) => setTimeframe(Number(val))}
+          className="w-full md:w-auto"
+        >
+          <TabsList className="grid w-full md:w-auto grid-cols-5">
+            <TabsTrigger value="7">7 Dias</TabsTrigger>
+            <TabsTrigger value="15">15 Dias</TabsTrigger>
+            <TabsTrigger value="30">30 Dias</TabsTrigger>
+            <TabsTrigger value="60">60 Dias</TabsTrigger>
+            <TabsTrigger value="90">90 Dias</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
 
       {!selectedCompanyId || selectedCompanyId === 'all' ? (
         <Card className="p-8 text-center text-muted-foreground border-dashed">
@@ -74,14 +96,14 @@ export default function Dashboard() {
               value={kpiData.receivables_amount_open}
               description="Recebíveis Futuros"
               trend="up"
-              trendLabel="Próximos 30+ dias"
+              trendLabel={`Próximos ${timeframe} dias`}
             />
             <MetricCard
               title="A Pagar"
               value={kpiData.payables_amount_pending}
               description="Compromissos Pendentes"
               trend="down"
-              trendLabel="Total Aberto"
+              trendLabel={`Próximos ${timeframe} dias`}
             />
             <MetricCard
               title="Vencido (Receb.)"

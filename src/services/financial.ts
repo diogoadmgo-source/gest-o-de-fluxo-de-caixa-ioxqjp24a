@@ -236,13 +236,14 @@ export async function fetchPaginatedPayables(
   )
 }
 
-export async function getDashboardKPIs(companyId: string) {
+export async function getDashboardKPIs(companyId: string, timeframe: number) {
   return performanceMonitor.measurePromise(
     'dashboard',
     'get_kpis',
     (async () => {
       const { data, error } = await supabase.rpc('get_dashboard_kpis', {
         p_company_id: companyId,
+        p_days: timeframe,
       })
       if (error) throw error
       return data as KPI

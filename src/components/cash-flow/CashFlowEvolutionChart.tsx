@@ -31,8 +31,10 @@ interface CashFlowEvolutionChartProps {
 
 const chartConfig = {
   balance: { label: 'Saldo Acumulado', color: 'hsl(var(--primary))' },
-  inflow: { label: 'Entradas', color: '#10b981' },
-  outflow: { label: 'Saídas (Total)', color: '#f43f5e' },
+  inflow: { label: 'Entradas (Recebíveis)', color: '#10b981' },
+  payables: { label: 'Pagamentos Operacionais', color: '#f43f5e' },
+  imports: { label: 'Pagamentos Importação', color: '#f97316' }, // orange-500
+  customs: { label: 'Custos Aduaneiros', color: '#8b5cf6' }, // violet-500
 }
 
 export function CashFlowEvolutionChart({ data }: CashFlowEvolutionChartProps) {
@@ -41,29 +43,29 @@ export function CashFlowEvolutionChart({ data }: CashFlowEvolutionChartProps) {
     fullDate: format(parseISO(entry.date), 'dd/MM/yyyy'),
     balance: entry.accumulated_balance,
     inflow: entry.total_receivables,
-    // Outflow now includes operational payables + import payments + customs costs
-    outflow:
-      entry.total_payables +
-      entry.import_payments +
-      entry.customs_cost +
-      entry.other_expenses,
+    // Negative values for stacking downwards
+    payables: -entry.total_payables,
+    imports: -entry.import_payments,
+    customs: -entry.customs_cost,
   }))
 
   return (
     <Card className="shadow-sm">
       <CardHeader>
-        <CardTitle>Projeção de Caixa</CardTitle>
+        <CardTitle>Projeção de Caixa Detalhada</CardTitle>
         <CardDescription>
-          Comparativo de Entradas, Saídas e Saldo Acumulado.
+          Fluxo diário de entradas e saídas (Operacional, Importação e
+          Aduaneiro)
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-[350px] w-full">
+        <div className="h-[400px] w-full">
           <ChartContainer config={chartConfig}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={chartData}
                 margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
+                stackOffset="sign"
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
@@ -104,7 +106,28 @@ export function CashFlowEvolutionChart({ data }: CashFlowEvolutionChartProps) {
                     }).format(val)
                   }
                 />
-                <ChartTooltip content={<ChartTooltipContent />} />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name) => {
+                        const valNum = Number(value)
+                        return (
+                          <div className="flex min-w-[130px] items-center text-xs text-muted-foreground">
+                            <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[--color-bg]" />
+                            {chartConfig[name as keyof typeof chartConfig]
+                              ?.label || name}
+                            <div className="ml-auto font-mono font-medium text-foreground">
+                              {Math.abs(valNum).toLocaleString('pt-BR', {
+                                style: 'currency',
+                                currency: 'BRL',
+                              })}
+                            </div>
+                          </div>
+                        )
+                      }}
+                    />
+                  }
+                />
                 <ChartLegend content={<ChartLegendContent />} />
                 <ReferenceLine
                   y={0}
@@ -113,21 +136,42 @@ export function CashFlowEvolutionChart({ data }: CashFlowEvolutionChartProps) {
                   strokeDasharray="3 3"
                 />
 
+                {/* Inflows */}
                 <Bar
                   yAxisId="right"
                   dataKey="inflow"
                   fill="var(--color-inflow)"
                   radius={[4, 4, 0, 0]}
                   barSize={20}
-                  fillOpacity={0.6}
+                  fillOpacity={0.8}
+                />
+
+                {/* Outflows Stacked */}
+                <Bar
+                  yAxisId="right"
+                  dataKey="payables"
+                  stackId="outflow"
+                  fill="var(--color-payables)"
+                  radius={[0, 0, 4, 4]} // Rounded bottom for the last one usually, but hard to know order.
+                  barSize={20}
+                  fillOpacity={0.8}
                 />
                 <Bar
                   yAxisId="right"
-                  dataKey="outflow"
-                  fill="var(--color-outflow)"
-                  radius={[4, 4, 0, 0]}
+                  dataKey="imports"
+                  stackId="outflow"
+                  fill="var(--color-imports)"
                   barSize={20}
-                  fillOpacity={0.6}
+                  fillOpacity={0.8}
+                />
+                <Bar
+                  yAxisId="right"
+                  dataKey="customs"
+                  stackId="outflow"
+                  fill="var(--color-customs)"
+                  radius={[0, 0, 4, 4]}
+                  barSize={20}
+                  fillOpacity={0.8}
                 />
 
                 <Line

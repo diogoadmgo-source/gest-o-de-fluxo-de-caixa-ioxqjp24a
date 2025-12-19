@@ -985,7 +985,9 @@ export type Database = {
       get_cash_flow_aggregates: {
         Args: { p_company_id: string; p_end_date: string; p_start_date: string }
         Returns: {
+          customs_cost: number
           day: string
+          import_payments: number
           total_payables: number
           total_receivables: number
         }[]
