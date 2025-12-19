@@ -12,24 +12,23 @@ export function BankBalanceDashboard({
   banks,
   balances,
 }: BankBalanceDashboardProps) {
+  // Only show active banks
   const activeBanks = banks.filter((b) => b.active)
 
-  // Calculate distinct totals
+  // Helper to get balance
+  const getBalance = (bankId: string) => {
+    const entry = balances.find((b) => b.bank_id === bankId)
+    return entry ? entry.balance : 0
+  }
+
   const totalBankBalance = activeBanks
     .filter((b) => b.type === 'bank')
-    .reduce((sum, bank) => {
-      const bankBalance = balances.find((b) => b.bank_id === bank.id)
-      return sum + (bankBalance?.balance || 0)
-    }, 0)
+    .reduce((sum, bank) => sum + getBalance(bank.id), 0)
 
   const totalCashBalance = activeBanks
     .filter((b) => b.type === 'cash')
-    .reduce((sum, bank) => {
-      const bankBalance = balances.find((b) => b.bank_id === bank.id)
-      return sum + (bankBalance?.balance || 0)
-    }, 0)
+    .reduce((sum, bank) => sum + getBalance(bank.id), 0)
 
-  // Helper to format currency
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -39,7 +38,6 @@ export function BankBalanceDashboard({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      {/* Total Bank Balance Card */}
       <Card className="bg-primary text-primary-foreground shadow-md col-span-1 border-primary">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-primary-foreground/90">
@@ -57,7 +55,6 @@ export function BankBalanceDashboard({
         </CardContent>
       </Card>
 
-      {/* Cash Balance Card */}
       <Card className="bg-emerald-600 text-white shadow-md col-span-1 border-emerald-600">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-white/90">
@@ -73,23 +70,12 @@ export function BankBalanceDashboard({
         </CardContent>
       </Card>
 
-      {/* Individual Bank/Cash Cards */}
       {activeBanks.map((bank) => {
-        const bankBalance = balances.find((b) => b.bank_id === bank.id)
-        const currentAmount = bankBalance ? bankBalance.balance : 0
-        const hasBalance = !!bankBalance
-
+        const balance = getBalance(bank.id)
         return (
           <Card
             key={bank.id}
-            className={cn(
-              'transition-all hover:shadow-md border-l-4',
-              hasBalance
-                ? bank.type === 'cash'
-                  ? 'border-l-emerald-500'
-                  : 'border-l-primary'
-                : 'border-l-muted opacity-80 bg-muted/20',
-            )}
+            className="transition-all hover:shadow-md border-l-4 border-l-muted"
           >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle
@@ -106,13 +92,11 @@ export function BankBalanceDashboard({
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {formatCurrency(currentAmount)}
+                {formatCurrency(balance)}
               </div>
               <p className="text-xs text-muted-foreground mt-1 truncate">
                 {bank.institution}{' '}
-                {bank.account_number && bank.account_number !== '-'
-                  ? `• ${bank.account_number}`
-                  : ''}
+                {bank.account_number ? `• ${bank.account_number}` : ''}
               </p>
             </CardContent>
           </Card>

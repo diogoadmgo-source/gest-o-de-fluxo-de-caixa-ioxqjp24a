@@ -17,20 +17,18 @@ import { Badge } from '@/components/ui/badge'
 
 interface KPIPanelProps {
   kpi: KPI
-  previousKpi?: KPI
 }
 
-export function KPIPanel({ kpi, previousKpi }: KPIPanelProps) {
-  // Gap calculation logic:
-  // PMR (Recebimento) < PMP (Pagamento) = Good (Negative Gap is Good usually means we hold cash)
-  // But strictly: Cash Gap = PMR - PMP.
-  // If PMR (60) > PMP (30), Gap is +30. We fund 30 days. Bad.
-  // If PMR (30) < PMP (60), Gap is -30. We are funded. Good.
-  const isGapGood = kpi.cash_gap <= 0
+export function KPIPanel({ kpi }: KPIPanelProps) {
+  // Use fallbacks for safety
+  const pmr = kpi?.pmr || 0
+  const pmp = kpi?.pmp || 0
+  const gap = kpi?.cash_gap || 0
+  const runway = kpi?.days_until_zero || 999
+  const isGapGood = gap <= 0
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      {/* PMR Card */}
       <Card className="hover:shadow-md transition-all border-l-4 border-l-blue-500">
         <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
           <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -44,14 +42,10 @@ export function KPIPanel({ kpi, previousKpi }: KPIPanelProps) {
           </Tooltip>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{Math.round(kpi.pmr)} dias</div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Tempo médio para receber
-          </p>
+          <div className="text-2xl font-bold">{Math.round(pmr)} dias</div>
         </CardContent>
       </Card>
 
-      {/* PMP Card */}
       <Card className="hover:shadow-md transition-all border-l-4 border-l-indigo-500">
         <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
           <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -65,14 +59,10 @@ export function KPIPanel({ kpi, previousKpi }: KPIPanelProps) {
           </Tooltip>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{Math.round(kpi.pmp)} dias</div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Tempo médio para pagar
-          </p>
+          <div className="text-2xl font-bold">{Math.round(pmp)} dias</div>
         </CardContent>
       </Card>
 
-      {/* Cash Gap Card */}
       <Card
         className={cn(
           'hover:shadow-md transition-all border-l-4',
@@ -96,7 +86,7 @@ export function KPIPanel({ kpi, previousKpi }: KPIPanelProps) {
               isGapGood ? 'text-emerald-600' : 'text-rose-600',
             )}
           >
-            {Math.round(kpi.cash_gap)} dias
+            {Math.round(gap)} dias
           </div>
           <div className="flex items-center gap-2 mt-1">
             <Badge
@@ -105,22 +95,14 @@ export function KPIPanel({ kpi, previousKpi }: KPIPanelProps) {
             >
               {isGapGood ? 'Saudável' : 'Atenção'}
             </Badge>
-            <span className="text-xs text-muted-foreground">
-              {isGapGood ? 'Financiado' : 'Necessidade de Capital'}
-            </span>
           </div>
         </CardContent>
       </Card>
 
-      {/* Runway / Cash Zero Card */}
       <Card
         className={cn(
           'hover:shadow-md transition-all border-l-4',
-          kpi.days_until_zero > 30
-            ? 'border-l-emerald-500'
-            : kpi.days_until_zero > 15
-              ? 'border-l-amber-500'
-              : 'border-l-rose-500',
+          runway > 30 ? 'border-l-emerald-500' : 'border-l-rose-500',
         )}
       >
         <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -131,18 +113,9 @@ export function KPIPanel({ kpi, previousKpi }: KPIPanelProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">
-            {kpi.days_until_zero >= 999
-              ? 'Estável'
-              : `${Math.round(kpi.days_until_zero)} dias`}
+            {runway >= 999 ? 'Estável' : `${Math.round(runway)} dias`}
           </div>
-          <div className="flex items-center gap-2 mt-1">
-            {kpi.days_until_zero < 15 && (
-              <AlertTriangle className="h-3 w-3 text-rose-500" />
-            )}
-            <p className="text-xs text-muted-foreground">
-              Duração estimada do saldo atual
-            </p>
-          </div>
+          <p className="text-xs text-muted-foreground mt-1">Duração estimada</p>
         </CardContent>
       </Card>
     </div>

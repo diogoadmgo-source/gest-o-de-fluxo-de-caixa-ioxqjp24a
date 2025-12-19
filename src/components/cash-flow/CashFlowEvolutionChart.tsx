@@ -9,6 +9,8 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
 } from '@/components/ui/chart'
 import {
   CartesianGrid,
@@ -21,60 +23,37 @@ import {
   Line,
 } from 'recharts'
 import { CashFlowEntry } from '@/lib/types'
-import { format, addDays, parseISO, isSameDay, startOfDay } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
+import { format, parseISO } from 'date-fns'
 
 interface CashFlowEvolutionChartProps {
   data: CashFlowEntry[]
 }
 
 const chartConfig = {
-  balance: {
-    label: 'Saldo Projetado',
-    color: 'hsl(var(--primary))',
-  },
+  balance: { label: 'Saldo Acumulado', color: 'hsl(var(--primary))' },
+  inflow: { label: 'Entradas', color: '#10b981' },
+  outflow: { label: 'Saídas', color: '#f43f5e' },
 }
 
 export function CashFlowEvolutionChart({ data }: CashFlowEvolutionChartProps) {
-  const today = startOfDay(new Date())
-  const intervals = [7, 15, 21, 30, 60, 90]
-
-  const chartData = intervals.map((days) => {
-    const targetDate = addDays(today, days)
-    // Find entry with same date
-    const entry = data.find((e) => isSameDay(parseISO(e.date), targetDate))
-    // Fallback: find closest previous entry if exact date missing (e.g. weekends)
-    const fallbackEntry = !entry
-      ? [...data]
-          .sort(
-            (a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime(),
-          )
-          .filter((e) => parseISO(e.date) <= targetDate)
-          .pop()
-      : null
-
-    return {
-      label: `${days}d`,
-      date: format(targetDate, 'dd/MM'),
-      fullDate: format(targetDate, 'dd/MM/yyyy'),
-      balance: entry
-        ? entry.accumulated_balance
-        : fallbackEntry
-          ? fallbackEntry.accumulated_balance
-          : 0,
-    }
-  })
+  const chartData = data.map((entry) => ({
+    date: format(parseISO(entry.date), 'dd/MM'),
+    fullDate: format(parseISO(entry.date), 'dd/MM/yyyy'),
+    balance: entry.accumulated_balance,
+    inflow: entry.total_receivables,
+    outflow: entry.total_payables,
+  }))
 
   return (
-    <Card className="col-span-1 shadow-md border-l-4 border-l-primary/50">
+    <Card className="shadow-sm">
       <CardHeader>
-        <CardTitle>Evolução de Liquidez (Horizonte)</CardTitle>
+        <CardTitle>Projeção de Caixa</CardTitle>
         <CardDescription>
-          Projeção do saldo acumulado para 7, 15, 21, 30, 60 e 90 dias.
+          Comparativo de Entradas, Saídas e Saldo Acumulado.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px] w-full">
+        <div className="h-[350px] w-full">
           <ChartContainer config={chartConfig}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
@@ -87,73 +66,72 @@ export function CashFlowEvolutionChart({ data }: CashFlowEvolutionChartProps) {
                   stroke="hsl(var(--border))"
                 />
                 <XAxis
-                  dataKey="label"
+                  dataKey="date"
                   stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
+                  yAxisId="left"
+                  stroke="hsl(var(--primary))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(val) =>
+                    new Intl.NumberFormat('pt-BR', {
+                      notation: 'compact',
+                      compactDisplay: 'short',
+                    }).format(val)
+                  }
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
                   stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(value) =>
+                  tickFormatter={(val) =>
                     new Intl.NumberFormat('pt-BR', {
                       notation: 'compact',
                       compactDisplay: 'short',
-                      currency: 'BRL',
-                      style: 'currency',
-                    }).format(value)
+                    }).format(val)
                   }
                 />
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent
-                      formatter={(value: any) =>
-                        new Intl.NumberFormat('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        }).format(value)
-                      }
-                      labelFormatter={(_, payload) => {
-                        if (payload && payload.length > 0) {
-                          return `Projeção para ${payload[0].payload.fullDate} (${payload[0].payload.label})`
-                        }
-                        return ''
-                      }}
-                    />
-                  }
-                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <ChartLegend content={<ChartLegendContent />} />
                 <ReferenceLine
                   y={0}
+                  yAxisId="left"
                   stroke="hsl(var(--destructive))"
                   strokeDasharray="3 3"
                 />
+
                 <Bar
-                  dataKey="balance"
-                  fill="hsl(var(--primary))"
+                  yAxisId="right"
+                  dataKey="inflow"
+                  fill="var(--color-inflow)"
                   radius={[4, 4, 0, 0]}
-                  barSize={40}
-                  name="Saldo Projetado"
-                  fillOpacity={0.8}
+                  barSize={20}
+                  fillOpacity={0.6}
                 />
+                <Bar
+                  yAxisId="right"
+                  dataKey="outflow"
+                  fill="var(--color-outflow)"
+                  radius={[4, 4, 0, 0]}
+                  barSize={20}
+                  fillOpacity={0.6}
+                />
+
                 <Line
+                  yAxisId="left"
                   type="monotone"
                   dataKey="balance"
-                  stroke="hsl(var(--primary))"
-                  strokeWidth={2}
-                  dot={{
-                    r: 4,
-                    fill: 'hsl(var(--background))',
-                    strokeWidth: 2,
-                    stroke: 'hsl(var(--primary))',
-                  }}
-                  activeDot={{
-                    r: 6,
-                    strokeWidth: 0,
-                  }}
-                  name="Tendência"
+                  stroke="var(--color-balance)"
+                  strokeWidth={3}
+                  dot={false}
                 />
               </ComposedChart>
             </ResponsiveContainer>
