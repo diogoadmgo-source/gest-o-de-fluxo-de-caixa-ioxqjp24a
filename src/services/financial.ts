@@ -525,7 +525,14 @@ export async function importReceivablesRobust(
       }
     })
 
-  const { data: result, error } = await supabase.rpc(
+  // Calculate totals for potential fallback usage
+  const totalAmount = sanitized.reduce(
+    (sum, item) => sum + (Number(item.principal_value) || 0),
+    0,
+  )
+
+  // Attempt 1: import_receivables_replace (Primary)
+  let { data: result, error } = await supabase.rpc(
     'import_receivables_replace',
     {
       p_company_id: companyId,
@@ -534,7 +541,49 @@ export async function importReceivablesRobust(
       p_rows: sanitized,
     },
   )
-  if (error) throw error
+
+  // Attempt 2: strict_replace_receivables (Fallback)
+  if (error) {
+    console.warn(
+      'Primary import RPC failed, attempting fallback to strict_replace_receivables.',
+      error,
+    )
+
+    const { data: fallbackResult, error: fallbackError } = await supabase.rpc(
+      'strict_replace_receivables',
+      {
+        p_company_id: companyId,
+        p_rows: sanitized,
+      },
+    )
+
+    if (fallbackError) {
+      console.error('Fallback import RPC failed.', fallbackError)
+      throw fallbackError
+    }
+
+    // Map fallback result to expected format
+    const stats = (fallbackResult as any)?.stats || {}
+    const inserted = stats.inserted || 0
+    const skipped = stats.skipped || 0
+
+    result = {
+      success: true,
+      message: 'Importado via fallback',
+      batch_id: '', // Fallback doesn't create a batch log usually
+      total_rows: sanitized.length,
+      imported_rows: inserted,
+      rejected_rows: skipped,
+      imported_amount: totalAmount, // Approximate based on sanitized input
+      total_amount: totalAmount,
+      rejected_amount: 0,
+      total_value: totalAmount,
+      rejected_value: 0,
+    }
+  }
+
+  if (error && !result) throw error
+
   return result as any
 }
 
