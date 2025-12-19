@@ -28,34 +28,28 @@ import useCashFlowStore from '@/stores/useCashFlowStore'
 import { useAuth } from '@/hooks/use-auth'
 
 const getPageTitle = (pathname: string) => {
-  switch (pathname) {
-    case '/':
-      return 'Dashboard'
-    case '/fluxo-de-caixa':
-      return 'Fluxo de Caixa'
-    case '/saldos':
-      return 'Gestão de Saldos'
-    case '/recebiveis':
-      return 'Contas a Receber'
-    case '/pagaveis':
-      return 'Contas a Pagar'
-    case '/importacoes':
-      return 'Importações'
-    case '/relatorios':
-      return 'Relatórios'
-    case '/fechamento':
-      return 'Fechamento de Período'
-    case '/configuracoes':
-      return 'Configurações'
-    case '/configuracoes/usuarios':
-      return 'Gestão de Usuários'
-    case '/auditoria':
-      return 'Auditoria'
-    case '/ajustes':
-      return 'Lançamentos extraordinários'
-    default:
-      return 'HospCash'
+  // Direct matches
+  if (pathname === '/') return 'Dashboard'
+  if (pathname === '/fluxo-de-caixa') return 'Fluxo de Caixa'
+  if (pathname === '/saldos') return 'Gestão de Saldos'
+  if (pathname === '/recebiveis') return 'Contas a Receber'
+  if (pathname === '/pagaveis') return 'Contas a Pagar'
+  if (pathname === '/relatorios') return 'Relatórios'
+  if (pathname === '/fechamento') return 'Fechamento de Período'
+  if (pathname === '/configuracoes') return 'Configurações'
+  if (pathname === '/configuracoes/usuarios') return 'Gestão de Usuários'
+  if (pathname === '/auditoria') return 'Auditoria'
+  if (pathname === '/ajustes') return 'Lançamentos extraordinários'
+
+  // Sub-routes prefix matching
+  if (pathname.startsWith('/importacoes')) {
+    if (pathname.includes('/pagamentos')) return 'Pagamentos e Adiantamentos'
+    if (pathname.includes('/desembaraco')) return 'Desembaraço Aduaneiro'
+    return 'Importações'
   }
+  if (pathname.startsWith('/configuracoes')) return 'Configurações'
+
+  return 'HospCash'
 }
 
 export function Header() {

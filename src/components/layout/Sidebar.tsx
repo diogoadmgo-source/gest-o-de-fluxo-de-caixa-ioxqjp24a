@@ -12,11 +12,12 @@ import {
   Landmark,
   Users,
   FileSpreadsheet,
-  UploadCloud,
   ChevronDown,
   ChevronRight,
   Ship,
   DollarSign,
+  Anchor,
+  Box,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -48,17 +49,17 @@ const baseMenuItems: MenuItem[] = [
   { icon: ArrowDownToLine, label: 'Contas a Receber', path: '/recebiveis' },
   { icon: ArrowUpFromLine, label: 'Contas a Pagar', path: '/pagaveis' },
   {
-    icon: UploadCloud,
+    icon: Ship,
     label: 'Importações',
     path: '/importacoes',
     children: [
       {
         icon: DollarSign,
-        label: 'Pagamentos e Adiant.',
+        label: 'Pagamentos e Adiantamentos',
         path: '/importacoes/pagamentos',
       },
       {
-        icon: Ship,
+        icon: Anchor,
         label: 'Desembaraço Aduaneiro',
         path: '/importacoes/desembaraco',
       },
@@ -129,7 +130,7 @@ export function Sidebar() {
 
   const NavContent = () => (
     <div className="flex flex-col h-full py-4">
-      <div className="px-6 mb-8 mt-2 flex items-center gap-3">
+      <div className="px-6 mb-8 mt-2 flex items-center gap-3 shrink-0">
         <div className="h-10 w-10 flex items-center justify-center rounded-md overflow-hidden bg-primary/5">
           <img
             src="https://img.usecurling.com/i?q=hospcom&color=blue&shape=fill"
@@ -141,12 +142,12 @@ export function Sidebar() {
           HospCash
         </span>
       </div>
-      <nav className="flex-1 space-y-1 px-3 overflow-y-auto">
+      <nav className="flex-1 space-y-1 px-3 overflow-y-auto scrollbar-thin scrollbar-thumb-secondary scrollbar-track-transparent">
         {menuItems.map((item) => {
           const isActive =
             location.pathname === item.path ||
             (item.children &&
-              item.children.some((c) => location.pathname === c.path))
+              item.children.some((c) => location.pathname.startsWith(c.path)))
           const hasChildren = item.children && item.children.length > 0
           const isOpen = openSubmenus.includes(item.path)
 
@@ -161,14 +162,14 @@ export function Sidebar() {
                 <CollapsibleTrigger asChild>
                   <button
                     className={cn(
-                      'w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group',
+                      'w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group h-auto min-h-[40px]',
                       isActive
                         ? 'bg-primary/10 text-primary'
                         : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
                     )}
                     title={item.label}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1 overflow-hidden">
                       <item.icon
                         className={cn(
                           'h-5 w-5 shrink-0',
@@ -177,42 +178,50 @@ export function Sidebar() {
                             : 'text-muted-foreground group-hover:text-foreground',
                         )}
                       />
-                      <span className="truncate">{item.label}</span>
+                      <span className="whitespace-normal text-left leading-tight break-words flex-1">
+                        {item.label}
+                      </span>
                     </div>
                     {isOpen ? (
-                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200" />
                     ) : (
-                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200" />
                     )}
                   </button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-1 pl-6 animate-slide-down">
-                  {item.children!.map((child) => {
-                    const isChildActive = location.pathname === child.path
-                    return (
-                      <Link
-                        key={child.path}
-                        to={child.path}
-                        onClick={() => setOpen(false)}
-                        className={cn(
-                          'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 group',
-                          isChildActive
-                            ? 'text-primary bg-primary/5'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50',
-                        )}
-                      >
-                        <child.icon
+                <CollapsibleContent className="space-y-1 overflow-hidden data-[state=open]:animate-slide-down data-[state=closed]:animate-slide-up">
+                  <div className="mt-1 space-y-1 border-l-2 border-border/50 ml-5 pl-2">
+                    {item.children!.map((child) => {
+                      const isChildActive = location.pathname.startsWith(
+                        child.path,
+                      )
+                      return (
+                        <Link
+                          key={child.path}
+                          to={child.path}
+                          onClick={() => setOpen(false)}
                           className={cn(
-                            'h-4 w-4 shrink-0',
+                            'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 group h-auto min-h-[36px]',
                             isChildActive
-                              ? 'text-primary'
-                              : 'text-muted-foreground group-hover:text-foreground',
+                              ? 'text-primary bg-primary/5 font-semibold'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50',
                           )}
-                        />
-                        <span className="truncate">{child.label}</span>
-                      </Link>
-                    )
-                  })}
+                        >
+                          <child.icon
+                            className={cn(
+                              'h-4 w-4 shrink-0',
+                              isChildActive
+                                ? 'text-primary'
+                                : 'text-muted-foreground group-hover:text-foreground',
+                            )}
+                          />
+                          <span className="whitespace-normal text-left leading-tight break-words flex-1">
+                            {child.label}
+                          </span>
+                        </Link>
+                      )
+                    })}
+                  </div>
                 </CollapsibleContent>
               </Collapsible>
             )
@@ -224,7 +233,7 @@ export function Sidebar() {
               to={item.path}
               onClick={() => setOpen(false)}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group',
+                'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group h-auto min-h-[40px]',
                 isActive
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
@@ -239,12 +248,14 @@ export function Sidebar() {
                     : 'text-muted-foreground group-hover:text-foreground',
                 )}
               />
-              <span className="truncate">{item.label}</span>
+              <span className="whitespace-normal text-left leading-tight break-words flex-1">
+                {item.label}
+              </span>
             </Link>
           )
         })}
       </nav>
-      <div className="px-6 mt-auto">
+      <div className="px-6 mt-auto pt-4">
         <div className="p-4 rounded-lg bg-secondary/50 border border-border">
           <p className="text-xs text-muted-foreground font-medium mb-1">
             Status do Sistema
@@ -261,7 +272,7 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col border-r border-border bg-sidebar h-screen fixed left-0 top-0 z-30">
+      <aside className="hidden md:flex w-64 flex-col border-r border-border bg-sidebar h-screen fixed left-0 top-0 z-30 shadow-lg">
         <NavContent />
       </aside>
 
@@ -271,7 +282,7 @@ export function Sidebar() {
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden fixed top-3 left-4 z-50"
+            className="md:hidden fixed top-3 left-4 z-50 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm"
           >
             <Menu className="h-6 w-6" />
           </Button>
