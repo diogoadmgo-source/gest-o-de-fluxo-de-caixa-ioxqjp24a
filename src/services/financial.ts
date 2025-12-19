@@ -440,12 +440,16 @@ export async function importPayablesRobust(
       let principal_value = 0
       try {
         principal_value = parsePtBrFloat(get(PAYABLE_MAPPINGS.principal_value))
-      } catch {}
+      } catch {
+        // ignore error
+      }
 
       let amount = 0
       try {
         amount = parsePtBrFloat(get(PAYABLE_MAPPINGS.amount))
-      } catch {}
+      } catch {
+        // ignore error
+      }
 
       // If principal is 0 but amount has value, use amount as principal
       if (principal_value === 0 && amount !== 0) principal_value = amount
@@ -455,12 +459,16 @@ export async function importPayablesRobust(
       let fine = 0
       try {
         fine = parsePtBrFloat(get(PAYABLE_MAPPINGS.fine))
-      } catch {}
+      } catch {
+        // ignore error
+      }
 
       let interest = 0
       try {
         interest = parsePtBrFloat(get(PAYABLE_MAPPINGS.interest))
-      } catch {}
+      } catch {
+        // ignore error
+      }
 
       let status = normalizeText(get(PAYABLE_MAPPINGS.status))
       if (!status || status.toLowerCase() === 'aberto') status = 'pending'
