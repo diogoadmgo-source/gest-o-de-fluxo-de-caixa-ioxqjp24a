@@ -1,3 +1,6 @@
+DROP FUNCTION IF EXISTS get_cash_flow_aggregates(uuid, date, date);
+DROP FUNCTION IF EXISTS public.get_dashboard_kpis(uuid, date);
+
 CREATE OR REPLACE FUNCTION get_cash_flow_aggregates(
     p_company_id UUID,
     p_start_date DATE,
