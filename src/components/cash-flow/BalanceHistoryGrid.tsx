@@ -11,8 +11,9 @@ import { Button } from '@/components/ui/button'
 import { fetchBalanceHistory, deleteBankBalance } from '@/services/financial'
 import { toast } from 'sonner'
 import { format, parseISO } from 'date-fns'
-import { Trash2, Loader2, Calendar, Wallet } from 'lucide-react'
+import { Trash2, Loader2, Calendar, Wallet, Edit2 } from 'lucide-react'
 import { PaginationControl } from '@/components/common/PaginationControl'
+import { DateRangePicker } from '@/components/common/DateRangePicker'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +25,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Card, CardContent } from '@/components/ui/card'
+import { DateRange } from 'react-day-picker'
+import { BalanceFormDialog } from '@/components/cash-flow/BalanceFormDialog'
+import useCashFlowStore from '@/stores/useCashFlowStore'
 
 interface BalanceHistoryGridProps {
   companyId: string | null
@@ -36,13 +40,18 @@ export function BalanceHistoryGrid({
   refreshTrigger,
   onDeleteSuccess,
 }: BalanceHistoryGridProps) {
+  const { banks } = useCashFlowStore()
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(30)
   const [totalCount, setTotalCount] = useState(0)
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
+
+  // Actions state
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [editingBalance, setEditingBalance] = useState<any | null>(null)
 
   const loadData = async () => {
     if (!companyId || companyId === 'all') {
@@ -53,10 +62,18 @@ export function BalanceHistoryGrid({
 
     setLoading(true)
     try {
+      const filters = {
+        startDate: dateRange?.from
+          ? format(dateRange.from, 'yyyy-MM-dd')
+          : undefined,
+        endDate: dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined,
+      }
+
       const { data: history, count } = await fetchBalanceHistory(
         companyId,
         page,
         pageSize,
+        filters,
       )
       setData(history || [])
       setTotalCount(count || 0)
@@ -70,7 +87,7 @@ export function BalanceHistoryGrid({
 
   useEffect(() => {
     loadData()
-  }, [companyId, page, pageSize, refreshTrigger])
+  }, [companyId, page, pageSize, refreshTrigger, dateRange])
 
   const handleDelete = async () => {
     if (!deleteId) return
@@ -88,6 +105,12 @@ export function BalanceHistoryGrid({
     }
   }
 
+  const handleEditSuccess = () => {
+    setEditingBalance(null)
+    loadData()
+    onDeleteSuccess() // Triggers recalculation in parent
+  }
+
   if (!companyId || companyId === 'all') {
     return (
       <Card className="border-dashed">
@@ -101,6 +124,16 @@ export function BalanceHistoryGrid({
 
   return (
     <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex justify-end">
+        <DateRangePicker
+          date={dateRange}
+          setDate={setDateRange}
+          placeholder="Filtrar por período"
+          className="w-full md:w-auto"
+        />
+      </div>
+
       <div className="rounded-md border bg-card">
         <Table>
           <TableHeader>
@@ -109,7 +142,7 @@ export function BalanceHistoryGrid({
               <TableHead>Banco / Caixa</TableHead>
               <TableHead>Conta</TableHead>
               <TableHead className="text-right">Valor (R$)</TableHead>
-              <TableHead className="w-[100px] text-right">Ações</TableHead>
+              <TableHead className="w-[120px] text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -148,14 +181,26 @@ export function BalanceHistoryGrid({
                     })}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive/90"
-                      onClick={() => setDeleteId(row.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={() => setEditingBalance(row)}
+                        title="Editar"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive/90"
+                        onClick={() => setDeleteId(row.id)}
+                        title="Excluir"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -172,6 +217,7 @@ export function BalanceHistoryGrid({
         onPageSizeChange={setPageSize}
       />
 
+      {/* Delete Dialog */}
       <AlertDialog
         open={!!deleteId}
         onOpenChange={(o) => !o && setDeleteId(null)}
@@ -196,6 +242,18 @@ export function BalanceHistoryGrid({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Dialog */}
+      {companyId && (
+        <BalanceFormDialog
+          open={!!editingBalance}
+          onOpenChange={(open) => !open && setEditingBalance(null)}
+          banks={banks}
+          companyId={companyId}
+          onSuccess={handleEditSuccess}
+          initialData={editingBalance}
+        />
+      )}
     </div>
   )
 }

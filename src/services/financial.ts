@@ -536,17 +536,29 @@ export async function fetchBalanceHistory(
   companyId: string,
   page: number,
   pageSize: number,
+  filters?: { startDate?: string; endDate?: string },
 ) {
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
-  const { data, count, error } = await supabase
+  let query = supabase
     .from('bank_balances_v2')
     .select('*, banks(name, account_number)', { count: 'exact' })
     .eq('company_id', companyId)
+
+  if (filters?.startDate) {
+    query = query.gte('reference_date', filters.startDate)
+  }
+  if (filters?.endDate) {
+    query = query.lte('reference_date', filters.endDate)
+  }
+
+  query = query
     .order('reference_date', { ascending: false })
     .order('created_at', { ascending: false })
     .range(from, to)
+
+  const { data, count, error } = await query
 
   return { data, count, error }
 }
@@ -565,6 +577,29 @@ export async function upsertBankBalance(payload: {
       reference_date: payload.reference_date,
       amount: payload.amount,
     })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function updateBankBalance(
+  id: string,
+  payload: {
+    amount: number
+    reference_date: string
+    bank_id: string
+  },
+) {
+  const { data, error } = await supabase
+    .from('bank_balances_v2')
+    .update({
+      amount: payload.amount,
+      reference_date: payload.reference_date,
+      bank_id: payload.bank_id,
+    })
+    .eq('id', id)
     .select()
     .single()
 

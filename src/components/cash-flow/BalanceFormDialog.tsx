@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select'
 import { Bank } from '@/lib/types'
 import { toast } from 'sonner'
-import { upsertBankBalance } from '@/services/financial'
+import { upsertBankBalance, updateBankBalance } from '@/services/financial'
 import { Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -29,6 +29,12 @@ interface BalanceFormDialogProps {
   banks: Bank[]
   companyId: string
   onSuccess: () => void
+  initialData?: {
+    id: string
+    bank_id: string
+    amount: number
+    reference_date: string
+  } | null
 }
 
 export function BalanceFormDialog({
@@ -37,11 +43,26 @@ export function BalanceFormDialog({
   banks,
   companyId,
   onSuccess,
+  initialData,
 }: BalanceFormDialogProps) {
   const [bankId, setBankId] = useState('')
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [loading, setLoading] = useState(false)
+
+  // Load initial data when editing
+  useEffect(() => {
+    if (open && initialData) {
+      setBankId(initialData.bank_id)
+      setAmount(String(initialData.amount))
+      setDate(initialData.reference_date)
+    } else if (open && !initialData) {
+      // Reset defaults when opening in create mode
+      setBankId('')
+      setAmount('')
+      setDate(format(new Date(), 'yyyy-MM-dd'))
+    }
+  }, [open, initialData])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -59,19 +80,29 @@ export function BalanceFormDialog({
 
     setLoading(true)
     try {
-      await upsertBankBalance({
-        company_id: companyId,
-        bank_id: bankId,
-        reference_date: date,
-        amount: numAmount,
-      })
-      toast.success('Lançamento realizado com sucesso!')
-      setBankId('')
-      setAmount('')
+      if (initialData?.id) {
+        // Edit Mode
+        await updateBankBalance(initialData.id, {
+          bank_id: bankId,
+          reference_date: date,
+          amount: numAmount,
+        })
+        toast.success('Lançamento atualizado com sucesso!')
+      } else {
+        // Create Mode
+        await upsertBankBalance({
+          company_id: companyId,
+          bank_id: bankId,
+          reference_date: date,
+          amount: numAmount,
+        })
+        toast.success('Lançamento realizado com sucesso!')
+      }
+
       onOpenChange(false)
       onSuccess()
     } catch (error: any) {
-      toast.error('Erro ao salvar lançamento: ' + error.message)
+      toast.error('Erro ao salvar: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -82,14 +113,19 @@ export function BalanceFormDialog({
     (b) => b.company_id === companyId && b.active,
   )
 
+  const isEdit = !!initialData?.id
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Novo Lançamento de Saldo</DialogTitle>
+          <DialogTitle>
+            {isEdit ? 'Editar Lançamento' : 'Novo Lançamento de Saldo'}
+          </DialogTitle>
           <DialogDescription>
-            Insira os dados do saldo bancário ou de caixa para a data
-            selecionada.
+            {isEdit
+              ? 'Atualize os dados do lançamento selecionado.'
+              : 'Insira os dados do saldo bancário ou de caixa para a data selecionada.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-4">

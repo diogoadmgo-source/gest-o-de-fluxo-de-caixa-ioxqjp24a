@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { BalanceHistoryGrid } from '@/components/cash-flow/BalanceHistoryGrid'
 import { BalanceFormDialog } from '@/components/cash-flow/BalanceFormDialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { BankListManager } from '@/components/cash-flow/BankListManager'
 
 export default function Balances() {
   const { banks, bankBalances, selectedCompanyId, recalculateCashFlow } =
@@ -26,14 +28,7 @@ export default function Balances() {
   return (
     <div className="space-y-6 animate-fade-in pb-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h2 className="text-3xl font-bold tracking-tight">Saldos Bancários</h2>
-        <Button
-          onClick={() => setIsDialogOpen(true)}
-          disabled={!selectedCompanyId || selectedCompanyId === 'all'}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Lançamento
-        </Button>
+        <h2 className="text-3xl font-bold tracking-tight">Gestão de Saldos</h2>
       </div>
 
       {!selectedCompanyId || selectedCompanyId === 'all' ? (
@@ -44,18 +39,48 @@ export default function Balances() {
           </CardContent>
         </Card>
       ) : (
-        <>
-          {/* Dashboard Summary */}
-          <BankBalanceDashboard banks={banks} balances={bankBalances} />
+        <Tabs defaultValue="overview" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="overview">Visão Geral & Histórico</TabsTrigger>
+            <TabsTrigger value="accounts">Gerenciar Contas</TabsTrigger>
+          </TabsList>
 
-          <div className="space-y-4 pt-6">
-            <h3 className="text-lg font-semibold">Histórico de Lançamentos</h3>
-            <BalanceHistoryGrid
-              companyId={selectedCompanyId}
-              refreshTrigger={refreshTrigger}
-              onDeleteSuccess={handleDeleteSuccess}
-            />
-          </div>
+          <TabsContent value="overview" className="space-y-6">
+            <div className="flex justify-end">
+              <Button onClick={() => setIsDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Novo Lançamento
+              </Button>
+            </div>
+
+            {/* Dashboard Summary */}
+            <BankBalanceDashboard banks={banks} balances={bankBalances} />
+
+            <div className="space-y-4 pt-6">
+              <h3 className="text-lg font-semibold">
+                Histórico de Lançamentos
+              </h3>
+              <BalanceHistoryGrid
+                companyId={selectedCompanyId}
+                refreshTrigger={refreshTrigger}
+                onDeleteSuccess={handleDeleteSuccess}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="accounts">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold">Cadastros de Contas</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Gerencie suas contas bancárias e caixas físicos.
+                  </p>
+                </div>
+                <BankListManager />
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <BalanceFormDialog
             open={isDialogOpen}
@@ -63,8 +88,9 @@ export default function Balances() {
             banks={banks}
             companyId={selectedCompanyId}
             onSuccess={handleSuccess}
+            initialData={null}
           />
-        </>
+        </Tabs>
       )}
     </div>
   )
