@@ -120,17 +120,6 @@ function getCol(row: any, keys: string[]) {
   return undefined
 }
 
-function validateReceivablesLayout(row: any): string[] {
-  const missing: string[] = []
-  for (const field of REQUIRED_FIELDS) {
-    const mapping = (RECEIVABLE_MAPPINGS as any)[field.key]
-    if (getCol(row, mapping) === undefined) {
-      missing.push(field.label)
-    }
-  }
-  return missing
-}
-
 export async function fetchPaginatedReceivables(
   companyId: string,
   page: number,
@@ -541,4 +530,52 @@ export async function fetchImportRejects(
     .range((page - 1) * pageSize, page * pageSize - 1)
 
   return { data: data || [], count: count || 0, error }
+}
+
+export async function fetchBalanceHistory(
+  companyId: string,
+  page: number,
+  pageSize: number,
+) {
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  const { data, count, error } = await supabase
+    .from('bank_balances_v2')
+    .select('*, banks(name, account_number)', { count: 'exact' })
+    .eq('company_id', companyId)
+    .order('reference_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .range(from, to)
+
+  return { data, count, error }
+}
+
+export async function upsertBankBalance(payload: {
+  company_id: string
+  bank_id: string
+  reference_date: string
+  amount: number
+}) {
+  const { data, error } = await supabase
+    .from('bank_balances_v2')
+    .insert({
+      company_id: payload.company_id,
+      bank_id: payload.bank_id,
+      reference_date: payload.reference_date,
+      amount: payload.amount,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function deleteBankBalance(id: string) {
+  const { error } = await supabase
+    .from('bank_balances_v2')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
 }
