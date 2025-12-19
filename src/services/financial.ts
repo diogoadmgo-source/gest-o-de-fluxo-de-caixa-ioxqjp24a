@@ -635,18 +635,6 @@ export async function importPayablesRobust(
         // ignore error
       }
 
-      let amount = 0
-      try {
-        amount = parsePtBrFloat(get(PAYABLE_MAPPINGS.amount))
-      } catch {
-        // ignore error
-      }
-
-      // If principal is 0 but amount has value, use amount as principal
-      if (principal_value === 0 && amount !== 0) principal_value = amount
-      // If amount is 0 but principal has value, use principal as amount
-      if (amount === 0 && principal_value !== 0) amount = principal_value
-
       let fine = 0
       try {
         fine = parsePtBrFloat(get(PAYABLE_MAPPINGS.fine))
@@ -660,6 +648,20 @@ export async function importPayablesRobust(
       } catch {
         // ignore error
       }
+
+      let csv_amount = 0
+      try {
+        csv_amount = parsePtBrFloat(get(PAYABLE_MAPPINGS.amount))
+      } catch {
+        // ignore error
+      }
+
+      // If principal is 0 but amount has value, use amount as principal
+      if (principal_value === 0 && csv_amount !== 0)
+        principal_value = csv_amount
+
+      // Enforce mathematical consistency: Amount = Principal + Fine + Interest
+      const amount = principal_value + fine + interest
 
       let status = normalizeText(get(PAYABLE_MAPPINGS.status))
       if (!status || status.toLowerCase() === 'aberto') status = 'pending'
@@ -694,6 +696,131 @@ export async function importPayablesRobust(
 
   if (error) throw error
   return result as any
+}
+
+export async function importPaymentsAdvances(
+  userId: string,
+  companyId: string,
+  data: any[],
+  fileName: string,
+) {
+  const sanitized = data
+    .filter((d) => {
+      const name = getCol(d, PAYABLE_MAPPINGS.entity_name)
+      if (isGarbageCompany(name)) return false
+      return true
+    })
+    .map((d) => {
+      const get = (k: string[]) => getCol(d, k)
+
+      let principal_value = 0
+      try {
+        principal_value = parsePtBrFloat(get(PAYABLE_MAPPINGS.principal_value))
+      } catch {
+        // ignore error
+      }
+
+      let fine = 0
+      try {
+        fine = parsePtBrFloat(get(PAYABLE_MAPPINGS.fine))
+      } catch {
+        // ignore error
+      }
+
+      let interest = 0
+      try {
+        interest = parsePtBrFloat(get(PAYABLE_MAPPINGS.interest))
+      } catch {
+        // ignore error
+      }
+
+      let csv_amount = 0
+      try {
+        csv_amount = parsePtBrFloat(get(PAYABLE_MAPPINGS.amount))
+      } catch {
+        // ignore error
+      }
+
+      if (principal_value === 0 && csv_amount !== 0)
+        principal_value = csv_amount
+
+      const amount = principal_value + fine + interest
+
+      const parseDate = (val: any) => {
+        if (!val) return null
+        const str = String(val).trim()
+        // DD/MM/YYYY
+        if (str.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+          const [d, m, y] = str.split('/')
+          return `${y}-${m}-${d}`
+        }
+        // YYYY-MM-DD
+        if (str.match(/^\d{4}-\d{2}-\d{2}$/)) return str
+        return null
+      }
+
+      const dueDate =
+        parseDate(get(PAYABLE_MAPPINGS.due_date)) ||
+        new Date().toISOString().split('T')[0]
+      const issueDate =
+        parseDate(get(PAYABLE_MAPPINGS.issue_date)) ||
+        new Date().toISOString().split('T')[0]
+
+      const category =
+        normalizeText(get(PAYABLE_MAPPINGS.category)) ||
+        'Adiantamento/Importação'
+      const description =
+        normalizeText(get(PAYABLE_MAPPINGS.description)) ||
+        `Importação: ${fileName}`
+
+      return {
+        company_id: companyId,
+        type: 'payable',
+        entity_name:
+          normalizeText(get(PAYABLE_MAPPINGS.entity_name)) || 'Fornecedor',
+        document_number: normalizeText(get(PAYABLE_MAPPINGS.document_number)),
+        issue_date: issueDate,
+        due_date: dueDate,
+        principal_value,
+        fine,
+        interest,
+        amount,
+        status: 'pending', // Assume pending unless specified otherwise, but payments/advances implies money out?
+        // Usually imports are payables to be paid or already paid. "Adiantamento" often implies paid.
+        // However, let's stick to "pending" or try to read status.
+        category,
+        description,
+      }
+    })
+
+  // Batch Insert
+  const chunkSize = 100
+  let insertedCount = 0
+  let errors: any[] = []
+
+  for (let i = 0; i < sanitized.length; i += chunkSize) {
+    const chunk = sanitized.slice(i, i + chunkSize)
+    const { error } = await supabase.from('transactions').insert(chunk)
+    if (error) {
+      errors.push(error.message)
+    } else {
+      insertedCount += chunk.length
+    }
+  }
+
+  if (errors.length > 0 && insertedCount === 0) {
+    throw new Error(`Falha na importação: ${errors.join(', ')}`)
+  }
+
+  return {
+    success: true,
+    message: `Importado ${insertedCount} registros com sucesso.`,
+    stats: {
+      records: insertedCount,
+      importedTotal: 0, // Not calculating sum here for now
+      rejectedRows: errors.length > 0 ? sanitized.length - insertedCount : 0,
+    },
+  }
 }
 
 export async function fetchImportRejects(
@@ -810,6 +937,37 @@ export async function importarPayables(
     return {
       success: false,
       message: err.message || 'Erro ao processar importação de pagáveis',
+      failures: [{ error: err.message }],
+    }
+  }
+}
+
+export async function importarPaymentsAdvances(
+  userId: string,
+  data: any[],
+  fallbackCompanyId?: string,
+  fileName: string = 'import.csv',
+): Promise<ImportResult> {
+  if (!fallbackCompanyId || fallbackCompanyId === 'all')
+    return { success: false, message: 'Selecione uma empresa', failures: [] }
+
+  try {
+    const summary = await importPaymentsAdvances(
+      userId,
+      fallbackCompanyId,
+      data,
+      fileName,
+    )
+    return {
+      success: true,
+      message: summary.message,
+      stats: summary.stats,
+      failures: [],
+    }
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || 'Erro ao processar pagamentos e adiantamentos',
       failures: [{ error: err.message }],
     }
   }

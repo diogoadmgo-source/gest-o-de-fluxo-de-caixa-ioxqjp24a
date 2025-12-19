@@ -324,7 +324,7 @@ export default function Payments() {
       <ImportDialog
         open={isImportOpen}
         onOpenChange={setIsImportOpen}
-        type="product_import"
+        type="payments_advances"
         title="Importar Pagamentos e Adiantamentos"
         onImported={() => refetch()}
       />

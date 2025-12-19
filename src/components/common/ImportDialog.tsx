@@ -24,13 +24,22 @@ import { cn, parseCSV } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { useAuth } from '@/hooks/use-auth'
-import { importarReceivables, importarPayables } from '@/services/financial'
+import {
+  importarReceivables,
+  importarPayables,
+  importarPaymentsAdvances,
+} from '@/services/financial'
 import { importProductImports } from '@/services/product-imports'
 
 interface ImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  type: 'receivable' | 'payable' | 'general' | 'product_import'
+  type:
+    | 'receivable'
+    | 'payable'
+    | 'general'
+    | 'product_import'
+    | 'payments_advances'
   title: string
   onImported?: () => void
 }
@@ -152,6 +161,19 @@ export function ImportDialog({
         headers.join(';') +
         '\n' +
         'P&P;BR-42428100;MINDRAY;Aguardando registro DI;NF 43349;4237.00;26/12/2025;19/12/2025;3500.00;737.00;4237.00;Concluído'
+    } else if (type === 'payments_advances') {
+      headers = [
+        'Data',
+        'Descrição',
+        'Fornecedor',
+        'Valor',
+        'Categoria',
+        'Documento',
+      ]
+      content =
+        headers.join(';') +
+        '\n' +
+        '15/01/2025;Adiantamento de Fornecedor;China Supply Co;5000.00;Adiantamento;ADV-001'
     } else {
       headers = [
         'Empresa',
@@ -247,6 +269,13 @@ export function ImportDialog({
             selectedCompanyId,
             parsedData,
           )
+        } else if (type === 'payments_advances') {
+          res = await importarPaymentsAdvances(
+            user.id,
+            parsedData,
+            selectedCompanyId,
+            selectedFile.name,
+          )
         } else {
           throw new Error('Tipo de importação desconhecido')
         }
@@ -283,7 +312,7 @@ export function ImportDialog({
     }
   }
 
-  const showWarning = type === 'receivable'
+  const showWarning = type === 'receivable' || type === 'payable'
 
   return (
     <>
