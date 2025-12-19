@@ -521,18 +521,28 @@ export type Database = {
       product_imports: {
         Row: {
           actual_arrival_date: string | null
+          balance: number | null
+          clearance_forecast_date: string | null
+          clearance_status: string | null
           company_id: string
           created_at: string
           description: string
+          due_date: string | null
+          estimate_without_tax: number | null
           exchange_rate: number
           expected_arrival_date: string | null
+          final_clearance_estimate: number | null
           foreign_currency_code: string
           foreign_currency_value: number
+          icms_tax: number | null
           id: string
           international_supplier: string
+          line: string | null
           logistics_costs: number | null
           nationalization_costs: number | null
+          nf_number: string | null
           process_number: string | null
+          situation: string | null
           start_date: string
           status: string
           taxes: number | null
@@ -541,18 +551,28 @@ export type Database = {
         }
         Insert: {
           actual_arrival_date?: string | null
+          balance?: number | null
+          clearance_forecast_date?: string | null
+          clearance_status?: string | null
           company_id: string
           created_at?: string
           description: string
+          due_date?: string | null
+          estimate_without_tax?: number | null
           exchange_rate: number
           expected_arrival_date?: string | null
+          final_clearance_estimate?: number | null
           foreign_currency_code: string
           foreign_currency_value: number
+          icms_tax?: number | null
           id?: string
           international_supplier: string
+          line?: string | null
           logistics_costs?: number | null
           nationalization_costs?: number | null
+          nf_number?: string | null
           process_number?: string | null
+          situation?: string | null
           start_date: string
           status: string
           taxes?: number | null
@@ -561,18 +581,28 @@ export type Database = {
         }
         Update: {
           actual_arrival_date?: string | null
+          balance?: number | null
+          clearance_forecast_date?: string | null
+          clearance_status?: string | null
           company_id?: string
           created_at?: string
           description?: string
+          due_date?: string | null
+          estimate_without_tax?: number | null
           exchange_rate?: number
           expected_arrival_date?: string | null
+          final_clearance_estimate?: number | null
           foreign_currency_code?: string
           foreign_currency_value?: number
+          icms_tax?: number | null
           id?: string
           international_supplier?: string
+          line?: string | null
           logistics_costs?: number | null
           nationalization_costs?: number | null
+          nf_number?: string | null
           process_number?: string | null
+          situation?: string | null
           start_date?: string
           status?: string
           taxes?: number | null
@@ -1017,6 +1047,19 @@ export type Database = {
           bank_name: string
           bank_type: string
           reference_date: string
+        }[]
+      }
+      get_product_import_stats: {
+        Args: {
+          p_company_id: string
+          p_end_date?: string
+          p_start_date?: string
+        }
+        Returns: {
+          count: number
+          status: string
+          total_balance: number
+          total_estimate: number
         }[]
       }
       get_receivables_dashboard_stats: {

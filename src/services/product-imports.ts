@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
-import { ProductImport } from '@/lib/types'
+import { ProductImport, ProductImportFinancialTotals } from '@/lib/types'
 import { parsePtBrFloat } from '@/lib/utils'
 import { format } from 'date-fns'
 
@@ -38,8 +38,8 @@ export async function fetchPaginatedProductImports(
     query = query.gte('due_date', fromStr).lte('due_date', toStr)
   }
 
-  // Sorting
-  query = query.order('created_at', { ascending: false })
+  // Sorting - Updated to due_date ascending
+  query = query.order('due_date', { ascending: true })
 
   // Pagination
   const from = (page - 1) * pageSize
@@ -78,6 +78,43 @@ export async function getProductImportStats(
     total_estimate: number
     count: number
   }[]
+}
+
+export async function getProductImportFinancialTotals(
+  companyIds: string[],
+  dateRange?: { from: Date; to?: Date },
+  search?: string,
+) {
+  const fromStr = dateRange?.from
+    ? dateRange.from.toISOString().split('T')[0]
+    : null
+  const toStr = dateRange?.to
+    ? dateRange.to.toISOString().split('T')[0]
+    : dateRange?.from
+      ? dateRange.from.toISOString().split('T')[0]
+      : null
+
+  const { data, error } = await supabase.rpc(
+    'get_product_import_financial_totals',
+    {
+      p_company_ids: companyIds,
+      p_start_date: fromStr,
+      p_end_date: toStr,
+      p_search_term: search || null,
+    },
+  )
+
+  if (error) throw error
+
+  // RPC returns array of 1 object, use single() implicitly via array access
+  const result = Array.isArray(data) && data.length > 0 ? data[0] : null
+
+  return (result || {
+    total_balance: 0,
+    total_estimate_without_tax: 0,
+    total_icms_tax: 0,
+    total_final_estimate: 0,
+  }) as ProductImportFinancialTotals
 }
 
 export async function saveProductImport(

@@ -268,6 +268,13 @@ export interface ProductImport {
   updated_at?: string
 }
 
+export interface ProductImportFinancialTotals {
+  total_balance: number
+  total_estimate_without_tax: number
+  total_icms_tax: number
+  total_final_estimate: number
+}
+
 export interface ImportBatchSummary {
   success: boolean
   batch_id: string

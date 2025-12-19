@@ -23,7 +23,6 @@ import {
   Trash2,
   Edit,
   Upload,
-  Calendar as CalendarIcon,
 } from 'lucide-react'
 import {
   Dialog,
@@ -55,9 +54,8 @@ import { useQuery } from '@/hooks/use-query'
 import { getVisibleCompanyIds } from '@/services/financial'
 import {
   fetchPaginatedProductImports,
-  getProductImportStats,
+  getProductImportFinancialTotals,
 } from '@/services/product-imports'
-import { supabase } from '@/lib/supabase/client'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -124,19 +122,28 @@ export default function CustomsClearance() {
     },
   )
 
-  // Fetch KPI Stats
-  const { data: stats } = useQuery(
-    `product-imports-stats-${selectedCompanyId}-${dateRange?.from}-${dateRange?.to}`,
+  // Fetch Financial Totals (KPIs)
+  const { data: totals } = useQuery(
+    `product-imports-totals-${selectedCompanyId}-${debouncedSearch}-${dateRange?.from}-${dateRange?.to}`,
     async () => {
-      if (!selectedCompanyId || selectedCompanyId === 'all') return []
-      return getProductImportStats(selectedCompanyId, {
-        from: dateRange?.from,
-        to: dateRange?.to,
-      })
+      if (!user) return null
+      const visibleIds = await getVisibleCompanyIds(user.id)
+      const filteredIds =
+        selectedCompanyId && selectedCompanyId !== 'all'
+          ? [selectedCompanyId]
+          : visibleIds
+
+      if (filteredIds.length === 0) return null
+
+      return getProductImportFinancialTotals(
+        filteredIds,
+        dateRange ? { from: dateRange.from!, to: dateRange.to } : undefined,
+        debouncedSearch,
+      )
     },
     {
-      enabled: !!selectedCompanyId && selectedCompanyId !== 'all',
-      dependencies: [selectedCompanyId, dateRange],
+      enabled: !!user,
+      dependencies: [selectedCompanyId, dateRange, debouncedSearch],
     },
   )
 
@@ -158,16 +165,28 @@ export default function CustomsClearance() {
     }
   }
 
-  const formatCurrency = (val: number) =>
-    val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const formatValue = (
+    val: string | number | null | undefined,
+    type: 'currency' | 'date' | 'text' = 'text',
+  ) => {
+    if (val === null || val === undefined || val === '') return '-'
+    if (type === 'currency' && (val === 0 || val === '0')) return '-'
+    if (type === 'text' && String(val).trim() === '') return '-'
 
-  const formatDate = (dateStr: string | undefined | null) => {
-    if (!dateStr) return '-'
-    try {
-      return format(parseISO(dateStr), 'dd/MM/yyyy')
-    } catch {
-      return dateStr
+    if (type === 'currency') {
+      return Number(val).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+      })
     }
+    if (type === 'date') {
+      try {
+        return format(parseISO(String(val)), 'dd/MM/yyyy')
+      } catch {
+        return String(val)
+      }
+    }
+    return String(val)
   }
 
   return (
@@ -192,24 +211,33 @@ export default function CustomsClearance() {
         </div>
       </div>
 
-      {/* KPI Dashboard */}
-      {stats && stats.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-          {stats.map((stat) => (
-            <MetricCard
-              key={stat.status}
-              title={`Status: ${stat.status}`}
-              value={
-                stat.total_estimate > 0
-                  ? stat.total_estimate
-                  : stat.total_balance
-              }
-              description={`${stat.count} processo(s)`}
-              isCurrency={true}
-            />
-          ))}
-        </div>
-      )}
+      {/* Financial Summary Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+        <MetricCard
+          title="Total Saldo"
+          value={totals?.total_balance || 0}
+          description="Saldo atual (R$)"
+          isCurrency={true}
+        />
+        <MetricCard
+          title="Total Est. s/ Imposto"
+          value={totals?.total_estimate_without_tax || 0}
+          description="Estimativa sem ICMS"
+          isCurrency={true}
+        />
+        <MetricCard
+          title="Total ICMS"
+          value={totals?.total_icms_tax || 0}
+          description="Incidência de ICMS"
+          isCurrency={true}
+        />
+        <MetricCard
+          title="Total Est. Final"
+          value={totals?.total_final_estimate || 0}
+          description="Valor final estimado"
+          isCurrency={true}
+        />
+      </div>
 
       <Card className="flex-1 overflow-hidden flex flex-col border shadow-sm">
         <CardHeader className="py-4 shrink-0 border-b bg-muted/5">
@@ -277,39 +305,39 @@ export default function CustomsClearance() {
                 paginatedData.data.map((item) => (
                   <TableRow key={item.id} className="hover:bg-muted/50 text-xs">
                     <TableCell className="font-medium">
-                      {item.line || '-'}
+                      {formatValue(item.line, 'text')}
                     </TableCell>
                     <TableCell className="font-semibold">
-                      {item.process_number || '-'}
+                      {formatValue(item.process_number, 'text')}
                     </TableCell>
                     <TableCell
                       className="truncate max-w-[150px]"
                       title={item.international_supplier}
                     >
-                      {item.international_supplier}
+                      {formatValue(item.international_supplier, 'text')}
                     </TableCell>
                     <TableCell
                       className="truncate max-w-[150px]"
                       title={item.situation}
                     >
-                      {item.situation || '-'}
+                      {formatValue(item.situation, 'text')}
                     </TableCell>
-                    <TableCell>{item.nf_number || '-'}</TableCell>
+                    <TableCell>{formatValue(item.nf_number, 'text')}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {formatCurrency(item.balance || 0)}
+                      {formatValue(item.balance, 'currency')}
                     </TableCell>
-                    <TableCell>{formatDate(item.due_date)}</TableCell>
+                    <TableCell>{formatValue(item.due_date, 'date')}</TableCell>
                     <TableCell>
-                      {formatDate(item.clearance_forecast_date)}
+                      {formatValue(item.clearance_forecast_date, 'date')}
                     </TableCell>
                     <TableCell className="text-right font-mono text-muted-foreground">
-                      {formatCurrency(item.estimate_without_tax || 0)}
+                      {formatValue(item.estimate_without_tax, 'currency')}
                     </TableCell>
                     <TableCell className="text-right font-mono text-muted-foreground">
-                      {formatCurrency(item.icms_tax || 0)}
+                      {formatValue(item.icms_tax, 'currency')}
                     </TableCell>
                     <TableCell className="text-right font-mono font-semibold text-primary">
-                      {formatCurrency(item.final_clearance_estimate || 0)}
+                      {formatValue(item.final_clearance_estimate, 'currency')}
                     </TableCell>
                     <TableCell>
                       <span
