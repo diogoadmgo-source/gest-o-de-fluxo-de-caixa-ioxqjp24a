@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { FilePlus, Upload, Trash2, Edit, Loader2 } from 'lucide-react'
+import { FilePlus, Upload, Trash2, Edit, Loader2, BellRing } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -21,6 +21,8 @@ import { Transaction } from '@/lib/types'
 import { PayableForm } from '@/components/financial/PayableForm'
 import { PayableStats } from '@/components/financial/PayableStats'
 import { PayableFilters } from '@/components/financial/PayableFilters'
+import { PayablesCharts } from '@/components/financial/PayablesCharts'
+import { NotificationSettingsDialog } from '@/components/financial/NotificationSettingsDialog'
 import {
   format,
   parseISO,
@@ -64,6 +66,11 @@ export default function Payables() {
   const debouncedMinValue = useDebounce(minValue, 500)
   const debouncedMaxValue = useDebounce(maxValue, 500)
 
+  // UI State
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<Transaction | null>(null)
+
   // Derive date range from maturity period
   const effectiveDateRange = useMemo(() => {
     if (maturityPeriod === 'custom') return customMaturityRange
@@ -83,25 +90,38 @@ export default function Payables() {
     return undefined
   }, [maturityPeriod, customMaturityRange])
 
+  // Construct filters object
+  const filters = useMemo(
+    () => ({
+      search: debouncedSearch,
+      supplier: debouncedSupplier,
+      status: situationFilter,
+      dateRange: effectiveDateRange,
+      minValue: debouncedMinValue,
+      maxValue: debouncedMaxValue,
+    }),
+    [
+      debouncedSearch,
+      debouncedSupplier,
+      situationFilter,
+      effectiveDateRange,
+      debouncedMinValue,
+      debouncedMaxValue,
+    ],
+  )
+
   // Fetching
   const {
     data: paginatedData,
     isLoading,
     refetch,
   } = useQuery(
-    `payables-${selectedCompanyId}-${page}-${pageSize}-${debouncedSearch}-${debouncedSupplier}-${situationFilter}-${JSON.stringify(effectiveDateRange)}-${debouncedMinValue}-${debouncedMaxValue}`,
+    `payables-${selectedCompanyId}-${page}-${pageSize}-${JSON.stringify(filters)}`,
     () => {
       if (!selectedCompanyId || selectedCompanyId === 'all')
         return Promise.resolve({ data: [], count: 0 })
 
-      return fetchPaginatedPayables(selectedCompanyId, page, pageSize, {
-        search: debouncedSearch,
-        supplier: debouncedSupplier,
-        status: situationFilter,
-        dateRange: effectiveDateRange,
-        minValue: debouncedMinValue,
-        maxValue: debouncedMaxValue,
-      })
+      return fetchPaginatedPayables(selectedCompanyId, page, pageSize, filters)
     },
     {
       enabled: !!selectedCompanyId && selectedCompanyId !== 'all',
@@ -112,32 +132,12 @@ export default function Payables() {
   // Fetch Stats when filters change
   useEffect(() => {
     if (selectedCompanyId && selectedCompanyId !== 'all') {
-      fetchPayableStats({
-        search: debouncedSearch,
-        supplier: debouncedSupplier,
-        status: situationFilter,
-        dateRange: effectiveDateRange,
-        minValue: debouncedMinValue,
-        maxValue: debouncedMaxValue,
-      })
+      fetchPayableStats(filters)
     }
-  }, [
-    selectedCompanyId,
-    debouncedSearch,
-    debouncedSupplier,
-    situationFilter,
-    effectiveDateRange,
-    debouncedMinValue,
-    debouncedMaxValue,
-    fetchPayableStats,
-  ])
+  }, [selectedCompanyId, filters, fetchPayableStats])
 
   // Finish measure
   if (!isLoading) perf.end({ count: paginatedData?.count })
-
-  // UI State
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
-  const [editingItem, setEditingItem] = useState<Transaction | null>(null)
 
   const stats = useMemo(() => {
     return {
@@ -293,15 +293,24 @@ export default function Payables() {
   ]
 
   return (
-    <div className="space-y-6 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
+    <div className="space-y-6 animate-fade-in pb-2 flex flex-col h-full">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Contas a Pagar</h2>
           <p className="text-muted-foreground">
-            Gestão de obrigações pendentes.
+            Gestão de obrigações pendentes e projeções.
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setIsSettingsOpen(true)}
+            disabled={!selectedCompanyId || selectedCompanyId === 'all'}
+          >
+            <BellRing className="mr-2 h-4 w-4" />
+            Alertas
+          </Button>
+
           <Button variant="outline" onClick={() => setIsImportDialogOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
             Importar
@@ -314,14 +323,7 @@ export default function Payables() {
             title="Importar Contas a Pagar"
             onImported={() => {
               refetch()
-              fetchPayableStats({
-                search: debouncedSearch,
-                supplier: debouncedSupplier,
-                status: situationFilter,
-                dateRange: effectiveDateRange,
-                minValue: debouncedMinValue,
-                maxValue: debouncedMaxValue,
-              })
+              fetchPayableStats(filters)
             }}
           />
 
@@ -335,7 +337,7 @@ export default function Payables() {
         </div>
       </div>
 
-      <div className="shrink-0">
+      <div className="shrink-0 space-y-4">
         <PayableStats {...stats} />
       </div>
 
@@ -375,6 +377,12 @@ export default function Payables() {
           }
         />
       </div>
+
+      {selectedCompanyId && selectedCompanyId !== 'all' && (
+        <div className="shrink-0">
+          <PayablesCharts companyId={selectedCompanyId} filters={filters} />
+        </div>
+      )}
 
       <Card className="flex-1 overflow-hidden flex flex-col">
         <CardHeader className="py-4 shrink-0">
@@ -433,6 +441,14 @@ export default function Payables() {
           )}
         </DialogContent>
       </Dialog>
+
+      {selectedCompanyId && (
+        <NotificationSettingsDialog
+          open={isSettingsOpen}
+          onOpenChange={setIsSettingsOpen}
+          companyId={selectedCompanyId}
+        />
+      )}
     </div>
   )
 }

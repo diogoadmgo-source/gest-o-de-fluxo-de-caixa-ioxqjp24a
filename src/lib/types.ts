@@ -304,3 +304,30 @@ export interface ImportReject {
   reason: string
   raw_data: any
 }
+
+// New Types for Notifications
+export interface NotificationSettings {
+  id: string
+  user_id: string
+  company_id: string
+  days_before_due: number
+  email_enabled: boolean
+  app_enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Notification {
+  id: string
+  user_id: string
+  company_id?: string
+  title: string
+  message: string
+  is_read: boolean
+  created_at: string
+}
+
+export interface PayableChartData {
+  timeline: { date: string; total: number }[]
+  suppliers: { name: string; value: number }[]
+}

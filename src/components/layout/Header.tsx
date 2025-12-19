@@ -1,5 +1,4 @@
 import {
-  Bell,
   User,
   ChevronDown,
   LogOut,
@@ -26,6 +25,7 @@ import {
 import { useLocation, Link } from 'react-router-dom'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { useAuth } from '@/hooks/use-auth'
+import { NotificationPopover } from '@/components/layout/NotificationPopover'
 
 const getPageTitle = (pathname: string) => {
   // Direct matches
@@ -92,14 +92,8 @@ export function Header() {
           </Select>
         </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative text-muted-foreground hover:text-foreground"
-        >
-          <Bell className="h-5 w-5" />
-          <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-destructive border border-background" />
-        </Button>
+        {/* Notification Bell */}
+        <NotificationPopover />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
