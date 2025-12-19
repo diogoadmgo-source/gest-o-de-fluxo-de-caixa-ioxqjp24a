@@ -65,6 +65,7 @@ export function ImportDialog({
       auditDbRows?: number
       auditDbValue?: number
     }
+    failures?: any[]
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -462,6 +463,33 @@ export function ImportDialog({
                             </div>
                           </div>
                         </div>
+
+                        {/* Failures List */}
+                        {result.failures && result.failures.length > 0 && (
+                          <div className="rounded-md border border-destructive/20 bg-destructive/5 p-4 text-sm space-y-2">
+                            <h4 className="font-semibold text-destructive flex items-center gap-2">
+                              <AlertCircle className="h-4 w-4" />
+                              Registros Rejeitados ({result.failures.length})
+                            </h4>
+                            <div className="max-h-[150px] overflow-y-auto space-y-1 pr-1">
+                              {result.failures.map((f: any, idx: number) => (
+                                <div
+                                  key={idx}
+                                  className="flex gap-2 text-xs text-muted-foreground border-b border-destructive/10 pb-1 last:border-0"
+                                >
+                                  <span className="font-mono font-medium text-destructive/80">
+                                    Linha {f.row}:
+                                  </span>
+                                  <span>{f.reason}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground pt-1">
+                              Exibindo os primeiros {result.failures.length}{' '}
+                              erros. Corrija o arquivo e importe novamente.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

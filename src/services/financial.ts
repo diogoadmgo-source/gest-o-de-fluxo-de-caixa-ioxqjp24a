@@ -622,6 +622,23 @@ export async function importPayablesRobust(
   return result as any
 }
 
+export async function fetchImportRejects(
+  batchId: string,
+  page = 1,
+  pageSize = 20,
+) {
+  const { data, error } = await supabase.rpc('get_receivables_rejects', {
+    p_batch_id: batchId,
+    p_page: page,
+    p_page_size: pageSize,
+  })
+
+  // The RPC returns { ..., total_count }[]
+  const count = data && data.length > 0 ? data[0].total_count : 0
+
+  return { data: data || [], count: count, error }
+}
+
 export async function importarReceivables(
   userId: string,
   data: any[],
@@ -637,6 +654,24 @@ export async function importarReceivables(
       data,
       fileName,
     )
+
+    let failures: any[] = []
+
+    if (summary.rejected_rows > 0 && summary.batch_id) {
+      try {
+        const rejects = await fetchImportRejects(summary.batch_id, 1, 200)
+        if (rejects.data) {
+          failures = rejects.data.map((r: any) => ({
+            row: r.row_number,
+            reason: r.reason,
+            data: r.raw_data,
+          }))
+        }
+      } catch (e) {
+        console.error('Error fetching rejects', e)
+      }
+    }
+
     return {
       success: true,
       message: `Processado: ${summary.imported_rows} inseridos`,
@@ -651,7 +686,7 @@ export async function importarReceivables(
         auditDbRows: summary.audit_db_rows,
         auditDbValue: summary.audit_db_value,
       },
-      failures: [],
+      failures,
     }
   } catch (err: any) {
     return {
@@ -808,21 +843,6 @@ export async function getReceivablesDashboardStats(companyId: string) {
     total_overdue: kpi.receivables_amount_overdue || 0,
     total_received: kpi.receivables_amount_received || 0,
   }
-}
-
-export async function fetchImportRejects(
-  companyId: string,
-  page = 1,
-  pageSize = 20,
-) {
-  const { data, count, error } = await supabase
-    .from('import_logs')
-    .select('*', { count: 'exact' })
-    .eq('company_id', companyId)
-    .eq('status', 'error')
-    .range((page - 1) * pageSize, page * pageSize - 1)
-
-  return { data: data || [], count: count || 0, error }
 }
 
 export async function fetchBalanceHistory(
