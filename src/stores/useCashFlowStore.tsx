@@ -113,97 +113,106 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           ? selectedCompanyId
           : null
 
+      // Always fetch data, handling 'all' case by passing null to RPCs
+
+      // 1. Fetch Banks
+      // For banks list, if activeId is null, we fetch all banks from allowed companies
+      let banksQuery = supabase.from('banks').select('*').eq('active', true)
+
       if (activeId) {
-        // 1. Fetch Banks
-        const { data: banksData } = await supabase
-          .from('banks')
-          .select('*')
-          .eq('company_id', activeId)
-          .eq('active', true)
-        setBanks((banksData as Bank[]) || [])
+        banksQuery = banksQuery.eq('company_id', activeId)
+      } else if (ids.length > 0) {
+        banksQuery = banksQuery.in('company_id', ids)
+      } else {
+        // No allowed companies, empty banks
+        setBanks([])
+        setBankBalances([])
+        setCashFlowEntries([])
+        setKpis(null)
+        setLoading(false)
+        return
+      }
 
-        // 2. Fetch Latest Balances
-        const latestBalances = await getLatestBankBalances(activeId)
-        setBankBalances(latestBalances)
+      const { data: banksData } = await banksQuery
+      setBanks((banksData as Bank[]) || [])
 
-        // 3. Fetch KPI
-        const kpiData = await getDashboardKPIs(activeId, timeframe)
-        setKpis(kpiData as KPI)
+      // 2. Fetch Latest Balances (Handles null activeId as All Companies)
+      const latestBalances = await getLatestBankBalances(activeId)
+      setBankBalances(latestBalances)
 
-        // 4. Calculate Cash Flow
-        const today = new Date()
-        // Provide small history context (e.g. 7 days back) + requested timeframe
-        const historyDays = Math.min(15, timeframe)
-        const start = subDays(today, historyDays)
-        const end = addDays(today, timeframe)
+      // 3. Fetch KPI (Handles null activeId as All Companies)
+      const kpiData = await getDashboardKPIs(activeId, timeframe)
+      setKpis(kpiData as KPI)
 
-        const aggs = await getCashFlowAggregates(activeId, start, end)
+      // 4. Calculate Cash Flow
+      const today = new Date()
+      // Provide small history context (e.g. 7 days back) + requested timeframe
+      const historyDays = Math.min(15, timeframe)
+      const start = subDays(today, historyDays)
+      const end = addDays(today, timeframe)
 
-        // Initial Balance Sum
-        const currentTotalBalance = latestBalances.reduce(
-          (acc, b) => acc + (b.balance || 0),
-          0,
-        )
+      const aggs = await getCashFlowAggregates(activeId, start, end)
 
-        // Generate Entries
-        const entries = aggs.map((day: any) => {
-          const importPayments = Number(day.import_payments) || 0
-          const customsCost = Number(day.customs_cost) || 0
-          const totalPayables = Number(day.total_payables) || 0
-          const totalReceivables = Number(day.total_receivables) || 0
+      // Initial Balance Sum
+      const currentTotalBalance = latestBalances.reduce(
+        (acc, b) => acc + (b.balance || 0),
+        0,
+      )
 
-          const flow =
-            totalReceivables - totalPayables - importPayments - customsCost
-          return {
-            date: day.day,
-            opening_balance: 0,
-            total_receivables: totalReceivables,
-            total_payables: totalPayables,
-            daily_balance: flow,
-            accumulated_balance: 0,
-            import_payments: importPayments,
-            customs_cost: customsCost,
-            other_expenses: 0,
-            is_projected: new Date(day.day) > today,
-          }
-        })
+      // Generate Entries
+      const entries = aggs.map((day: any) => {
+        const importPayments = Number(day.import_payments) || 0
+        const customsCost = Number(day.customs_cost) || 0
+        const totalPayables = Number(day.total_payables) || 0
+        const totalReceivables = Number(day.total_receivables) || 0
 
-        // Running Balance Calculation
-        let running = currentTotalBalance
-        const todayStr = today.toISOString().split('T')[0]
-        const todayIdx = entries.findIndex((e: any) => e.date === todayStr)
+        const flow =
+          totalReceivables - totalPayables - importPayments - customsCost
+        return {
+          date: day.day,
+          opening_balance: 0,
+          total_receivables: totalReceivables,
+          total_payables: totalPayables,
+          daily_balance: flow,
+          accumulated_balance: 0,
+          import_payments: importPayments,
+          customs_cost: customsCost,
+          other_expenses: 0,
+          is_projected: new Date(day.day) > today,
+        }
+      })
 
-        // Forward from today
-        if (todayIdx >= 0) {
-          running = currentTotalBalance
-          for (let i = todayIdx; i < entries.length; i++) {
-            entries[i].opening_balance = running
-            entries[i].accumulated_balance = running + entries[i].daily_balance
-            running = entries[i].accumulated_balance
-          }
+      // Running Balance Calculation
+      let running = currentTotalBalance
+      const todayStr = today.toISOString().split('T')[0]
+      const todayIdx = entries.findIndex((e: any) => e.date === todayStr)
 
-          // Backward (Reverse engineering history)
-          running = currentTotalBalance
-          for (let i = todayIdx - 1; i >= 0; i--) {
-            entries[i].accumulated_balance = running
-            entries[i].opening_balance = running - entries[i].daily_balance
-            running = entries[i].opening_balance
-          }
-        } else {
-          // If today is not in range, just run forward from assumed start
-          for (let i = 0; i < entries.length; i++) {
-            entries[i].opening_balance = running
-            entries[i].accumulated_balance = running + entries[i].daily_balance
-            running = entries[i].accumulated_balance
-          }
+      // Forward from today
+      if (todayIdx >= 0) {
+        running = currentTotalBalance
+        for (let i = todayIdx; i < entries.length; i++) {
+          entries[i].opening_balance = running
+          entries[i].accumulated_balance = running + entries[i].daily_balance
+          running = entries[i].accumulated_balance
         }
 
-        setCashFlowEntries(entries)
+        // Backward (Reverse engineering history)
+        running = currentTotalBalance
+        for (let i = todayIdx - 1; i >= 0; i--) {
+          entries[i].accumulated_balance = running
+          entries[i].opening_balance = running - entries[i].daily_balance
+          running = entries[i].opening_balance
+        }
       } else {
-        setCashFlowEntries([])
-        setBankBalances([])
-        setKpis(null)
+        // If today is not in range, just run forward from assumed start
+        for (let i = 0; i < entries.length; i++) {
+          entries[i].opening_balance = running
+          entries[i].accumulated_balance = running + entries[i].daily_balance
+          running = entries[i].accumulated_balance
+        }
       }
+
+      setCashFlowEntries(entries)
     } catch (err) {
       console.error(err)
       toast.error('Erro ao carregar dados.')

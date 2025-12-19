@@ -997,7 +997,7 @@ export type Database = {
         Returns: Json
       }
       get_dashboard_kpis: {
-        Args: { p_company_id: string; p_date?: string }
+        Args: { p_company_id: string; p_days?: number }
         Returns: Json
       }
       get_dashboard_kpis_legacy: {

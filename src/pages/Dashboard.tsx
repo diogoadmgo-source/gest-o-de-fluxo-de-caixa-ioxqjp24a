@@ -15,6 +15,7 @@ export default function Dashboard() {
     loading,
     timeframe,
     setTimeframe,
+    companies,
   } = useCashFlowStore()
 
   // Always define hooks at top level
@@ -47,6 +48,11 @@ export default function Dashboard() {
     }
   }, [kpis])
 
+  const companyName =
+    selectedCompanyId && selectedCompanyId !== 'all'
+      ? companies.find((c) => c.id === selectedCompanyId)?.name
+      : 'Visão Consolidada (Todas as Empresas)'
+
   if (loading && !kpis) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -58,9 +64,12 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 animate-fade-in pb-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h2 className="text-3xl font-bold tracking-tight">
-          Dashboard Executivo
-        </h2>
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">
+            Dashboard Executivo
+          </h2>
+          <p className="text-muted-foreground mt-1">{companyName}</p>
+        </div>
         <Tabs
           value={String(timeframe)}
           onValueChange={(val) => setTimeframe(Number(val))}
@@ -76,49 +85,41 @@ export default function Dashboard() {
         </Tabs>
       </div>
 
-      {!selectedCompanyId || selectedCompanyId === 'all' ? (
-        <Card className="p-8 text-center text-muted-foreground border-dashed">
-          Selecione uma empresa para visualizar os indicadores otimizados.
-        </Card>
-      ) : (
-        <>
-          <KPIPanel kpi={kpiData as any} />
+      <KPIPanel kpi={kpiData as any} />
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <MetricCard
-              title="Saldo Atual"
-              value={kpiData.current_balance}
-              description="Disponibilidade Total"
-              trend="neutral"
-            />
-            <MetricCard
-              title="A Vencer"
-              value={kpiData.receivables_amount_open}
-              description="Recebíveis Futuros"
-              trend="up"
-              trendLabel={`Próximos ${timeframe} dias`}
-            />
-            <MetricCard
-              title="A Pagar"
-              value={kpiData.payables_amount_pending}
-              description="Compromissos Pendentes"
-              trend="down"
-              trendLabel={`Próximos ${timeframe} dias`}
-            />
-            <MetricCard
-              title="Vencido (Receb.)"
-              value={kpiData.receivables_amount_overdue}
-              description="Em Atraso"
-              trend="down"
-              trendLabel="Atenção"
-            />
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <MetricCard
+          title="Saldo Atual"
+          value={kpiData.current_balance}
+          description="Disponibilidade Total"
+          trend="neutral"
+        />
+        <MetricCard
+          title="A Vencer"
+          value={kpiData.receivables_amount_open}
+          description="Recebíveis Futuros"
+          trend="up"
+          trendLabel={`Próximos ${timeframe} dias`}
+        />
+        <MetricCard
+          title="A Pagar"
+          value={kpiData.payables_amount_pending}
+          description="Compromissos Pendentes"
+          trend="down"
+          trendLabel={`Próximos ${timeframe} dias`}
+        />
+        <MetricCard
+          title="Vencido (Receb.)"
+          value={kpiData.receivables_amount_overdue}
+          description="Em Atraso"
+          trend="down"
+          trendLabel="Atenção"
+        />
+      </div>
 
-          <div className="grid grid-cols-1 gap-6">
-            <CashFlowEvolutionChart data={cashFlowEntries} />
-          </div>
-        </>
-      )}
+      <div className="grid grid-cols-1 gap-6">
+        <CashFlowEvolutionChart data={cashFlowEntries} />
+      </div>
     </div>
   )
 }

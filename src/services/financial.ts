@@ -236,7 +236,10 @@ export async function fetchPaginatedPayables(
   )
 }
 
-export async function getDashboardKPIs(companyId: string, timeframe: number) {
+export async function getDashboardKPIs(
+  companyId: string | null,
+  timeframe: number,
+) {
   return performanceMonitor.measurePromise(
     'dashboard',
     'get_kpis',
@@ -252,7 +255,7 @@ export async function getDashboardKPIs(companyId: string, timeframe: number) {
 }
 
 export async function getLatestBankBalances(
-  companyId: string,
+  companyId: string | null,
 ): Promise<BankBalance[]> {
   return performanceMonitor.measurePromise(
     'bank_balances',
@@ -264,7 +267,7 @@ export async function getLatestBankBalances(
       if (error) throw error
       return (data || []).map((b: any) => ({
         id: b.bank_id,
-        company_id: companyId,
+        company_id: companyId || 'all',
         date: b.reference_date,
         bank_name: b.bank_name,
         bank_id: b.bank_id,
@@ -278,7 +281,7 @@ export async function getLatestBankBalances(
 }
 
 export async function getCashFlowAggregates(
-  companyId: string,
+  companyId: string | null,
   startDate: Date,
   endDate: Date,
 ) {
