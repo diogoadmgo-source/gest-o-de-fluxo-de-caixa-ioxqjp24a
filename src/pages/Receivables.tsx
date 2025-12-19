@@ -1,5 +1,11 @@
 import { useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ReceivableFilters } from '@/components/financial/ReceivableFilters'
 import { ReceivableForm } from '@/components/financial/ReceivableForm'
@@ -8,22 +14,49 @@ import { useQuery } from '@/hooks/use-query'
 import { fetchPaginatedReceivables } from '@/services/financial'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { useDebounce } from '@/hooks/use-debounce'
-import { Loader2, Plus, Upload } from 'lucide-react'
+import {
+  Loader2,
+  Plus,
+  Upload,
+  MoreHorizontal,
+  Edit,
+  Trash2,
+} from 'lucide-react'
 import { usePerformanceMeasure } from '@/lib/performance'
 import { ImportDialog } from '@/components/common/ImportDialog'
 import { ReceivableStats } from '@/components/financial/ReceivableStats'
 import { Badge } from '@/components/ui/badge'
-import { VirtualTable, VirtualTableColumn } from '@/components/ui/virtual-table'
 import { PaginationControl } from '@/components/common/PaginationControl'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { format, parseISO, isValid } from 'date-fns'
 
 export default function Receivables() {
-  const { selectedCompanyId, addReceivable, updateReceivable } =
-    useCashFlowStore()
+  const {
+    selectedCompanyId,
+    addReceivable,
+    updateReceivable,
+    deleteReceivable,
+  } = useCashFlowStore()
   const perf = usePerformanceMeasure('/recebiveis', 'render')
 
   // State
-  // AC 2: Default View 20 items
-  const [pageSize, setPageSize] = useState(20)
+  // AC 3: Default View 30 items
+  const [pageSize, setPageSize] = useState(30)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -41,6 +74,7 @@ export default function Receivables() {
   const debouncedSearch = useDebounce(searchTerm, 400)
 
   // Data Fetching with full filter support
+  // AC 4: Server-side Pagination & Filtering
   const {
     data: paginatedData,
     isLoading,
@@ -74,13 +108,24 @@ export default function Receivables() {
     setDataVersion((v) => v + 1)
   }
 
-  // Safe Date Formatting to avoid timezone issues
+  const handleDelete = async (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este título?')) {
+      await deleteReceivable(id)
+      refetch()
+      setDataVersion((v) => v + 1)
+    }
+  }
+
+  // Safe Date Formatting
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-'
-    // Assuming YYYY-MM-DD format from DB
-    const [y, m, d] = dateStr.split('-')
-    if (!y || !m || !d) return dateStr
-    return `${d}/${m}/${y}`
+    try {
+      const date = parseISO(dateStr)
+      if (!isValid(date)) return dateStr
+      return format(date, 'dd/MM/yyyy')
+    } catch {
+      return dateStr
+    }
   }
 
   const getStatusBadge = (status: string, dueDate: string) => {
@@ -88,12 +133,14 @@ export default function Receivables() {
     const isOverdue = dueDate < today && status === 'Aberto'
 
     if (status === 'Liquidado')
-      return <Badge className="bg-emerald-500">Liquidado</Badge>
+      return (
+        <Badge className="bg-emerald-500 hover:bg-emerald-600">Liquidado</Badge>
+      )
     if (status === 'Cancelado')
       return <Badge variant="destructive">Cancelado</Badge>
     if (isOverdue)
       return (
-        <Badge variant="destructive" className="bg-rose-500">
+        <Badge variant="destructive" className="bg-rose-500 hover:bg-rose-600">
           Vencido
         </Badge>
       )
@@ -106,125 +153,6 @@ export default function Receivables() {
       </Badge>
     )
   }
-
-  const columns: VirtualTableColumn<any>[] = [
-    {
-      header: 'NF / Pedido',
-      width: '15%',
-      cell: (item) => (
-        <div className="flex flex-col">
-          <span
-            className="font-medium text-xs truncate"
-            title={item.invoice_number}
-          >
-            {item.invoice_number || '-'}
-          </span>
-          {item.order_number && (
-            <span
-              className="text-[10px] text-muted-foreground truncate"
-              title={item.order_number}
-            >
-              Ped: {item.order_number}
-            </span>
-          )}
-        </div>
-      ),
-    },
-    {
-      header: 'Cliente',
-      width: '25%',
-      cell: (item) => (
-        <div className="flex flex-col">
-          <span
-            className="font-medium truncate block text-xs"
-            title={item.customer}
-          >
-            {item.customer}
-          </span>
-          {item.customer_name && item.customer_name !== item.customer && (
-            <span
-              className="text-[10px] text-muted-foreground truncate"
-              title={item.customer_name}
-            >
-              {item.customer_name}
-            </span>
-          )}
-        </div>
-      ),
-    },
-    {
-      header: 'Vencimento',
-      width: '12%',
-      cell: (item) => (
-        <div className="flex flex-col">
-          <span className="text-xs font-medium">
-            {formatDate(item.due_date)}
-          </span>
-          <span className="text-[10px] text-muted-foreground">
-            Emis: {formatDate(item.issue_date)}
-          </span>
-        </div>
-      ),
-    },
-    {
-      header: 'Status',
-      width: '10%',
-      className: 'text-center',
-      cell: (item) => getStatusBadge(item.title_status, item.due_date),
-    },
-    {
-      header: 'Info',
-      width: '10%',
-      cell: (item) => (
-        <div className="flex flex-col text-[10px] text-muted-foreground">
-          {item.new_status && (
-            <span title="Status Secundário">{item.new_status}</span>
-          )}
-          {item.installment && <span>Parc: {item.installment}</span>}
-        </div>
-      ),
-    },
-    {
-      header: 'Atraso',
-      width: '8%',
-      className: 'text-center',
-      cell: (item) => {
-        const days = item.days_overdue || 0
-        if (days <= 0)
-          return <span className="text-muted-foreground text-xs">-</span>
-        return <span className="text-red-600 font-bold text-xs">{days}d</span>
-      },
-    },
-    {
-      header: 'Valor Orig.',
-      width: '10%',
-      className: 'text-right',
-      cell: (item) => (
-        <span className="text-xs text-muted-foreground">
-          {(item.principal_value || 0).toLocaleString('pt-BR', {
-            style: 'currency',
-            currency: 'BRL',
-          })}
-        </span>
-      ),
-    },
-    {
-      header: 'Valor Atual.',
-      width: '10%',
-      className: 'text-right',
-      cell: (item) => (
-        <span className="font-medium text-xs">
-          {(item.updated_value || item.principal_value || 0).toLocaleString(
-            'pt-BR',
-            {
-              style: 'currency',
-              currency: 'BRL',
-            },
-          )}
-        </span>
-      ),
-    },
-  ]
 
   return (
     <div className="space-y-6 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
@@ -257,7 +185,6 @@ export default function Receivables() {
       </div>
 
       <div className="shrink-0">
-        {/* AC 9: Dashboard Accuracy - Stats refreshed on dataVersion change */}
         <ReceivableStats
           companyId={selectedCompanyId}
           lastUpdate={dataVersion}
@@ -288,6 +215,7 @@ export default function Receivables() {
             setCreatedAtRange(undefined)
             setMinValue('')
             setMaxValue('')
+            setPage(1)
           }}
           hasActiveFilters={
             !!searchTerm ||
@@ -300,31 +228,202 @@ export default function Receivables() {
         />
       </div>
 
-      <Card className="flex-1 overflow-hidden flex flex-col">
-        <CardContent className="p-0 flex-1 relative">
+      <Card className="flex-1 overflow-hidden flex flex-col border shadow-sm">
+        <CardHeader className="py-4 shrink-0 border-b bg-muted/5">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Listagem de Títulos</CardTitle>
+              <CardDescription className="text-xs">
+                {paginatedData?.count || 0} registros encontrados
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+
+        {/* AC 2: Grid Layout Fix - Using Shadcn Table instead of VirtualTable */}
+        <CardContent className="p-0 flex-1 overflow-auto relative bg-background">
           {isLoading ? (
             <div className="h-full flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : !selectedCompanyId || selectedCompanyId === 'all' ? (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8">
               <p>Selecione uma empresa para visualizar os dados.</p>
             </div>
           ) : (
-            <div className="h-full">
-              <VirtualTable
-                data={paginatedData?.data || []}
-                columns={columns}
-                rowHeight={60}
-                visibleHeight="100%"
-                onRowClick={setEditingItem}
-                className="h-full border-0 rounded-none"
-              />
-            </div>
+            <Table>
+              <TableHeader className="bg-muted/50 sticky top-0 z-10">
+                <TableRow>
+                  <TableHead className="w-[15%]">NF / Pedido</TableHead>
+                  <TableHead className="w-[20%]">Cliente</TableHead>
+                  <TableHead className="w-[12%]">Vencimento</TableHead>
+                  <TableHead className="w-[10%] text-center">Status</TableHead>
+                  <TableHead className="w-[10%]">Info</TableHead>
+                  <TableHead className="w-[10%] text-center">Atraso</TableHead>
+                  <TableHead className="w-[10%] text-right">Valor</TableHead>
+                  <TableHead className="w-[10%] text-right">
+                    Atualizado
+                  </TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedData?.data.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={9}
+                      className="text-center h-24 text-muted-foreground"
+                    >
+                      Nenhum título encontrado com os filtros atuais.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedData?.data.map((item) => (
+                    <TableRow
+                      key={item.id}
+                      className="group cursor-pointer hover:bg-muted/40 transition-colors"
+                      onClick={() => setEditingItem(item)}
+                    >
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span
+                            className="font-medium text-xs truncate"
+                            title={item.invoice_number}
+                          >
+                            {item.invoice_number || '-'}
+                          </span>
+                          {item.order_number && (
+                            <span
+                              className="text-[10px] text-muted-foreground truncate"
+                              title={`Pedido: ${item.order_number}`}
+                            >
+                              Ped: {item.order_number}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col max-w-[200px]">
+                          <span
+                            className="font-medium truncate text-xs"
+                            title={item.customer}
+                          >
+                            {item.customer}
+                          </span>
+                          {item.customer_name &&
+                            item.customer_name !== item.customer && (
+                              <span
+                                className="text-[10px] text-muted-foreground truncate"
+                                title={item.customer_name}
+                              >
+                                {item.customer_name}
+                              </span>
+                            )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="text-xs font-medium">
+                            {formatDate(item.due_date)}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            Emis: {formatDate(item.issue_date)}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {getStatusBadge(item.title_status, item.due_date)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col text-[10px] text-muted-foreground">
+                          {item.new_status && (
+                            <span
+                              title="Status Secundário"
+                              className="truncate max-w-[100px]"
+                            >
+                              {item.new_status}
+                            </span>
+                          )}
+                          {item.installment && (
+                            <span>Parc: {item.installment}</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const days = item.days_overdue || 0
+                          if (days <= 0)
+                            return (
+                              <span className="text-muted-foreground text-xs">
+                                -
+                              </span>
+                            )
+                          return (
+                            <span className="text-red-600 font-bold text-xs">
+                              {days}d
+                            </span>
+                          )
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="text-xs text-muted-foreground">
+                          {(item.principal_value || 0).toLocaleString('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL',
+                          })}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-medium text-xs">
+                          {(
+                            item.updated_value ||
+                            item.principal_value ||
+                            0
+                          ).toLocaleString('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL',
+                          })}
+                        </span>
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <span className="sr-only">Abrir menu</span>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuItem
+                              onClick={() => setEditingItem(item)}
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => handleDelete(item.id)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
-        <div className="shrink-0 border-t">
-          {/* AC 1-6: Pagination Control Component */}
+        <div className="shrink-0 border-t bg-muted/5">
+          {/* AC 4: Pagination Functionality */}
           <PaginationControl
             currentPage={page}
             totalCount={paginatedData?.count || 0}
@@ -352,7 +451,6 @@ export default function Receivables() {
         title="Importar Recebíveis"
         onImported={() => {
           refetch()
-          // Force dashboard/stats refresh
           setDataVersion((v) => v + 1)
         }}
       />
