@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -21,7 +21,13 @@ const PerformanceReport = React.lazy(() => import('@/pages/PerformanceReport'))
 const NotFound = React.lazy(() => import('@/pages/NotFound'))
 
 const Balances = React.lazy(() => import('@/pages/Balances'))
-const Imports = React.lazy(() => import('@/pages/Imports'))
+// Deprecated: Imports is now split into Payments and CustomsClearance
+// const Imports = React.lazy(() => import('@/pages/Imports'))
+const ImportPayments = React.lazy(() => import('@/pages/imports/Payments'))
+const ImportCustoms = React.lazy(
+  () => import('@/pages/imports/CustomsClearance'),
+)
+
 const Adjustments = React.lazy(() => import('@/pages/Adjustments'))
 const Audit = React.lazy(() => import('@/pages/Audit'))
 const Users = React.lazy(() => import('@/pages/settings/Users'))
@@ -55,7 +61,21 @@ const App = () => (
                   <Route path="/recebiveis" element={<Receivables />} />
                   <Route path="/pagaveis" element={<Payables />} />
                   <Route path="/saldos" element={<Balances />} />
-                  <Route path="/importacoes" element={<Imports />} />
+
+                  {/* Imports Module */}
+                  <Route
+                    path="/importacoes"
+                    element={<Navigate to="/importacoes/pagamentos" replace />}
+                  />
+                  <Route
+                    path="/importacoes/pagamentos"
+                    element={<ImportPayments />}
+                  />
+                  <Route
+                    path="/importacoes/desembaraco"
+                    element={<ImportCustoms />}
+                  />
+
                   <Route path="/ajustes" element={<Adjustments />} />
                   <Route path="/relatorios" element={<Reports />} />
                   <Route path="/auditoria" element={<Audit />} />

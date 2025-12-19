@@ -13,6 +13,10 @@ import {
   Users,
   FileSpreadsheet,
   UploadCloud,
+  ChevronDown,
+  ChevronRight,
+  Ship,
+  DollarSign,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,19 +26,47 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/use-auth'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 
-const baseMenuItems = [
+interface MenuItem {
+  icon: any
+  label: string
+  path: string
+  children?: MenuItem[]
+}
+
+const baseMenuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
   { icon: Wallet, label: 'Fluxo de Caixa', path: '/fluxo-de-caixa' },
   { icon: Landmark, label: 'Saldos', path: '/saldos' },
   { icon: ArrowDownToLine, label: 'Contas a Receber', path: '/recebiveis' },
   { icon: ArrowUpFromLine, label: 'Contas a Pagar', path: '/pagaveis' },
-  { icon: UploadCloud, label: 'Importações', path: '/importacoes' },
+  {
+    icon: UploadCloud,
+    label: 'Importações',
+    path: '/importacoes',
+    children: [
+      {
+        icon: DollarSign,
+        label: 'Pagamentos e Adiant.',
+        path: '/importacoes/pagamentos',
+      },
+      {
+        icon: Ship,
+        label: 'Desembaraço Aduaneiro',
+        path: '/importacoes/desembaraco',
+      },
+    ],
+  },
   {
     icon: FileSpreadsheet,
-    label: 'Lançamentos extraordinários',
+    label: 'Lançamentos extra.',
     path: '/ajustes',
   },
   { icon: BarChart3, label: 'Relatórios', path: '/relatorios' },
@@ -44,6 +76,7 @@ const baseMenuItems = [
 export function Sidebar() {
   const location = useLocation()
   const [open, setOpen] = useState(false)
+  const [openSubmenus, setOpenSubmenus] = useState<string[]>([])
   const { userProfile } = useAuth()
 
   // Filter menu items for User profile (remove Configurações)
@@ -71,6 +104,29 @@ export function Sidebar() {
     }
   }
 
+  // Auto-expand submenu if current path matches
+  useEffect(() => {
+    menuItems.forEach((item) => {
+      if (item.children) {
+        if (
+          item.children.some((child) =>
+            location.pathname.startsWith(child.path),
+          )
+        ) {
+          if (!openSubmenus.includes(item.path)) {
+            setOpenSubmenus((prev) => [...prev, item.path])
+          }
+        }
+      }
+    })
+  }, [location.pathname])
+
+  const toggleSubmenu = (path: string) => {
+    setOpenSubmenus((prev) =>
+      prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path],
+    )
+  }
+
   const NavContent = () => (
     <div className="flex flex-col h-full py-4">
       <div className="px-6 mb-8 mt-2 flex items-center gap-3">
@@ -87,7 +143,81 @@ export function Sidebar() {
       </div>
       <nav className="flex-1 space-y-1 px-3 overflow-y-auto">
         {menuItems.map((item) => {
-          const isActive = location.pathname === item.path
+          const isActive =
+            location.pathname === item.path ||
+            (item.children &&
+              item.children.some((c) => location.pathname === c.path))
+          const hasChildren = item.children && item.children.length > 0
+          const isOpen = openSubmenus.includes(item.path)
+
+          if (hasChildren) {
+            return (
+              <Collapsible
+                key={item.path}
+                open={isOpen}
+                onOpenChange={() => toggleSubmenu(item.path)}
+                className="space-y-1"
+              >
+                <CollapsibleTrigger asChild>
+                  <button
+                    className={cn(
+                      'w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group',
+                      isActive
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                    )}
+                    title={item.label}
+                  >
+                    <div className="flex items-center gap-3">
+                      <item.icon
+                        className={cn(
+                          'h-5 w-5 shrink-0',
+                          isActive
+                            ? 'text-primary'
+                            : 'text-muted-foreground group-hover:text-foreground',
+                        )}
+                      />
+                      <span className="truncate">{item.label}</span>
+                    </div>
+                    {isOpen ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-1 pl-6 animate-slide-down">
+                  {item.children!.map((child) => {
+                    const isChildActive = location.pathname === child.path
+                    return (
+                      <Link
+                        key={child.path}
+                        to={child.path}
+                        onClick={() => setOpen(false)}
+                        className={cn(
+                          'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 group',
+                          isChildActive
+                            ? 'text-primary bg-primary/5'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50',
+                        )}
+                      >
+                        <child.icon
+                          className={cn(
+                            'h-4 w-4 shrink-0',
+                            isChildActive
+                              ? 'text-primary'
+                              : 'text-muted-foreground group-hover:text-foreground',
+                          )}
+                        />
+                        <span className="truncate">{child.label}</span>
+                      </Link>
+                    )
+                  })}
+                </CollapsibleContent>
+              </Collapsible>
+            )
+          }
+
           return (
             <Link
               key={item.path}
@@ -99,7 +229,7 @@ export function Sidebar() {
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
               )}
-              title={item.label.length > 25 ? item.label : undefined}
+              title={item.label}
             >
               <item.icon
                 className={cn(

@@ -28,11 +28,12 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { ImportRejectsDialog } from '@/components/financial/ImportRejectsDialog'
 import { useAuth } from '@/hooks/use-auth'
 import { importarReceivables, importarPayables } from '@/services/financial'
+import { importProductImports } from '@/services/product-imports'
 
 interface ImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  type: 'receivable' | 'payable' | 'general'
+  type: 'receivable' | 'payable' | 'general' | 'product_import'
   title: string
   onImported?: () => void
 }
@@ -132,22 +133,46 @@ export function ImportDialog({
   }
 
   const downloadTemplate = () => {
-    const headers = [
-      'Empresa',
-      'Nota Fiscal',
-      'Pedido',
-      'Cliente',
-      'CNPJ',
-      'Emissão',
-      'Vencimento',
-      'Valor',
-      'Status',
-      'Observações',
-    ]
-    const content =
-      headers.join(';') +
-      '\n' +
-      'Minha Empresa;12345;PED-001;Cliente Exemplo;00.000.000/0001-00;01/01/2025;01/02/2025;1.500,00;Aberto;Exemplo'
+    let headers: string[] = []
+    let content = ''
+
+    if (type === 'product_import') {
+      headers = [
+        'Processo',
+        'Descricao',
+        'Fornecedor',
+        'Valor',
+        'Moeda',
+        'Taxa',
+        'Impostos',
+        'Logistica',
+        'Nacionalizacao',
+        'Inicio',
+        'Previsao',
+        'Status',
+      ]
+      content =
+        headers.join(';') +
+        '\n' +
+        'PROC-001;Produto Exemplo;Fornecedor XYZ;1000.00;USD;5.50;200.00;150.00;50.00;01/01/2025;15/02/2025;Pending'
+    } else {
+      headers = [
+        'Empresa',
+        'Nota Fiscal',
+        'Pedido',
+        'Cliente',
+        'CNPJ',
+        'Emissão',
+        'Vencimento',
+        'Valor',
+        'Status',
+        'Observações',
+      ]
+      content =
+        headers.join(';') +
+        '\n' +
+        'Minha Empresa;12345;PED-001;Cliente Exemplo;00.000.000/0001-00;01/01/2025;01/02/2025;1.500,00;Aberto;Exemplo'
+    }
 
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -219,6 +244,12 @@ export function ImportDialog({
           )
         } else if (type === 'payable') {
           res = await importarPayables(user.id, parsedData, selectedCompanyId)
+        } else if (type === 'product_import') {
+          res = await importProductImports(
+            user.id,
+            selectedCompanyId,
+            parsedData,
+          )
         } else {
           throw new Error('Tipo de importação desconhecido')
         }
@@ -238,7 +269,7 @@ export function ImportDialog({
         }
         toast.success(msg)
 
-        recalculateCashFlow()
+        if (type !== 'product_import') recalculateCashFlow()
         onImported?.()
       } else {
         toast.error(res.message || 'Falha na importação.')
@@ -424,99 +455,18 @@ export function ImportDialog({
                             Resumo da Operação
                           </h4>
                           <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
-                            {/* File Total */}
-                            <div className="flex flex-col">
-                              <span className="text-muted-foreground text-xs uppercase tracking-wider">
-                                Total Planilha
-                              </span>
-                              <span className="font-medium text-base">
-                                {(
-                                  result.stats?.fileTotalPrincipal || 0
-                                ).toLocaleString('pt-BR', {
-                                  style: 'currency',
-                                  currency: 'BRL',
-                                })}
-                              </span>
-                            </div>
-
-                            {/* Rejected / Not Imported */}
-                            <div className="flex flex-col">
-                              <span className="text-destructive text-xs uppercase tracking-wider font-semibold">
-                                Não Importado
-                              </span>
-                              <span className="font-bold text-base text-destructive">
-                                {(
-                                  result.stats?.rejectedAmount || 0
-                                ).toLocaleString('pt-BR', {
-                                  style: 'currency',
-                                  currency: 'BRL',
-                                })}
-                              </span>
-                            </div>
-
                             {/* Imported Total */}
-                            <div className="flex flex-col border-t pt-2 col-span-2">
+                            <div className="flex flex-col pt-2 col-span-2">
                               <span className="text-emerald-600 text-xs uppercase tracking-wider font-bold">
-                                Total Importado
+                                Total Inserido
                               </span>
                               <div className="flex justify-between items-end">
                                 <span className="font-bold text-xl text-emerald-700">
-                                  {(
-                                    result.stats?.importedTotal || 0
-                                  ).toLocaleString('pt-BR', {
-                                    style: 'currency',
-                                    currency: 'BRL',
-                                  })}
-                                </span>
-                                <span className="text-xs text-muted-foreground mb-1">
                                   {result.stats?.records} registros
                                 </span>
                               </div>
                             </div>
-
-                            {/* Post-Import Audit Check */}
-                            {result.stats?.auditDbValue !== undefined && (
-                              <div className="flex flex-col border-t border-dashed pt-2 col-span-2">
-                                <span className="text-xs uppercase tracking-wider font-semibold flex items-center gap-1 text-muted-foreground">
-                                  <Database className="h-3 w-3" />
-                                  Auditoria Pós-Importação (DB)
-                                </span>
-                                <div className="flex justify-between items-center mt-1">
-                                  <span className="text-sm font-medium">
-                                    {(
-                                      result.stats.auditDbValue || 0
-                                    ).toLocaleString('pt-BR', {
-                                      style: 'currency',
-                                      currency: 'BRL',
-                                    })}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {result.stats.auditDbRows} total no banco
-                                  </span>
-                                </div>
-                              </div>
-                            )}
                           </div>
-
-                          {result.stats?.rejectedRows ? (
-                            <div className="mt-2 text-xs text-destructive flex items-center gap-1 font-medium bg-destructive/5 p-2 rounded">
-                              <AlertCircle className="h-3 w-3" />
-                              {result.stats.rejectedRows} registros rejeitados
-                              ou duplicados.
-                            </div>
-                          ) : null}
-
-                          {hasRejects && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="w-full mt-1 text-destructive border-destructive/30 hover:bg-destructive/10"
-                              onClick={() => setShowRejects(true)}
-                            >
-                              <Eye className="mr-2 h-4 w-4" />
-                              Ver Detalhes dos Rejeitados
-                            </Button>
-                          )}
                         </div>
                       </div>
                     )}
@@ -548,12 +498,6 @@ export function ImportDialog({
           </div>
         </DialogContent>
       </Dialog>
-
-      <ImportRejectsDialog
-        batchId={result?.stats?.batchId || null}
-        open={showRejects}
-        onOpenChange={setShowRejects}
-      />
     </>
   )
 }

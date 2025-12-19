@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { ProductImport } from '@/lib/types'
+import { parsePtBrFloat } from '@/lib/utils'
 
 // Updated to support server-side pagination and filtering
 export async function fetchPaginatedProductImports(
@@ -9,6 +10,7 @@ export async function fetchPaginatedProductImports(
   filters: {
     search?: string
     status?: string
+    dateRange?: { from: Date; to?: Date }
   },
 ) {
   let query = supabase
@@ -26,6 +28,14 @@ export async function fetchPaginatedProductImports(
     query = query.or(
       `description.ilike.${term},international_supplier.ilike.${term},process_number.ilike.${term}`,
     )
+  }
+
+  if (filters.dateRange?.from) {
+    const fromStr = filters.dateRange.from.toISOString().split('T')[0]
+    const toStr = filters.dateRange.to
+      ? filters.dateRange.to.toISOString().split('T')[0]
+      : fromStr
+    query = query.gte('start_date', fromStr).lte('start_date', toStr)
   }
 
   // Sorting
@@ -62,8 +72,8 @@ export async function saveProductImport(
     nationalization_costs: payload.nationalization_costs || 0,
     status: payload.status,
     start_date: payload.start_date,
-    expected_arrival_date: payload.expected_arrival_date,
-    actual_arrival_date: payload.actual_arrival_date,
+    expected_arrival_date: payload.expected_arrival_date || null,
+    actual_arrival_date: payload.actual_arrival_date || null,
   }
 
   if (payload.id) {
@@ -106,4 +116,118 @@ export async function logImportAudit(
     user_id: userId,
     details,
   })
+}
+
+// Bulk Import
+export async function importProductImports(
+  userId: string,
+  companyId: string,
+  data: any[],
+) {
+  const rowsToInsert = data.map((row) => {
+    // Map CSV columns
+    const getVal = (keys: string[]) => {
+      for (const k of keys) {
+        // Case insensitive check
+        const foundKey = Object.keys(row).find(
+          (rk) => rk.toLowerCase() === k.toLowerCase(),
+        )
+        if (foundKey) return row[foundKey]
+      }
+      return undefined
+    }
+
+    const description =
+      getVal(['description', 'descrição', 'produto']) || 'Importação via CSV'
+    const supplier =
+      getVal(['international_supplier', 'fornecedor', 'supplier']) ||
+      'Fornecedor Desconhecido'
+    const valueStr = getVal([
+      'foreign_currency_value',
+      'valor',
+      'value',
+      'amount',
+    ])
+    const rateStr = getVal(['exchange_rate', 'taxa', 'cambio', 'rate'])
+    const taxesStr = getVal(['taxes', 'impostos', 'tax'])
+    const logisticsStr = getVal(['logistics_costs', 'logistica', 'frete'])
+    const nationalizationStr = getVal([
+      'nationalization_costs',
+      'nacionalizacao',
+      'custos',
+    ])
+
+    // Date parsing helper
+    const parseDate = (val: any) => {
+      if (!val) return null
+      if (val instanceof Date) return val.toISOString().split('T')[0]
+      const str = String(val).trim()
+      // DD/MM/YYYY
+      if (str.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+        const [d, m, y] = str.split('/')
+        return `${y}-${m}-${d}`
+      }
+      // YYYY-MM-DD
+      if (str.match(/^\d{4}-\d{2}-\d{2}$/)) return str
+      return null
+    }
+
+    const start_date =
+      parseDate(getVal(['start_date', 'data inicio', 'inicio', 'data'])) ||
+      new Date().toISOString().split('T')[0]
+    const expected = parseDate(
+      getVal(['expected_arrival_date', 'previsao', 'chegada prevista']),
+    )
+    const actual = parseDate(
+      getVal(['actual_arrival_date', 'chegada', 'chegada real']),
+    )
+
+    return {
+      company_id: companyId,
+      user_id: userId,
+      process_number: getVal(['process_number', 'processo', 'numero']) || '',
+      description: String(description).substring(0, 255),
+      international_supplier: String(supplier).substring(0, 255),
+      foreign_currency_value: parsePtBrFloat(valueStr),
+      foreign_currency_code:
+        getVal(['foreign_currency_code', 'moeda', 'currency']) || 'USD',
+      exchange_rate: parsePtBrFloat(rateStr) || 1,
+      logistics_costs: parsePtBrFloat(logisticsStr),
+      taxes: parsePtBrFloat(taxesStr),
+      nationalization_costs: parsePtBrFloat(nationalizationStr),
+      status: getVal(['status', 'situacao']) || 'Pending',
+      start_date,
+      expected_arrival_date: expected,
+      actual_arrival_date: actual,
+    }
+  })
+
+  // Insert in chunks to avoid payload limits
+  const chunkSize = 100
+  let insertedCount = 0
+  let errors: any[] = []
+
+  for (let i = 0; i < rowsToInsert.length; i += chunkSize) {
+    const chunk = rowsToInsert.slice(i, i + chunkSize)
+    const { error } = await supabase.from('product_imports').insert(chunk)
+    if (error) {
+      errors.push(error.message)
+    } else {
+      insertedCount += chunk.length
+    }
+  }
+
+  if (errors.length > 0 && insertedCount === 0) {
+    throw new Error(`Falha na importação: ${errors.join(', ')}`)
+  }
+
+  return {
+    success: true,
+    message: `Importado ${insertedCount} registros com sucesso.`,
+    stats: {
+      records: insertedCount,
+      importedTotal: 0,
+      rejectedRows: errors.length > 0 ? rowsToInsert.length - insertedCount : 0,
+    },
+  }
 }
