@@ -61,6 +61,7 @@ export function isGarbageCompany(name: any): boolean {
     'a transportar',
     'transporte',
     'saldo anterior',
+    'filtros aplicados',
   ]
   return garbage.includes(n)
 }

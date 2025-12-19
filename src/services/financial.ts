@@ -449,41 +449,81 @@ export async function importReceivablesRobust(
   data: any[],
   fileName: string,
 ) {
-  const sanitized = data.map((d) => {
-    const get = (k: string[]) => getCol(d, k)
-    let principalVal = 0
-    try {
-      principalVal = parsePtBrFloat(
-        get(RECEIVABLE_MAPPINGS.principal_value),
-        'Valor Principal',
+  const sanitized = data
+    .filter((d) => {
+      const get = (k: string[]) => getCol(d, k)
+      const invoiceNumber = normalizeText(
+        get(RECEIVABLE_MAPPINGS.invoice_number),
       )
-    } catch (e) {
-      // ignore error
-    }
-    let updatedVal = 0
-    try {
-      updatedVal = parsePtBrFloat(
-        get(RECEIVABLE_MAPPINGS.updated_value),
-        'Valor Atualizado',
-      )
-    } catch (e) {
-      updatedVal = principalVal
-    }
+      const customer = normalizeText(get(RECEIVABLE_MAPPINGS.customer))
 
-    return {
-      invoice_number: normalizeText(get(RECEIVABLE_MAPPINGS.invoice_number)),
-      order_number: normalizeText(get(RECEIVABLE_MAPPINGS.order_number)),
-      customer: normalizeText(get(RECEIVABLE_MAPPINGS.customer)),
-      customer_doc: normalizeText(get(RECEIVABLE_MAPPINGS.customer_doc)),
-      issue_date: get(RECEIVABLE_MAPPINGS.issue_date),
-      due_date: get(RECEIVABLE_MAPPINGS.due_date),
-      payment_prediction: get(RECEIVABLE_MAPPINGS.payment_prediction),
-      principal_value: principalVal,
-      updated_value: updatedVal,
-      title_status: normalizeText(get(RECEIVABLE_MAPPINGS.title_status)),
-      description: normalizeText(get(RECEIVABLE_MAPPINGS.description)),
-    }
-  })
+      // Check missing mandatory fields
+      if (!invoiceNumber || !customer) return false
+
+      // Check garbage keywords
+      if (isGarbageCompany(invoiceNumber) || isGarbageCompany(customer))
+        return false
+
+      // Check specific keywords from requirements (case insensitive)
+      const invStr = String(invoiceNumber).toLowerCase()
+      const custStr = String(customer).toLowerCase()
+      if (
+        invStr.includes('filtros aplicados') ||
+        custStr.includes('filtros aplicados')
+      )
+        return false
+
+      return true
+    })
+    .map((d) => {
+      const get = (k: string[]) => getCol(d, k)
+      let principalVal = 0
+      let errorPrincipal = null
+
+      try {
+        principalVal = parsePtBrFloat(
+          get(RECEIVABLE_MAPPINGS.principal_value),
+          'Valor Principal',
+        )
+      } catch (e: any) {
+        principalVal = 0
+        errorPrincipal = e.message || 'erro_parse_valor_principal'
+      }
+
+      let updatedVal = 0
+      try {
+        updatedVal = parsePtBrFloat(
+          get(RECEIVABLE_MAPPINGS.updated_value),
+          'Valor Atualizado',
+        )
+      } catch (e) {
+        updatedVal = principalVal
+      }
+
+      const installment = normalizeText(get(RECEIVABLE_MAPPINGS.installment))
+      const status =
+        normalizeText(get(RECEIVABLE_MAPPINGS.title_status)) || 'Aberto'
+
+      return {
+        invoice_number: normalizeText(get(RECEIVABLE_MAPPINGS.invoice_number)),
+        order_number: normalizeText(get(RECEIVABLE_MAPPINGS.order_number)),
+        customer: normalizeText(get(RECEIVABLE_MAPPINGS.customer)),
+        customer_doc: normalizeText(get(RECEIVABLE_MAPPINGS.customer_doc)),
+        issue_date: get(RECEIVABLE_MAPPINGS.issue_date),
+        due_date: get(RECEIVABLE_MAPPINGS.due_date),
+        payment_prediction: get(RECEIVABLE_MAPPINGS.payment_prediction),
+        principal_value: principalVal,
+        updated_value: updatedVal,
+        title_status: status,
+        description: normalizeText(get(RECEIVABLE_MAPPINGS.description)),
+        installment: installment || null,
+        customer_name: normalizeText(get(RECEIVABLE_MAPPINGS.customer_name)),
+        days_overdue: get(RECEIVABLE_MAPPINGS.days_overdue),
+        uf: normalizeText(get(RECEIVABLE_MAPPINGS.uf)),
+        new_status: normalizeText(get(RECEIVABLE_MAPPINGS.new_status)),
+        _error_principal: errorPrincipal,
+      }
+    })
 
   const { data: result, error } = await supabase.rpc(
     'import_receivables_replace',
