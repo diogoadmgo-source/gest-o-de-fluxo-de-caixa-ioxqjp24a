@@ -26,8 +26,6 @@ import {
   getDashboardKPIs,
   getLatestBankBalances,
   salvarBankManual,
-  salvarPayableManual,
-  deletePayableTransaction,
 } from '@/services/financial'
 import { normalizeCompanyId } from '@/lib/utils'
 import { subDays, addDays } from 'date-fns'
@@ -245,18 +243,63 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   const addPayable = async (t: Transaction) => {
     if (!user) return
-    await salvarPayableManual(t, user.id)
+
+    if (!selectedCompanyId || selectedCompanyId === 'all') {
+      throw new Error('Selecione uma empresa')
+    }
+
+    const { error } = await supabase.from('transactions').insert({
+      company_id: selectedCompanyId,
+      type: 'payable',
+      document_number: t.document_number,
+      entity_name: t.entity_name,
+      issue_date: t.issue_date,
+      due_date: t.due_date,
+      amount: t.amount,
+      principal_value: t.principal_value,
+      fine: t.fine,
+      interest: t.interest,
+      category: t.category,
+      status: t.status,
+      description: t.description,
+    })
+
+    if (error) throw error
     fetchData()
   }
 
   const updatePayable = async (t: Transaction) => {
     if (!user) return
-    await salvarPayableManual(t, user.id)
+
+    if (!t.id) {
+      throw new Error('ID do payable não informado')
+    }
+
+    const { error } = await supabase
+      .from('transactions')
+      .update({
+        document_number: t.document_number,
+        entity_name: t.entity_name,
+        issue_date: t.issue_date,
+        due_date: t.due_date,
+        amount: t.amount,
+        principal_value: t.principal_value,
+        fine: t.fine,
+        interest: t.interest,
+        category: t.category,
+        status: t.status,
+        description: t.description,
+      })
+      .eq('id', t.id)
+
+    if (error) throw error
     fetchData()
   }
 
   const deletePayable = async (id: string) => {
-    await deletePayableTransaction(id)
+    if (!id) throw new Error('ID obrigatório')
+    const { error } = await supabase.from('transactions').delete().eq('id', id)
+    if (error) throw error
     fetchData()
   }
 
