@@ -32,7 +32,7 @@ interface CashFlowEvolutionChartProps {
 const chartConfig = {
   balance: { label: 'Saldo Acumulado', color: 'hsl(var(--primary))' },
   inflow: { label: 'Entradas', color: '#10b981' },
-  outflow: { label: 'Saídas', color: '#f43f5e' },
+  outflow: { label: 'Saídas (Total)', color: '#f43f5e' },
 }
 
 export function CashFlowEvolutionChart({ data }: CashFlowEvolutionChartProps) {
@@ -41,7 +41,12 @@ export function CashFlowEvolutionChart({ data }: CashFlowEvolutionChartProps) {
     fullDate: format(parseISO(entry.date), 'dd/MM/yyyy'),
     balance: entry.accumulated_balance,
     inflow: entry.total_receivables,
-    outflow: entry.total_payables,
+    // Outflow now includes operational payables + import payments + customs costs
+    outflow:
+      entry.total_payables +
+      entry.import_payments +
+      entry.customs_cost +
+      entry.other_expenses,
   }))
 
   return (

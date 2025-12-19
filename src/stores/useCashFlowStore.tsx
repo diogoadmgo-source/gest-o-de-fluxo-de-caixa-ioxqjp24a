@@ -26,7 +26,6 @@ import {
   getDashboardKPIs,
   getLatestBankBalances,
   salvarBankManual,
-  importReceivablesRobust,
 } from '@/services/financial'
 import { normalizeCompanyId } from '@/lib/utils'
 import { subDays, addDays } from 'date-fns'
@@ -120,11 +119,11 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           .eq('active', true)
         setBanks((banksData as Bank[]) || [])
 
-        // 2. Fetch Latest Balances (Corrected per User Story)
+        // 2. Fetch Latest Balances
         const latestBalances = await getLatestBankBalances(activeId)
         setBankBalances(latestBalances)
 
-        // 3. Fetch KPI (Corrected RPC)
+        // 3. Fetch KPI
         const kpiData = await getDashboardKPIs(activeId)
         setKpis(kpiData as KPI)
 
@@ -143,18 +142,23 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
         // Generate Entries
         const entries = aggs.map((day: any) => {
-          const flow = (day.total_receivables || 0) - (day.total_payables || 0)
+          const importPayments = Number(day.import_payments) || 0
+          const customsCost = Number(day.customs_cost) || 0
+          const totalPayables = Number(day.total_payables) || 0
+          const totalReceivables = Number(day.total_receivables) || 0
+
+          const flow =
+            totalReceivables - totalPayables - importPayments - customsCost
           return {
             date: day.day,
             opening_balance: 0,
-            total_receivables: day.total_receivables,
-            total_payables: day.total_payables,
+            total_receivables: totalReceivables,
+            total_payables: totalPayables,
             daily_balance: flow,
             accumulated_balance: 0,
-            imports: 0,
+            import_payments: importPayments,
+            customs_cost: customsCost,
             other_expenses: 0,
-            adjustments_credit: 0,
-            adjustments_debit: 0,
             is_projected: new Date(day.day) > today,
           }
         })
@@ -166,11 +170,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
         // Forward from today
         if (todayIdx >= 0) {
-          // Set today's opening to current balance (snapshot)
-          // Actually, standard cash flow starts from current balance and projects forward
-          // Backward is history.
-
-          // Forward
           running = currentTotalBalance
           for (let i = todayIdx; i < entries.length; i++) {
             entries[i].opening_balance = running
@@ -186,7 +185,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
             running = entries[i].opening_balance
           }
         } else {
-          // If today is not in range (unlikely), just run forward
+          // If today is not in range, just run forward from assumed start
           for (let i = 0; i < entries.length; i++) {
             entries[i].opening_balance = running
             entries[i].accumulated_balance = running + entries[i].daily_balance
@@ -210,7 +209,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     fetchData()
-    // Simple Polling or Subscription could be added here
   }, [fetchData])
 
   // Actions

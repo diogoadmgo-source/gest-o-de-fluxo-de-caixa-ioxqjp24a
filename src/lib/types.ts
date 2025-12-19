@@ -122,10 +122,9 @@ export interface CashFlowEntry {
   opening_balance: number
   total_receivables: number
   total_payables: number
-  imports: number
+  import_payments: number
+  customs_cost: number
   other_expenses: number
-  adjustments_credit: number
-  adjustments_debit: number
   daily_balance: number
   accumulated_balance: number
   notes?: string

@@ -76,11 +76,11 @@ export function CashFlowGrid({
                 <TableHead className="text-right text-destructive font-semibold min-w-[120px]">
                   Total a Pagar
                 </TableHead>
-                <TableHead className="text-right text-orange-500 font-semibold min-w-[120px]">
-                  Importações
+                <TableHead className="text-right text-orange-500 font-semibold min-w-[150px]">
+                  Pagamentos Importações
                 </TableHead>
-                <TableHead className="text-right text-blue-500 font-semibold min-w-[120px]">
-                  Ajustes
+                <TableHead className="text-right text-purple-500 font-semibold min-w-[150px]">
+                  Desembaraço Aduaneiro
                 </TableHead>
                 <TableHead className="text-right text-muted-foreground font-semibold min-w-[120px]">
                   Outras Desp.
@@ -100,10 +100,6 @@ export function CashFlowGrid({
                 const isSelected =
                   format(currentDate, 'yyyy-MM-dd') ===
                   format(selectedDate, 'yyyy-MM-dd')
-
-                const netAdjustments =
-                  (entry.adjustments_credit || 0) -
-                  (entry.adjustments_debit || 0)
 
                 return (
                   <TableRow
@@ -154,28 +150,14 @@ export function CashFlowGrid({
                         : '-'}
                     </TableCell>
                     <TableCell className="text-right text-orange-500">
-                      {entry.imports > 0
-                        ? `- ${formatCurrency(entry.imports)}`
+                      {entry.import_payments > 0
+                        ? `- ${formatCurrency(entry.import_payments)}`
                         : '-'}
                     </TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right',
-                        netAdjustments > 0
-                          ? 'text-success'
-                          : netAdjustments < 0
-                            ? 'text-destructive'
-                            : 'text-muted-foreground',
-                      )}
-                    >
-                      {netAdjustments !== 0 ? (
-                        <span>
-                          {netAdjustments > 0 ? '+ ' : '- '}
-                          {formatCurrency(Math.abs(netAdjustments))}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
+                    <TableCell className="text-right text-purple-500">
+                      {entry.customs_cost > 0
+                        ? `- ${formatCurrency(entry.customs_cost)}`
+                        : '-'}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {entry.other_expenses > 0
@@ -244,7 +226,7 @@ export function CashFlowGrid({
                             setReviewEntry(entry)
                           }}
                         >
-                          Revisar lançamento
+                          Revisar
                         </Button>
                       </div>
                     </TableCell>
@@ -305,17 +287,17 @@ export function CashFlowGrid({
                   <span className="text-right text-destructive font-medium">
                     {formatCurrency(reviewEntry.total_payables)}
                   </span>
-                  <span>Importações:</span>
+                  <span>Pagamentos Importações:</span>
                   <span className="text-right text-orange-500 font-medium">
-                    {formatCurrency(reviewEntry.imports)}
+                    {formatCurrency(reviewEntry.import_payments)}
                   </span>
-                  <span>Ajustes (Crédito):</span>
-                  <span className="text-right text-success font-medium">
-                    {formatCurrency(reviewEntry.adjustments_credit || 0)}
+                  <span>Desembaraço Aduaneiro:</span>
+                  <span className="text-right text-purple-500 font-medium">
+                    {formatCurrency(reviewEntry.customs_cost)}
                   </span>
-                  <span>Ajustes (Débito):</span>
-                  <span className="text-right text-destructive font-medium">
-                    {formatCurrency(reviewEntry.adjustments_debit || 0)}
+                  <span>Outras Despesas:</span>
+                  <span className="text-right text-muted-foreground font-medium">
+                    {formatCurrency(reviewEntry.other_expenses)}
                   </span>
                 </div>
               </div>
