@@ -1006,6 +1006,17 @@ export type Database = {
         Args: { p_company_id: string }
         Returns: Json
       }
+      get_latest_balances: {
+        Args: { p_company_id: string }
+        Returns: {
+          account_number: string
+          balance: number
+          bank_id: string
+          bank_name: string
+          bank_type: string
+          reference_date: string
+        }[]
+      }
       get_receivables_dashboard_stats: {
         Args: { p_company_id: string }
         Returns: Json
