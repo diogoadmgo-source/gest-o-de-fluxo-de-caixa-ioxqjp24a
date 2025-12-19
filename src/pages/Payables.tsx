@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Card,
   CardContent,
@@ -21,7 +21,13 @@ import { Transaction } from '@/lib/types'
 import { PayableForm } from '@/components/financial/PayableForm'
 import { PayableStats } from '@/components/financial/PayableStats'
 import { PayableFilters } from '@/components/financial/PayableFilters'
-import { format, parseISO, differenceInDays, startOfDay } from 'date-fns'
+import {
+  format,
+  parseISO,
+  differenceInDays,
+  startOfDay,
+  addDays,
+} from 'date-fns'
 import { ImportDialog } from '@/components/common/ImportDialog'
 import { VirtualTable, VirtualTableColumn } from '@/components/ui/virtual-table'
 import { useQuery } from '@/hooks/use-query'
@@ -31,8 +37,14 @@ import { usePerformanceMeasure } from '@/lib/performance'
 import { PaginationControl } from '@/components/common/PaginationControl'
 
 export default function Payables() {
-  const { selectedCompanyId, updatePayable, addPayable, deletePayable } =
-    useCashFlowStore()
+  const {
+    selectedCompanyId,
+    updatePayable,
+    addPayable,
+    deletePayable,
+    payableStats,
+    fetchPayableStats,
+  } = useCashFlowStore()
   const perf = usePerformanceMeasure('/pagaveis', 'render')
 
   // Filters State
@@ -52,13 +64,32 @@ export default function Payables() {
   const debouncedMinValue = useDebounce(minValue, 500)
   const debouncedMaxValue = useDebounce(maxValue, 500)
 
+  // Derive date range from maturity period
+  const effectiveDateRange = useMemo(() => {
+    if (maturityPeriod === 'custom') return customMaturityRange
+    if (maturityPeriod === 'today') {
+      const today = new Date()
+      return { from: today, to: today }
+    }
+    if (maturityPeriod === '7_days') {
+      return { from: new Date(), to: addDays(new Date(), 7) }
+    }
+    if (maturityPeriod === '15_days') {
+      return { from: new Date(), to: addDays(new Date(), 15) }
+    }
+    if (maturityPeriod === '30_days') {
+      return { from: new Date(), to: addDays(new Date(), 30) }
+    }
+    return undefined
+  }, [maturityPeriod, customMaturityRange])
+
   // Fetching
   const {
     data: paginatedData,
     isLoading,
     refetch,
   } = useQuery(
-    `payables-${selectedCompanyId}-${page}-${pageSize}-${debouncedSearch}-${debouncedSupplier}-${situationFilter}-${JSON.stringify(customMaturityRange)}-${debouncedMinValue}-${debouncedMaxValue}`,
+    `payables-${selectedCompanyId}-${page}-${pageSize}-${debouncedSearch}-${debouncedSupplier}-${situationFilter}-${JSON.stringify(effectiveDateRange)}-${debouncedMinValue}-${debouncedMaxValue}`,
     () => {
       if (!selectedCompanyId || selectedCompanyId === 'all')
         return Promise.resolve({ data: [], count: 0 })
@@ -67,7 +98,7 @@ export default function Payables() {
         search: debouncedSearch,
         supplier: debouncedSupplier,
         status: situationFilter,
-        dateRange: customMaturityRange,
+        dateRange: effectiveDateRange,
         minValue: debouncedMinValue,
         maxValue: debouncedMaxValue,
       })
@@ -78,6 +109,29 @@ export default function Payables() {
     },
   )
 
+  // Fetch Stats when filters change
+  useEffect(() => {
+    if (selectedCompanyId && selectedCompanyId !== 'all') {
+      fetchPayableStats({
+        search: debouncedSearch,
+        supplier: debouncedSupplier,
+        status: situationFilter,
+        dateRange: effectiveDateRange,
+        minValue: debouncedMinValue,
+        maxValue: debouncedMaxValue,
+      })
+    }
+  }, [
+    selectedCompanyId,
+    debouncedSearch,
+    debouncedSupplier,
+    situationFilter,
+    effectiveDateRange,
+    debouncedMinValue,
+    debouncedMaxValue,
+    fetchPayableStats,
+  ])
+
   // Finish measure
   if (!isLoading) perf.end({ count: paginatedData?.count })
 
@@ -87,15 +141,15 @@ export default function Payables() {
 
   const stats = useMemo(() => {
     return {
-      totalToPay: 0,
-      overdue: 0,
-      dueIn7Days: 0,
-      dueIn30Days: 0,
-      nextMaturityDate: null,
-      nextMaturityValue: 0,
-      totalCount: paginatedData?.count || 0,
+      totalToPay: payableStats?.total_to_pay || 0,
+      overdue: payableStats?.overdue || 0,
+      dueIn7Days: payableStats?.due_in_7_days || 0,
+      dueIn30Days: payableStats?.due_in_30_days || 0,
+      nextMaturityDate: payableStats?.next_maturity_date || null,
+      nextMaturityValue: payableStats?.next_maturity_value || 0,
+      totalCount: payableStats?.total_count || paginatedData?.count || 0,
     }
-  }, [paginatedData])
+  }, [payableStats, paginatedData])
 
   const handleSaveEdit = async (updated: Transaction) => {
     try {
@@ -258,7 +312,17 @@ export default function Payables() {
             onOpenChange={setIsImportDialogOpen}
             type="payable"
             title="Importar Contas a Pagar"
-            onImported={refetch}
+            onImported={() => {
+              refetch()
+              fetchPayableStats({
+                search: debouncedSearch,
+                supplier: debouncedSupplier,
+                status: situationFilter,
+                dateRange: effectiveDateRange,
+                minValue: debouncedMinValue,
+                maxValue: debouncedMaxValue,
+              })
+            }}
           />
 
           <Button
@@ -306,7 +370,8 @@ export default function Payables() {
             situationFilter !== 'all' ||
             !!customMaturityRange ||
             !!minValue ||
-            !!maxValue
+            !!maxValue ||
+            maturityPeriod !== 'all'
           }
         />
       </div>

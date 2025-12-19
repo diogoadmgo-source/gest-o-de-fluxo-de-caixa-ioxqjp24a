@@ -108,6 +108,16 @@ export interface KPI {
   runway_days?: number
 }
 
+export interface PayableStatsData {
+  total_count: number
+  total_to_pay: number
+  overdue: number
+  due_in_7_days: number
+  due_in_30_days: number
+  next_maturity_date: string | null
+  next_maturity_value: number
+}
+
 export interface DailyBalance {
   date: string
   closing_balance: number

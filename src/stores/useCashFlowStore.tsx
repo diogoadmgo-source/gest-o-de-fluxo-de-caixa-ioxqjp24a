@@ -17,6 +17,7 @@ import {
   FinancialAdjustment,
   ImportHistoryEntry,
   KPI,
+  PayableStatsData,
 } from '@/lib/types'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
@@ -26,6 +27,7 @@ import {
   getDashboardKPIs,
   getLatestBankBalances,
   salvarBankManual,
+  getPayableStats,
 } from '@/services/financial'
 import { normalizeCompanyId } from '@/lib/utils'
 import { subDays, addDays } from 'date-fns'
@@ -44,6 +46,7 @@ interface CashFlowContextType {
   accountPayables: Payable[]
   adjustments: FinancialAdjustment[]
   importHistory: ImportHistoryEntry[]
+  payableStats: PayableStatsData | null
   addBank: (bank: Bank) => Promise<any>
   updateBank: (bank: Bank) => Promise<void>
   deleteBank: (id: string) => Promise<void>
@@ -51,6 +54,7 @@ interface CashFlowContextType {
   updatePayable: (transaction: Transaction) => Promise<void>
   deletePayable: (id: string) => Promise<void>
   recalculateCashFlow: () => void
+  fetchPayableStats: (filters: any) => Promise<void>
   loading: boolean
   timeframe: number
   setTimeframe: (days: number) => void
@@ -75,6 +79,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   const [bankBalances, setBankBalances] = useState<BankBalance[]>([])
   const [banks, setBanks] = useState<Bank[]>([])
   const [kpis, setKpis] = useState<KPI | null>(null)
+  const [payableStats, setPayableStats] = useState<PayableStatsData | null>(
+    null,
+  )
 
   // Placeholders for legacy arrays, can be populated if needed
   const [receivables, setReceivables] = useState<Receivable[]>([])
@@ -303,6 +310,20 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     fetchData()
   }
 
+  const fetchPayableStats = async (filters: any) => {
+    if (!selectedCompanyId || selectedCompanyId === 'all') {
+      setPayableStats(null)
+      return
+    }
+    try {
+      const stats = await getPayableStats(selectedCompanyId, filters)
+      setPayableStats(stats)
+    } catch (err) {
+      console.error('Failed to fetch payable stats', err)
+      setPayableStats(null)
+    }
+  }
+
   return (
     <CashFlowContext.Provider
       value={{
@@ -318,6 +339,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         accountPayables,
         adjustments,
         importHistory,
+        payableStats,
         addBank,
         updateBank,
         deleteBank,
@@ -325,6 +347,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         updatePayable,
         deletePayable,
         recalculateCashFlow: fetchData,
+        fetchPayableStats,
         loading,
         timeframe,
         setTimeframe,

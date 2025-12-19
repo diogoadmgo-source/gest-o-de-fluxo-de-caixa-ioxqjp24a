@@ -8,6 +8,7 @@ import {
   KPI,
   BankBalance,
   Transaction,
+  PayableStatsData,
 } from '@/lib/types'
 
 export interface PaginatedResult<T> {
@@ -294,6 +295,38 @@ export async function fetchPaginatedPayables(
       return { data: data || [], count: count || 0, error }
     })(),
     { companyId, page, filters },
+  )
+}
+
+export async function getPayableStats(
+  companyId: string,
+  filters: any,
+): Promise<PayableStatsData> {
+  return performanceMonitor.measurePromise(
+    '/payables',
+    'fetch_stats',
+    (async () => {
+      const { data, error } = await supabase.rpc('get_payable_stats', {
+        p_company_id: companyId,
+        p_search: filters.search || null,
+        p_supplier: filters.supplier || null,
+        p_status: filters.status || null,
+        p_date_range_start: filters.dateRange?.from
+          ? format(filters.dateRange.from, 'yyyy-MM-dd')
+          : null,
+        p_date_range_end: filters.dateRange?.to
+          ? format(filters.dateRange.to, 'yyyy-MM-dd')
+          : filters.dateRange?.from
+            ? format(filters.dateRange.from, 'yyyy-MM-dd')
+            : null,
+        p_min_value: filters.minValue ? Number(filters.minValue) : null,
+        p_max_value: filters.maxValue ? Number(filters.maxValue) : null,
+      })
+
+      if (error) throw error
+      return data as PayableStatsData
+    })(),
+    { companyId, filters },
   )
 }
 
