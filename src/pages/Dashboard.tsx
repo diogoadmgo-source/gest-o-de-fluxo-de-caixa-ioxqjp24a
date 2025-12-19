@@ -10,6 +10,36 @@ export default function Dashboard() {
   const { selectedCompanyId, cashFlowEntries, kpis, loading } =
     useCashFlowStore()
 
+  // Always define hooks at top level
+  const kpiData = useMemo(() => {
+    // Return default/zero values if kpis is null/undefined
+    if (!kpis) {
+      return {
+        pmr: 0,
+        pmp: 0,
+        cash_gap: 0,
+        days_until_zero: 999,
+        current_balance: 0,
+        receivables_amount_open: 0,
+        receivables_amount_overdue: 0,
+        receivables_amount_received: 0,
+        payables_amount_pending: 0,
+      }
+    }
+
+    return {
+      pmr: kpis.pmr || 0,
+      pmp: kpis.pmp || 0,
+      cash_gap: kpis.cash_gap || 0,
+      days_until_zero: kpis.runway_days ?? 999, // Use nullish coalescing to safely handle 0
+      current_balance: kpis.current_balance || 0,
+      receivables_amount_open: kpis.receivables_amount_open || 0,
+      receivables_amount_overdue: kpis.receivables_amount_overdue || 0,
+      receivables_amount_received: kpis.receivables_amount_received || 0,
+      payables_amount_pending: kpis.payables_amount_pending || 0,
+    }
+  }, [kpis])
+
   if (loading && !kpis) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -17,22 +47,6 @@ export default function Dashboard() {
       </div>
     )
   }
-
-  // Fallback data
-  const kpiData = useMemo(
-    () => ({
-      pmr: kpis?.pmr || 0,
-      pmp: kpis?.pmp || 0,
-      cash_gap: kpis?.cash_gap || 0,
-      days_until_zero: kpis?.runway_days || 999,
-      current_balance: kpis?.current_balance || 0,
-      receivables_amount_open: kpis?.receivables_amount_open || 0,
-      receivables_amount_overdue: kpis?.receivables_amount_overdue || 0,
-      receivables_amount_received: kpis?.receivables_amount_received || 0,
-      payables_amount_pending: kpis?.payables_amount_pending || 0,
-    }),
-    [kpis],
-  )
 
   const showRecebido = kpiData.receivables_amount_received > 0
 
