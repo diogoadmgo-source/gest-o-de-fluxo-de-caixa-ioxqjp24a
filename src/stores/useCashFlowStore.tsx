@@ -26,6 +26,8 @@ import {
   getDashboardKPIs,
   getLatestBankBalances,
   salvarBankManual,
+  salvarPayableManual,
+  deletePayableTransaction,
 } from '@/services/financial'
 import { normalizeCompanyId } from '@/lib/utils'
 import { subDays, addDays } from 'date-fns'
@@ -47,6 +49,9 @@ interface CashFlowContextType {
   addBank: (bank: Bank) => Promise<any>
   updateBank: (bank: Bank) => Promise<void>
   deleteBank: (id: string) => Promise<void>
+  addPayable: (transaction: Transaction) => Promise<void>
+  updatePayable: (transaction: Transaction) => Promise<void>
+  deletePayable: (id: string) => Promise<void>
   recalculateCashFlow: () => void
   loading: boolean
   timeframe: number
@@ -238,6 +243,23 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     fetchData()
   }
 
+  const addPayable = async (t: Transaction) => {
+    if (!user) return
+    await salvarPayableManual(t, user.id)
+    fetchData()
+  }
+
+  const updatePayable = async (t: Transaction) => {
+    if (!user) return
+    await salvarPayableManual(t, user.id)
+    fetchData()
+  }
+
+  const deletePayable = async (id: string) => {
+    await deletePayableTransaction(id)
+    fetchData()
+  }
+
   return (
     <CashFlowContext.Provider
       value={{
@@ -256,6 +278,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         addBank,
         updateBank,
         deleteBank,
+        addPayable,
+        updatePayable,
+        deletePayable,
         recalculateCashFlow: fetchData,
         loading,
         timeframe,

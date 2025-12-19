@@ -36,7 +36,6 @@ export default function Payables() {
   const perf = usePerformanceMeasure('/pagaveis', 'render')
 
   // Filters State
-  // AC 2: Default View 20 items
   const [pageSize, setPageSize] = useState(20)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
@@ -94,26 +93,44 @@ export default function Payables() {
     }
   }, [paginatedData])
 
-  const handleSaveEdit = (updated: Transaction) => {
-    if (updated.id) {
-      updatePayable(updated)
-      toast.success('Obrigação atualizada!')
-    } else {
-      addPayable(updated)
-      toast.success('Nova obrigação criada!')
+  const handleSaveEdit = async (updated: Transaction) => {
+    try {
+      if (updated.id) {
+        await updatePayable(updated)
+        toast.success('Obrigação atualizada!')
+      } else {
+        await addPayable(updated)
+        toast.success('Nova obrigação criada!')
+      }
+      setEditingItem(null)
+      refetch()
+    } catch (error) {
+      console.error(error)
+      toast.error('Erro ao salvar obrigação.')
     }
-    setEditingItem(null)
-    refetch()
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Excluir?')) return
-    await deletePayable(id)
-    toast.success('Excluído')
-    refetch()
+    try {
+      await deletePayable(id)
+      toast.success('Excluído')
+      refetch()
+    } catch (error) {
+      console.error(error)
+      toast.error('Erro ao excluir obrigação.')
+    }
   }
 
-  const getSituationBadge = (dueDateStr: string) => {
+  const getSituationBadge = (dueDateStr: string, status: string) => {
+    if (status === 'paid') {
+      return (
+        <Badge variant="secondary" className="bg-green-100 text-green-800">
+          Pago
+        </Badge>
+      )
+    }
+
     const today = startOfDay(new Date())
     const due = parseISO(dueDateStr)
     const days = differenceInDays(due, today)
@@ -169,7 +186,7 @@ export default function Payables() {
     {
       header: 'Situação',
       width: '20%',
-      cell: (item) => getSituationBadge(item.due_date),
+      cell: (item) => getSituationBadge(item.due_date, item.status),
     },
     {
       header: 'Total',
@@ -237,6 +254,7 @@ export default function Payables() {
             onOpenChange={setIsImportDialogOpen}
             type="payable"
             title="Importar Contas a Pagar"
+            onImported={refetch}
           />
 
           <Button
@@ -313,7 +331,6 @@ export default function Payables() {
           )}
         </CardContent>
         <div className="shrink-0 border-t">
-          {/* AC 1-6: Pagination Control Component */}
           <PaginationControl
             currentPage={page}
             totalCount={paginatedData?.count || 0}

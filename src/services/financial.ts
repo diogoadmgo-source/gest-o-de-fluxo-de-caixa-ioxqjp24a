@@ -1,8 +1,14 @@
 import { supabase } from '@/lib/supabase/client'
 import { parse, isValid, format } from 'date-fns'
 import { performanceMonitor } from '@/lib/performance'
-import { isGarbageCompany, parsePtBrFloat } from '@/lib/utils'
-import { ImportBatchSummary, ImportReject, KPI, BankBalance } from '@/lib/types'
+import { isGarbageCompany, parsePtBrFloat, normalizeText } from '@/lib/utils'
+import {
+  ImportBatchSummary,
+  ImportReject,
+  KPI,
+  BankBalance,
+  Transaction,
+} from '@/lib/types'
 
 export interface PaginatedResult<T> {
   data: T[]
@@ -101,12 +107,52 @@ const RECEIVABLE_MAPPINGS = {
   new_status: ['Novo Status', 'new_status'],
 }
 
-const REQUIRED_FIELDS = [
-  { key: 'invoice_number', label: 'Nota Fiscal' },
-  { key: 'customer', label: 'Cliente' },
-  { key: 'due_date', label: 'Vencimento' },
-  { key: 'principal_value', label: 'Valor' },
-]
+const PAYABLE_MAPPINGS = {
+  document_number: [
+    'Documento',
+    'NF',
+    'Nota Fiscal',
+    'Doc',
+    'Fatura',
+    'document_number',
+    'Nr. Doc',
+  ],
+  entity_name: [
+    'Fornecedor',
+    'Nome',
+    'Supplier',
+    'entity_name',
+    'Beneficiário',
+    'Favorecido',
+  ],
+  due_date: [
+    'Vencimento',
+    'Data Vencimento',
+    'Vcto',
+    'due_date',
+    'Dt. Vencimento',
+  ],
+  issue_date: ['Emissão', 'Data Emissão', 'issue_date', 'Dt. Emissão'],
+  amount: [
+    'Valor',
+    'Total',
+    'Valor Total',
+    'amount',
+    'Liquido',
+    'Valor Líquido',
+  ],
+  principal_value: [
+    'Principal',
+    'Valor Principal',
+    'principal_value',
+    'Valor Bruto',
+  ],
+  fine: ['Multa', 'fine', 'Vlr Multa'],
+  interest: ['Juros', 'interest', 'Vlr Juros'],
+  description: ['Descrição', 'Histórico', 'description', 'Obs'],
+  category: ['Categoria', 'category', 'Classificação', 'Plano de Contas'],
+  status: ['Status', 'status', 'Situação'],
+}
 
 function getCol(row: any, keys: string[]) {
   for (const key of keys) {
@@ -214,6 +260,10 @@ export async function fetchPaginatedPayables(
         }
       }
 
+      if (filters.supplier) {
+        query = query.ilike('entity_name', `%${filters.supplier}%`)
+      }
+
       if (filters.search) {
         query = query.ilike('document_number', `%${filters.search}%`)
       }
@@ -300,39 +350,6 @@ export async function getCashFlowAggregates(
   )
 }
 
-export function normalizeText(text: any): string {
-  if (text === null || text === undefined) return ''
-  return String(text).trim().replace(/^"|"$/g, '')
-}
-
-export function n(value: any): number {
-  try {
-    return parsePtBrFloat(value, 'Valor')
-  } catch (e) {
-    return 0
-  }
-}
-
-export function d(value: any): string | null {
-  if (!value) return null
-  if (value instanceof Date) return value.toISOString().split('T')[0]
-  const str = String(value).trim()
-  if (!str) return null
-  const formats = [
-    'dd/MM/yyyy',
-    'dd-MM-yyyy',
-    'yyyy-MM-dd',
-    'dd/MM/yy',
-    'MM/dd/yyyy',
-  ]
-  for (const fmt of formats) {
-    const parsed = parse(str, fmt, new Date())
-    if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd')
-  }
-  if (str.match(/^\d{4}-\d{2}-\d{2}/)) return str.substring(0, 10)
-  return null
-}
-
 export async function ensureCompanyAndLink(
   userId: string,
   companyIdOrName: string,
@@ -404,6 +421,82 @@ export async function importReceivablesRobust(
   return result as any
 }
 
+export async function importPayablesRobust(
+  userId: string,
+  companyId: string,
+  data: any[],
+) {
+  const sanitized = data
+    .filter((d) => {
+      const name = getCol(d, PAYABLE_MAPPINGS.entity_name)
+      if (isGarbageCompany(name)) return false
+      const doc = getCol(d, PAYABLE_MAPPINGS.document_number)
+      if (doc && String(doc).toLowerCase() === 'total') return false
+      return true
+    })
+    .map((d) => {
+      const get = (k: string[]) => getCol(d, k)
+
+      let principal_value = 0
+      try {
+        principal_value = parsePtBrFloat(get(PAYABLE_MAPPINGS.principal_value))
+      } catch {}
+
+      let amount = 0
+      try {
+        amount = parsePtBrFloat(get(PAYABLE_MAPPINGS.amount))
+      } catch {}
+
+      // If principal is 0 but amount has value, use amount as principal
+      if (principal_value === 0 && amount !== 0) principal_value = amount
+      // If amount is 0 but principal has value, use principal as amount
+      if (amount === 0 && principal_value !== 0) amount = principal_value
+
+      let fine = 0
+      try {
+        fine = parsePtBrFloat(get(PAYABLE_MAPPINGS.fine))
+      } catch {}
+
+      let interest = 0
+      try {
+        interest = parsePtBrFloat(get(PAYABLE_MAPPINGS.interest))
+      } catch {}
+
+      let status = normalizeText(get(PAYABLE_MAPPINGS.status))
+      if (!status || status.toLowerCase() === 'aberto') status = 'pending'
+      else if (
+        status.toLowerCase() === 'pago' ||
+        status.toLowerCase() === 'liquidado'
+      )
+        status = 'paid'
+
+      return {
+        entity_name: normalizeText(get(PAYABLE_MAPPINGS.entity_name)),
+        document_number: normalizeText(get(PAYABLE_MAPPINGS.document_number)),
+        issue_date: get(PAYABLE_MAPPINGS.issue_date),
+        due_date: get(PAYABLE_MAPPINGS.due_date),
+        principal_value,
+        fine,
+        interest,
+        amount,
+        status,
+        category: normalizeText(get(PAYABLE_MAPPINGS.category)) || 'Geral',
+        description: normalizeText(get(PAYABLE_MAPPINGS.description)),
+      }
+    })
+
+  const { data: result, error } = await supabase.rpc(
+    'strict_replace_payables',
+    {
+      p_company_id: companyId,
+      p_rows: sanitized,
+    },
+  )
+
+  if (error) throw error
+  return result as any
+}
+
 export async function importarReceivables(
   userId: string,
   data: any[],
@@ -449,10 +542,27 @@ export async function importarPayables(
   data: any[],
   fallbackCompanyId?: string,
 ): Promise<ImportResult> {
-  return {
-    success: false,
-    message: 'Importação de contas a pagar em manutenção.',
-    failures: [],
+  if (!fallbackCompanyId || fallbackCompanyId === 'all')
+    return { success: false, message: 'Selecione uma empresa', failures: [] }
+
+  try {
+    const summary = await importPayablesRobust(userId, fallbackCompanyId, data)
+
+    return {
+      success: true,
+      message: `Processado: ${summary.inserted} registros inseridos, ${summary.deleted} removidos.`,
+      stats: {
+        records: summary.inserted,
+        deleted: summary.deleted,
+      },
+      failures: [],
+    }
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || 'Erro ao processar importação de pagáveis',
+      failures: [{ error: err.message }],
+    }
   }
 }
 
@@ -493,10 +603,54 @@ export const salvarBankManual = async (payload: any, userId: string) => {
   }
 }
 
-export const salvarReceivableManual = async (payload: any, userId: string) => {
-  return { data: null, error: null }
+export const salvarPayableManual = async (
+  payload: Partial<Transaction>,
+  userId: string,
+) => {
+  if (!payload.company_id) throw new Error('Empresa é obrigatória')
+
+  const dbPayload = {
+    company_id: payload.company_id,
+    type: 'payable',
+    document_number: payload.document_number,
+    entity_name: payload.entity_name,
+    issue_date: payload.issue_date,
+    due_date: payload.due_date,
+    amount: payload.amount,
+    principal_value: payload.principal_value,
+    fine: payload.fine,
+    interest: payload.interest,
+    category: payload.category || 'Geral',
+    status: payload.status || 'pending',
+    description: payload.description,
+  }
+
+  if (payload.id) {
+    const { data, error } = await supabase
+      .from('transactions')
+      .update(dbPayload)
+      .eq('id', payload.id)
+      .select()
+      .single()
+    if (error) throw error
+    return { data, error: null }
+  } else {
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert(dbPayload)
+      .select()
+      .single()
+    if (error) throw error
+    return { data, error: null }
+  }
 }
-export const salvarPayableManual = async (payload: any, userId: string) => {
+
+export const deletePayableTransaction = async (id: string) => {
+  const { error } = await supabase.from('transactions').delete().eq('id', id)
+  if (error) throw error
+}
+
+export const salvarReceivableManual = async (payload: any, userId: string) => {
   return { data: null, error: null }
 }
 export const salvarImportLogManual = async (payload: any, userId: string) => {
