@@ -26,6 +26,8 @@ import { cn, parseCSV } from '@/lib/utils'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { ImportRejectsDialog } from '@/components/financial/ImportRejectsDialog'
+import { useAuth } from '@/hooks/use-auth'
+import { importarReceivables, importarPayables } from '@/services/financial'
 
 interface ImportDialogProps {
   open: boolean
@@ -42,7 +44,9 @@ export function ImportDialog({
   title,
   onImported,
 }: ImportDialogProps) {
-  const { importData, selectedCompanyId, companies } = useCashFlowStore()
+  const { user } = useAuth()
+  const { selectedCompanyId, companies, recalculateCashFlow } =
+    useCashFlowStore()
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -161,6 +165,10 @@ export function ImportDialog({
       toast.error('Selecione uma empresa antes de prosseguir.')
       return
     }
+    if (!user) {
+      toast.error('Sessão expirada. Por favor, faça login novamente.')
+      return
+    }
 
     setIsProcessing(true)
     setProgress(0)
@@ -190,36 +198,51 @@ export function ImportDialog({
 
       setProgress(50)
 
-      // Step 2: Send to Store/API
-      if (type === 'receivable' || type === 'payable') {
-        // Enforce company ID usage from context
-        const res = await importData(
-          type,
-          parsedData,
-          selectedFile.name,
-          (percent) => {
-            const overallProgress = 50 + Math.round((percent * 50) / 100)
-            setProgress(overallProgress)
-          },
-        )
-        setResult(res)
+      // Step 2: Send to Service
+      let res
 
-        if (res.success) {
-          const count = res.stats?.records || 0
-          const rejected = res.stats?.rejectedRows || 0
-          let msg = `Importação concluída! ${count} registros inseridos.`
-          if (rejected > 0) {
-            msg += ` (${rejected} rejeitados/duplicados)`
-          }
-          toast.success(msg)
+      // Simulate progress since RPC is atomic
+      const progressTimer = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 90) return prev
+          return prev + 10
+        })
+      }, 500)
 
-          onImported?.()
+      try {
+        if (type === 'receivable') {
+          res = await importarReceivables(
+            user.id,
+            parsedData,
+            selectedCompanyId,
+            selectedFile.name,
+          )
+        } else if (type === 'payable') {
+          res = await importarPayables(user.id, parsedData, selectedCompanyId)
         } else {
-          toast.error('Falha na importação. Verifique os erros.')
+          throw new Error('Tipo de importação desconhecido')
         }
+      } finally {
+        clearInterval(progressTimer)
       }
 
+      setResult(res)
       setProgress(100)
+
+      if (res.success) {
+        const count = res.stats?.records || 0
+        const rejected = res.stats?.rejectedRows || 0
+        let msg = `Importação concluída! ${count} registros inseridos.`
+        if (rejected > 0) {
+          msg += ` (${rejected} rejeitados/duplicados)`
+        }
+        toast.success(msg)
+
+        recalculateCashFlow()
+        onImported?.()
+      } else {
+        toast.error(res.message || 'Falha na importação.')
+      }
     } catch (error: any) {
       console.error(error)
       setResult({

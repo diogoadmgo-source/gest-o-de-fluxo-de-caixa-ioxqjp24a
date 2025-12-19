@@ -418,13 +418,23 @@ export async function importarReceivables(
     return {
       success: true,
       message: `Processado: ${summary.imported_rows} inseridos`,
-      stats: { records: summary.imported_rows },
+      stats: {
+        records: summary.imported_rows,
+        importedTotal: summary.imported_amount,
+        fileTotal: summary.total_rows,
+        fileTotalPrincipal: summary.total_amount,
+        rejectedRows: summary.rejected_rows,
+        rejectedAmount: summary.rejected_amount,
+        batchId: summary.batch_id,
+        auditDbRows: summary.audit_db_rows,
+        auditDbValue: summary.audit_db_value,
+      },
       failures: [],
     }
   } catch (err: any) {
     return {
       success: false,
-      message: err.message,
+      message: err.message || 'Erro ao processar importação',
       failures: [{ error: err.message }],
     }
   }
@@ -436,8 +446,8 @@ export async function importarPayables(
   fallbackCompanyId?: string,
 ): Promise<ImportResult> {
   return {
-    success: true,
-    message: 'Not implemented in this fix scope',
+    success: false,
+    message: 'Importação de contas a pagar em manutenção.',
     failures: [],
   }
 }
