@@ -1,7 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { ProductImport, ProductImportFinancialTotals } from '@/lib/types'
 import { parsePtBrFloat } from '@/lib/utils'
-import { format } from 'date-fns'
 
 export async function fetchPaginatedProductImports(
   companyIds: string[],
@@ -202,12 +201,15 @@ export async function importProductImports(
   data: any[],
 ) {
   const rowsToInsert = data.map((row) => {
-    // Map CSV columns
+    // Optimized keys for lookup
+    const rowKeys = Object.keys(row)
+
+    // Map CSV columns with resilient trimming and case-insensitivity
     const getVal = (keys: string[]) => {
       for (const k of keys) {
-        // Case insensitive check
-        const foundKey = Object.keys(row).find(
-          (rk) => rk.toLowerCase() === k.toLowerCase(),
+        const searchKey = k.trim().toLowerCase()
+        const foundKey = rowKeys.find(
+          (rk) => rk.trim().toLowerCase() === searchKey,
         )
         if (foundKey) return row[foundKey]
       }
