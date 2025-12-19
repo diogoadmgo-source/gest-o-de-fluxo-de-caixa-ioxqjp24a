@@ -71,3 +71,59 @@ export function normalizeCompanyId(id: any): string | null {
   if (s === 'undefined' || s === 'null' || s === '' || s === 'all') return null
   return s
 }
+
+export function parseCSV(content: string) {
+  const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0)
+  if (lines.length === 0) return []
+
+  // Detect separator
+  const firstLine = lines[0]
+  const separator = firstLine.includes(';') ? ';' : ','
+
+  const splitLine = (line: string) => {
+    const row: string[] = []
+    let current = ''
+    let inQuotes = false
+
+    for (let j = 0; j < line.length; j++) {
+      const char = line[j]
+      if (char === '"') {
+        inQuotes = !inQuotes
+      } else if (char === separator && !inQuotes) {
+        row.push(current)
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    row.push(current)
+    return row
+  }
+
+  const headers = splitLine(firstLine).map((h) =>
+    h.trim().replace(/^"|"$/g, '').replace(/""/g, '"'),
+  )
+
+  const result = []
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line.trim()) continue
+
+    const row = splitLine(line)
+
+    // Create object
+    const obj: any = {}
+    headers.forEach((header, index) => {
+      let val = row[index]?.trim() || ''
+      if (val.startsWith('"') && val.endsWith('"')) {
+        val = val.slice(1, -1).replace(/""/g, '"')
+      }
+      obj[header] = val
+    })
+
+    result.push(obj)
+  }
+
+  return result
+}
