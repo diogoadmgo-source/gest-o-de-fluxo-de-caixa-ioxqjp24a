@@ -464,7 +464,7 @@ export async function saveReceivablesImportLog(data: {
 
   if (error) {
     console.error('Failed to save receivables import log:', error)
-    throw error
+    // We log but don't throw to avoid interrupting the user flow if the import itself succeeded
   }
 }
 
@@ -482,7 +482,7 @@ export async function importReceivablesRobust(
       )
       const customer = normalizeText(get(RECEIVABLE_MAPPINGS.customer))
 
-      // Check missing mandatory fields
+      // Check missing mandatory fields (also checked in RPC, but good to filter garbage early)
       if (!invoiceNumber || !customer) return false
 
       // Check garbage keywords
@@ -547,6 +547,13 @@ export async function importReceivablesRobust(
         uf: normalizeText(get(RECEIVABLE_MAPPINGS.uf)),
         new_status: normalizeText(get(RECEIVABLE_MAPPINGS.new_status)),
         _error_principal: errorPrincipal,
+        seller: normalizeText(get(RECEIVABLE_MAPPINGS.seller)),
+        regional: normalizeText(get(RECEIVABLE_MAPPINGS.regional)),
+        utilization: normalizeText(get(RECEIVABLE_MAPPINGS.utilization)),
+        negativado: normalizeText(get(RECEIVABLE_MAPPINGS.negativado)),
+        customer_code: normalizeText(get(RECEIVABLE_MAPPINGS.customer_code)),
+        fine: parsePtBrFloat(get(RECEIVABLE_MAPPINGS.fine)),
+        interest: parsePtBrFloat(get(RECEIVABLE_MAPPINGS.interest)),
       }
     })
 
@@ -556,7 +563,7 @@ export async function importReceivablesRobust(
     0,
   )
 
-  // Attempt 1: import_receivables_replace (Primary)
+  // Attempt 1: import_receivables_replace (Primary - Strict Mode with logging)
   let { data: result, error } = await supabase.rpc(
     'import_receivables_replace',
     {
@@ -567,7 +574,7 @@ export async function importReceivablesRobust(
     },
   )
 
-  // Attempt 2: strict_replace_receivables (Fallback)
+  // Attempt 2: strict_replace_receivables (Fallback - Legacy)
   if (error) {
     console.warn(
       'Primary import RPC failed, attempting fallback to strict_replace_receivables.',
@@ -594,12 +601,12 @@ export async function importReceivablesRobust(
 
     result = {
       success: true,
-      message: 'Importado via fallback',
-      batch_id: '', // Fallback doesn't create a batch log usually
+      message: 'Importado via fallback (Substituição Total)',
+      batch_id: '', // Fallback doesn't create a detailed batch log
       total_rows: sanitized.length,
       imported_rows: inserted,
       rejected_rows: skipped,
-      imported_amount: totalAmount, // Approximate based on sanitized input
+      imported_amount: totalAmount, // Approximate
       total_amount: totalAmount,
       rejected_amount: 0,
       total_value: totalAmount,
@@ -856,19 +863,23 @@ export async function importarReceivables(
       fileName,
     )
 
-    try {
-      await saveReceivablesImportLog({
-        company_id: fallbackCompanyId,
-        user_id: userId,
-        file_name: fileName,
-        total_rows: summary.total_rows,
-        imported_rows: summary.imported_rows,
-        rejected_rows: summary.rejected_rows,
-        notes: summary.message,
-      })
-    } catch (e) {
-      console.error('Error saving import log', e)
-      throw e
+    // IMPORTANT: Only create a manual log if the RPC didn't return a batch_id
+    // This avoids duplication since the RPC now handles logging.
+    if (!summary.batch_id) {
+      try {
+        await saveReceivablesImportLog({
+          company_id: fallbackCompanyId,
+          user_id: userId,
+          file_name: fileName,
+          total_rows: summary.total_rows,
+          imported_rows: summary.imported_rows,
+          rejected_rows: summary.rejected_rows,
+          notes: summary.message,
+        })
+      } catch (e) {
+        console.error('Error saving manual import log', e)
+        // Swallow error to not block success flow
+      }
     }
 
     let failures: any[] = []

@@ -17,6 +17,7 @@ import {
   Download,
   Info,
   CheckCircle2,
+  XOctagon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
@@ -472,23 +473,38 @@ export function ImportDialog({
                           </AlertDescription>
                         </Alert>
 
-                        {/* Verification Stats */}
+                        {/* Detailed Stats */}
                         <div className="rounded-md border p-4 bg-card text-card-foreground shadow-sm space-y-4">
                           <h4 className="text-sm font-semibold flex items-center gap-2">
                             <CheckCircle2 className="h-4 w-4 text-primary" />
-                            Resumo da Operação
+                            Resumo Detalhado
                           </h4>
-                          <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
-                            {/* Imported Total */}
-                            <div className="flex flex-col pt-2 col-span-2">
-                              <span className="text-emerald-600 text-xs uppercase tracking-wider font-bold">
-                                Total Inserido
+                          <div className="grid grid-cols-3 gap-4 text-center">
+                            <div className="flex flex-col p-2 bg-muted/30 rounded">
+                              <span className="text-xs text-muted-foreground font-medium uppercase">
+                                Total Linhas
                               </span>
-                              <div className="flex justify-between items-end">
-                                <span className="font-bold text-xl text-emerald-700">
-                                  {result.stats?.records} registros
-                                </span>
-                              </div>
+                              <span className="text-lg font-bold">
+                                {result.stats?.fileTotal ||
+                                  (result.stats?.records || 0) +
+                                    (result.stats?.rejectedRows || 0)}
+                              </span>
+                            </div>
+                            <div className="flex flex-col p-2 bg-emerald-50 rounded border border-emerald-100">
+                              <span className="text-xs text-emerald-600 font-medium uppercase">
+                                Sucesso
+                              </span>
+                              <span className="text-lg font-bold text-emerald-700">
+                                {result.stats?.records}
+                              </span>
+                            </div>
+                            <div className="flex flex-col p-2 bg-rose-50 rounded border border-rose-100">
+                              <span className="text-xs text-rose-600 font-medium uppercase">
+                                Rejeitados
+                              </span>
+                              <span className="text-lg font-bold text-rose-700">
+                                {result.stats?.rejectedRows || 0}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -497,25 +513,28 @@ export function ImportDialog({
                         {result.failures && result.failures.length > 0 && (
                           <div className="rounded-md border border-destructive/20 bg-destructive/5 p-4 text-sm space-y-2">
                             <h4 className="font-semibold text-destructive flex items-center gap-2">
-                              <AlertCircle className="h-4 w-4" />
-                              Registros Rejeitados ({result.failures.length})
+                              <XOctagon className="h-4 w-4" />
+                              Erros Encontrados ({result.failures.length})
                             </h4>
-                            <div className="max-h-[150px] overflow-y-auto space-y-1 pr-1">
+                            <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                               {result.failures.map((f: any, idx: number) => (
                                 <div
                                   key={idx}
-                                  className="flex gap-2 text-xs text-muted-foreground border-b border-destructive/10 pb-1 last:border-0"
+                                  className="flex flex-col gap-1 text-xs text-muted-foreground border-b border-destructive/10 pb-2 last:border-0"
                                 >
-                                  <span className="font-mono font-medium text-destructive/80">
-                                    Linha {f.row}:
-                                  </span>
-                                  <span>{f.reason}</span>
+                                  <div className="flex justify-between font-mono font-medium text-destructive/80">
+                                    <span>Linha {f.row}</span>
+                                    <span>{f.reason}</span>
+                                  </div>
+                                  <div className="bg-background/50 p-1 rounded font-mono text-[10px] truncate opacity-70">
+                                    {JSON.stringify(f.data)}
+                                  </div>
                                 </div>
                               ))}
                             </div>
-                            <p className="text-[10px] text-muted-foreground pt-1">
-                              Exibindo os primeiros {result.failures.length}{' '}
-                              erros. Corrija o arquivo e importe novamente.
+                            <p className="text-[10px] text-muted-foreground pt-1 text-center italic">
+                              Corrija os erros no arquivo original e tente
+                              importar novamente.
                             </p>
                           </div>
                         )}
