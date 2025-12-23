@@ -68,6 +68,8 @@ interface CashFlowContextType {
   loading: boolean
   dateRange: DateRange | undefined
   setDateRange: (range: DateRange | undefined) => void
+  timeframe: number
+  setTimeframe: (days: number) => void
 }
 
 const CashFlowContext = createContext<CashFlowContextType | undefined>(
@@ -83,11 +85,20 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     return normalizeCompanyId(localStorage.getItem('hospcash_selectedCompany'))
   })
 
-  // Default to Next 30 Days view
+  // Default to Next 7 Days view
+  const [timeframe, setTimeframeState] = useState<number>(7)
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: new Date(),
-    to: addDays(new Date(), 30),
+    to: addDays(new Date(), 7),
   })
+
+  const setTimeframe = (days: number) => {
+    setTimeframeState(days)
+    setDateRange({
+      from: new Date(),
+      to: addDays(new Date(), days),
+    })
+  }
 
   const [companies, setCompanies] = useState<Company[]>([])
   const [cashFlowEntries, setCashFlowEntries] = useState<CashFlowEntry[]>([])
@@ -161,20 +172,18 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       setBankBalances(latestBalances)
 
       // 3. Fetch KPI
-      // Using 30 days as default context for general KPIs if not specified
-      const kpiData = await getDashboardKPIs(activeId, 30)
+      // Using timeframe for dynamic KPI calculation
+      const kpiData = await getDashboardKPIs(activeId, timeframe)
       setKpis(kpiData as KPI)
 
       // 4. Calculate Cash Flow
       const today = startOfDay(new Date())
 
       // Determine fetch range.
-      // We MUST fetch from Today (or start of dateRange if earlier) to calculate cumulative balance correctly.
       let fetchStart = subDays(today, 15) // Context history
       if (dateRange?.from && isBefore(dateRange.from, fetchStart)) {
         fetchStart = subDays(dateRange.from, 1)
       } else if (!dateRange?.from) {
-        // Fallback
         fetchStart = subDays(today, 7)
       }
 
@@ -183,9 +192,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         fetchEnd = dateRange.to
       }
 
-      // Ensure we cover the gap between fetchStart and dateRange.to
-      // Case: User selects "Next Month" (starts in 10 days). We need Today -> Next Month End to calculate opening.
-      // So fetchStart is effectively Today (or a bit earlier for context).
       if (isAfter(today, fetchStart)) {
         // fetchStart is already before today, good.
       } else {
@@ -226,66 +232,22 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       })
 
       // Running Balance Calculation
-      // Find index of Today to anchor the known balance
       const todayStr = today.toISOString().split('T')[0]
-      // Use fuzzy match or find closest
       let todayIdx = entries.findIndex((e: any) => e.date === todayStr)
 
-      // If today is not in results (maybe no transactions today), we sort entries by date first just in case
       entries.sort(
         (a: any, b: any) =>
           new Date(a.date).getTime() - new Date(b.date).getTime(),
       )
 
-      // Re-find today index after sort
       todayIdx = entries.findIndex((e: any) => e.date === todayStr)
-
-      // If still not found, find the closest date after today or before today
-      if (todayIdx === -1) {
-        // This can happen if getCashFlowAggregates returns gaps (though it usually fills gaps if using generate_series in SQL, but let's be safe)
-        // Assuming aggregates might have gaps, we should ideally fill them.
-        // For now, let's assume continuous series or handle gaps in UI.
-        // Let's find insertion point
-        // Or simplistic approach: Just propagate balance
-      }
 
       let running = currentTotalBalance
 
-      // We need to propagate Forward from Today
-      // And Backward from Today
-
-      // If today exists in entries
       if (todayIdx !== -1) {
-        // Set Today's Opening Balance
-        // Actually currentTotalBalance is usually the *Closing* balance of Today if we just fetched from banks?
-        // Or is it real-time? Let's assume it's the current state.
-        // For projection, let's assume it's the starting point for *Future* moves.
-        // So: Today Opening + Today Flow = Today Closing.
-        // If "currentTotalBalance" is Live Balance, it includes processed transactions.
-        // Let's treat currentTotalBalance as the "Anchor" for the balance curve at "Now".
-
-        // Forward
-        running = currentTotalBalance
-        // For entries AFTER today
-        for (let i = todayIdx + 1; i < entries.length; i++) {
-          entries[i].opening_balance = running
-          entries[i].accumulated_balance = running + entries[i].daily_balance
-          running = entries[i].accumulated_balance
-        }
-
-        // Current Day Adjustment
-        // If we consider currentTotalBalance as "Current State", then:
-        // entry[today].accumulated_balance = currentTotalBalance + (remaining flow today?)
-        // This is tricky. Let's simplify:
-        // accumulated_balance for Today = currentTotalBalance + projected remaining flow.
-        // But we don't know remaining vs executed flow in aggregates easily.
-        // Simplification: entries[today].accumulated_balance = currentTotalBalance + entries[today].daily_balance (Assuming bank balance is Morning balance? No, usually Live).
-        // If Live, then we shouldn't add Today's full projected flow again.
-        // Let's assume currentTotalBalance is the "Base" for Tomorrow.
-        // So Today's Accumulated = currentTotalBalance.
         entries[todayIdx].accumulated_balance = currentTotalBalance
         entries[todayIdx].opening_balance =
-          currentTotalBalance - entries[todayIdx].daily_balance // derived
+          currentTotalBalance - entries[todayIdx].daily_balance
 
         // Backward
         running = entries[todayIdx].opening_balance
@@ -295,7 +257,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           running = entries[i].opening_balance
         }
 
-        // Re-run forward from Today+1 to rely on Today's Closing
+        // Forward
         running = entries[todayIdx].accumulated_balance
         for (let i = todayIdx + 1; i < entries.length; i++) {
           entries[i].opening_balance = running
@@ -303,14 +265,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           running = entries[i].accumulated_balance
         }
       } else {
-        // If Today is missing (gaps), just run linearly from the first record assuming some start?
-        // Or finding the closest date.
-        // Let's just run from index 0 with currentTotalBalance as fallback if index 0 is close to today.
-        // If index 0 is far in past, this is inaccurate.
-        // Ideally we fetch a continuous series.
-        // Let's assume we sort and just propagate.
-
-        // Find closest date to today to anchor
         let closestDist = Infinity
         let anchorIdx = 0
         entries.forEach((e: any, idx: number) => {
@@ -321,27 +275,25 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           }
         })
 
-        // Anchor at closest
-        entries[anchorIdx].accumulated_balance = currentTotalBalance
+        if (entries.length > 0) {
+          entries[anchorIdx].accumulated_balance = currentTotalBalance
+          running =
+            entries[anchorIdx].accumulated_balance -
+            entries[anchorIdx].daily_balance
+          entries[anchorIdx].opening_balance = running
 
-        // Propagate Back
-        running =
-          entries[anchorIdx].accumulated_balance -
-          entries[anchorIdx].daily_balance // opening of anchor
-        entries[anchorIdx].opening_balance = running
+          for (let i = anchorIdx - 1; i >= 0; i--) {
+            entries[i].accumulated_balance = running
+            entries[i].opening_balance = running - entries[i].daily_balance
+            running = entries[i].opening_balance
+          }
 
-        for (let i = anchorIdx - 1; i >= 0; i--) {
-          entries[i].accumulated_balance = running
-          entries[i].opening_balance = running - entries[i].daily_balance
-          running = entries[i].opening_balance
-        }
-
-        // Propagate Forward
-        running = entries[anchorIdx].accumulated_balance
-        for (let i = anchorIdx + 1; i < entries.length; i++) {
-          entries[i].opening_balance = running
-          entries[i].accumulated_balance = running + entries[i].daily_balance
-          running = entries[i].accumulated_balance
+          running = entries[anchorIdx].accumulated_balance
+          for (let i = anchorIdx + 1; i < entries.length; i++) {
+            entries[i].opening_balance = running
+            entries[i].accumulated_balance = running + entries[i].daily_balance
+            running = entries[i].accumulated_balance
+          }
         }
       }
 
@@ -352,19 +304,15 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false)
     }
-  }, [user, selectedCompanyId, dateRange]) // Re-fetch if range changes significantly? Or just depend on manual refresh?
-  // Ideally we only refetch if dateRange extends beyond current loaded data.
-  // For simplicity, refetch on dateRange change is safer.
+  }, [user, selectedCompanyId, dateRange, timeframe])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
 
-  // Filter entries based on selected dateRange
   const filteredEntries = cashFlowEntries.filter((e) => {
     if (!dateRange || !dateRange.from) return true
     const d = startOfDay(new Date(e.date))
-    // We use startOfDay to ensure consistent comparison
     const from = startOfDay(dateRange.from)
     const to = dateRange.to ? endOfDay(dateRange.to) : endOfDay(from)
     return d >= from && d <= to
@@ -477,6 +425,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         loading,
         dateRange,
         setDateRange,
+        timeframe,
+        setTimeframe,
       }}
     >
       {children}

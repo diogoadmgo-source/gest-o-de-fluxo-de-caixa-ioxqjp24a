@@ -1,22 +1,25 @@
-import { useMemo } from 'react'
-import { Card } from '@/components/ui/card'
+import { useMemo, useState } from 'react'
 import useCashFlowStore from '@/stores/useCashFlowStore'
 import { MetricCard } from '@/components/dashboard/MetricCard'
 import { KPIPanel } from '@/components/dashboard/KPIPanel'
 import { CashFlowEvolutionChart } from '@/components/cash-flow/CashFlowEvolutionChart'
+import { CashFlowGrid } from '@/components/cash-flow/CashFlowGrid'
 import { Loader2 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { cn } from '@/lib/utils'
 
 export default function Dashboard() {
   const {
     selectedCompanyId,
-    cashFlowEntries,
+    filteredEntries,
     kpis,
     loading,
     timeframe,
     setTimeframe,
     companies,
   } = useCashFlowStore()
+
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
 
   // Always define hooks at top level
   const kpiData = useMemo(() => {
@@ -85,40 +88,55 @@ export default function Dashboard() {
         </Tabs>
       </div>
 
-      <KPIPanel kpi={kpiData as any} />
+      <div
+        className={cn(
+          'space-y-6 transition-opacity duration-200',
+          loading ? 'opacity-70 pointer-events-none' : 'opacity-100',
+        )}
+      >
+        <KPIPanel kpi={kpiData as any} />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <MetricCard
-          title="Saldo Atual"
-          value={kpiData.current_balance}
-          description="Disponibilidade Total"
-          trend="neutral"
-        />
-        <MetricCard
-          title="A Vencer"
-          value={kpiData.receivables_amount_open}
-          description="Recebíveis Futuros"
-          trend="up"
-          trendLabel={`Próximos ${timeframe} dias`}
-        />
-        <MetricCard
-          title="A Pagar"
-          value={kpiData.payables_amount_pending}
-          description="Compromissos Pendentes"
-          trend="down"
-          trendLabel={`Próximos ${timeframe} dias`}
-        />
-        <MetricCard
-          title="Vencido (Receb.)"
-          value={kpiData.receivables_amount_overdue}
-          description="Em Atraso"
-          trend="down"
-          trendLabel="Atenção"
-        />
-      </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <MetricCard
+            title="Saldo Atual"
+            value={kpiData.current_balance}
+            description="Disponibilidade Total"
+            trend="neutral"
+          />
+          <MetricCard
+            title="A Vencer"
+            value={kpiData.receivables_amount_open}
+            description="Recebíveis Futuros"
+            trend="up"
+            trendLabel={`Próximos ${timeframe} dias`}
+          />
+          <MetricCard
+            title="A Pagar"
+            value={kpiData.payables_amount_pending}
+            description="Compromissos Pendentes"
+            trend="down"
+            trendLabel={`Próximos ${timeframe} dias`}
+          />
+          <MetricCard
+            title="Vencido (Receb.)"
+            value={kpiData.receivables_amount_overdue}
+            description="Em Atraso"
+            trend="down"
+            trendLabel="Atenção"
+          />
+        </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        <CashFlowEvolutionChart data={cashFlowEntries} />
+        <div className="grid grid-cols-1 gap-6">
+          <CashFlowEvolutionChart data={filteredEntries} />
+        </div>
+
+        <div className="grid grid-cols-1 gap-6">
+          <CashFlowGrid
+            data={filteredEntries}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+          />
+        </div>
       </div>
     </div>
   )
