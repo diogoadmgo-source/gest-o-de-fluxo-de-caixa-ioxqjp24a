@@ -267,9 +267,15 @@ export async function fetchPaginatedReceivables(
 
       const { data, count, error } = await query
 
-      // AC: Output count, sample data and error for debugging
-      console.log('fetchPaginatedReceivables result:', {
+      // AC: Output count, sample data and error for debugging with improved details
+      console.log('fetchPaginatedReceivables debug:', {
+        companyId,
+        page,
+        pageSize,
+        range: { from, to },
+        filters,
         count: count || 0,
+        dataLength: data?.length || 0,
         sample: data?.slice(0, 3) || [],
         error,
       })

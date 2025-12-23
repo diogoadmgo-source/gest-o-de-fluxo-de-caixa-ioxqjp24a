@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Card,
   CardContent,
@@ -74,6 +74,19 @@ export default function Receivables() {
 
   const debouncedSearch = useDebounce(searchTerm, 400)
 
+  // Auto-reset page on filter change
+  useEffect(() => {
+    setPage(1)
+  }, [
+    debouncedSearch,
+    statusFilter,
+    JSON.stringify(dueDateRange),
+    JSON.stringify(issueDateRange),
+    JSON.stringify(createdAtRange),
+    minValue,
+    maxValue,
+  ])
+
   // Data Fetching
   const {
     data: paginatedData,
@@ -98,6 +111,9 @@ export default function Receivables() {
       staleTime: 60000,
     },
   )
+
+  // Debug log for developer inspection
+  console.log('Receivables paginatedData:', paginatedData)
 
   if (!isLoading) perf.end({ count: paginatedData?.count })
 
@@ -314,7 +330,9 @@ export default function Receivables() {
                         colSpan={9}
                         className="text-center h-24 text-muted-foreground"
                       >
-                        Nenhum título encontrado com os filtros atuais.
+                        {totalCount > 0
+                          ? 'Nenhum dado encontrado para esta página (verifique os filtros ou a paginação).'
+                          : 'Nenhum título encontrado com os filtros atuais.'}
                       </TableCell>
                     </TableRow>
                   ) : (
