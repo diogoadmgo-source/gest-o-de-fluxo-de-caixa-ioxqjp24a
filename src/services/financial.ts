@@ -1191,3 +1191,11 @@ export async function deleteBankBalance(id: string) {
     .eq('id', id)
   if (error) throw error
 }
+
+export async function exportRejectsCsv(batchId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('export_receivables_rejects_csv', {
+    p_batch_id: batchId,
+  })
+  if (error) throw error
+  return data as string
+}

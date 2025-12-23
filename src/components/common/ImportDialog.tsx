@@ -27,10 +27,11 @@ import {
   importarPayables,
   importarPaymentsAdvances,
   fetchImportRejects,
+  exportRejectsCsv,
   ImportResult,
 } from '@/services/financial'
 import { importProductImports } from '@/services/product-imports'
-import { ImportResultView, translateReason } from './ImportResultView'
+import { ImportResultView } from './ImportResultView'
 
 interface ImportDialogProps {
   open: boolean
@@ -149,97 +150,39 @@ export function ImportDialog({
       return
     }
     setIsExportingRejects(true)
-    const toastId = toast.loading('Preparando exportação...')
+    const toastId = toast.loading('Exportando...')
     try {
       const batchId = result.stats.batchId
-      let allRejects: any[] = []
-      let page = 1
-      const pageSize = 1000
-      let hasMore = true
 
-      while (hasMore) {
-        const res = await fetchImportRejects(batchId, page, pageSize)
-        if (res.data && res.data.length > 0) {
-          allRejects = [...allRejects, ...res.data]
-          if (res.data.length < pageSize) hasMore = false
-          else page++
-        } else {
-          hasMore = false
-        }
-      }
+      const csvContent = await exportRejectsCsv(batchId)
 
-      if (allRejects.length === 0) {
+      if (!csvContent) {
         toast.dismiss(toastId)
-        toast.info('Nenhum registro rejeitado encontrado no banco de dados.')
+        toast.info('Nenhum dado encontrado para exportação.')
         return
       }
 
-      const header = [
-        'linha',
-        'motivo',
-        'invoice_number',
-        'order_number',
-        'customer',
-        'due_date',
-        'principal_value',
-        'status',
-        'installment',
-        'raw_json',
-      ].join(';')
-      const escapeCsv = (val: any) => {
-        if (val === null || val === undefined) return ''
-        const str = String(val)
-        if (
-          str.includes(';') ||
-          str.includes('"') ||
-          str.includes('\n') ||
-          str.includes('\r')
-        ) {
-          return `"${str.replace(/"/g, '""')}"`
-        }
-        return str
-      }
-
-      const rows = allRejects
-        .map((r) => {
-          const raw = r.raw_data || {}
-          return [
-            r.row_number,
-            translateReason(r.reason) || r.reason,
-            escapeCsv(raw.invoice_number),
-            escapeCsv(raw.order_number),
-            escapeCsv(raw.customer),
-            escapeCsv(raw.due_date),
-            escapeCsv(raw.principal_value),
-            escapeCsv(raw.title_status),
-            escapeCsv(raw.installment),
-            escapeCsv(JSON.stringify(raw)),
-          ].join(';')
-        })
-        .join('\n')
-
-      const csvContent = header + '\n' + rows
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
+
       const companyNameClean = selectedCompanyName
         ? selectedCompanyName.replace(/[^a-z0-9]/gi, '_').toLowerCase()
         : 'empresa'
-      link.setAttribute(
-        'download',
-        `rejeitados_recebiveis_${companyNameClean}_${batchId}.csv`,
-      )
+      const fileName = `rejeitados_recebiveis_${companyNameClean}_${batchId}.csv`
+
+      link.setAttribute('download', fileName)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
 
       toast.dismiss(toastId)
-      toast.success(`${allRejects.length} registros exportados com sucesso.`)
-    } catch (error) {
+      toast.success('Arquivo exportado com sucesso.')
+    } catch (error: any) {
       console.error(error)
       toast.dismiss(toastId)
-      toast.error('Erro ao exportar rejeitos.')
+      toast.error(error.message || 'Falha ao exportar rejeitados.')
     } finally {
       setIsExportingRejects(false)
     }
