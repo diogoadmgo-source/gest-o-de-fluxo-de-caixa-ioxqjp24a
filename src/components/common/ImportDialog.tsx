@@ -18,6 +18,7 @@ import {
   Info,
   CheckCircle2,
   XOctagon,
+  Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
@@ -29,6 +30,7 @@ import {
   importarReceivables,
   importarPayables,
   importarPaymentsAdvances,
+  fetchImportRejects,
 } from '@/services/financial'
 import { importProductImports } from '@/services/product-imports'
 
@@ -58,6 +60,7 @@ export function ImportDialog({
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isExportingRejects, setIsExportingRejects] = useState(false)
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState<{
     success: boolean
@@ -204,6 +207,113 @@ export function ImportDialog({
     document.body.removeChild(link)
   }
 
+  const handleExportRejects = async () => {
+    if (!result?.stats?.batchId) {
+      toast.error('Não há lote de rejeitos disponível para exportação.')
+      return
+    }
+
+    setIsExportingRejects(true)
+    const toastId = toast.loading('Preparando exportação...')
+
+    try {
+      const batchId = result.stats.batchId
+      let allRejects: any[] = []
+      let page = 1
+      const pageSize = 1000
+      let hasMore = true
+
+      while (hasMore) {
+        const res = await fetchImportRejects(batchId, page, pageSize)
+        if (res.data && res.data.length > 0) {
+          allRejects = [...allRejects, ...res.data]
+          if (res.data.length < pageSize) hasMore = false
+          else page++
+        } else {
+          hasMore = false
+        }
+      }
+
+      if (allRejects.length === 0) {
+        toast.dismiss(toastId)
+        toast.info('Nenhum registro rejeitado encontrado no banco de dados.')
+        return
+      }
+
+      // Generate CSV
+      const header = [
+        'linha',
+        'motivo',
+        'invoice_number',
+        'order_number',
+        'customer',
+        'due_date',
+        'principal_value',
+        'status',
+        'installment',
+        'raw_json',
+      ].join(';')
+
+      const escapeCsv = (val: any) => {
+        if (val === null || val === undefined) return ''
+        const str = String(val)
+        if (
+          str.includes(';') ||
+          str.includes('"') ||
+          str.includes('\n') ||
+          str.includes('\r')
+        ) {
+          return `"${str.replace(/"/g, '""')}"`
+        }
+        return str
+      }
+
+      const rows = allRejects
+        .map((r) => {
+          const raw = r.raw_data || {}
+          return [
+            r.row_number,
+            translateReason(r.reason) || r.reason,
+            escapeCsv(raw.invoice_number),
+            escapeCsv(raw.order_number),
+            escapeCsv(raw.customer),
+            escapeCsv(raw.due_date),
+            escapeCsv(raw.principal_value),
+            escapeCsv(raw.title_status),
+            escapeCsv(raw.installment),
+            escapeCsv(JSON.stringify(raw)),
+          ].join(';')
+        })
+        .join('\n')
+
+      const csvContent = header + '\n' + rows
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const companyNameClean = selectedCompanyName
+        ? selectedCompanyName.replace(/[^a-z0-9]/gi, '_').toLowerCase()
+        : 'empresa'
+      link.setAttribute(
+        'download',
+        `rejeitados_recebiveis_${companyNameClean}_${batchId}.csv`,
+      )
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      toast.dismiss(toastId)
+      toast.success(`${allRejects.length} registros exportados com sucesso.`)
+    } catch (error) {
+      console.error(error)
+      toast.dismiss(toastId)
+      toast.error('Erro ao exportar rejeitos.')
+    } finally {
+      setIsExportingRejects(false)
+    }
+  }
+
   const handleImport = async () => {
     if (!selectedFile) return
     if (!selectedCompanyId || selectedCompanyId === 'all') {
@@ -314,6 +424,9 @@ export function ImportDialog({
   }
 
   const showWarning = type === 'receivable' || type === 'payable'
+  const hasRejects =
+    result?.stats?.rejectedRows && result.stats.rejectedRows > 0
+  const canExportRejects = hasRejects && result?.stats?.batchId
 
   return (
     <>
@@ -510,32 +623,65 @@ export function ImportDialog({
                         </div>
 
                         {/* Failures List */}
-                        {result.failures && result.failures.length > 0 && (
+                        {((result.failures && result.failures.length > 0) ||
+                          canExportRejects) && (
                           <div className="rounded-md border border-destructive/20 bg-destructive/5 p-4 text-sm space-y-2">
-                            <h4 className="font-semibold text-destructive flex items-center gap-2">
-                              <XOctagon className="h-4 w-4" />
-                              Erros Encontrados ({result.failures.length})
-                            </h4>
-                            <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                              {result.failures.map((f: any, idx: number) => (
-                                <div
-                                  key={idx}
-                                  className="flex flex-col gap-1 text-xs text-muted-foreground border-b border-destructive/10 pb-2 last:border-0"
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-semibold text-destructive flex items-center gap-2">
+                                <XOctagon className="h-4 w-4" />
+                                Erros Encontrados (
+                                {result.failures?.length ||
+                                  result.stats?.rejectedRows}
+                                )
+                              </h4>
+                              {canExportRejects && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={handleExportRejects}
+                                  disabled={isExportingRejects}
+                                  className="h-7 text-xs bg-white hover:bg-white/90 border-destructive/20 text-destructive hover:text-destructive"
                                 >
-                                  <div className="flex justify-between font-mono font-medium text-destructive/80">
-                                    <span>Linha {f.row}</span>
-                                    <span>{f.reason}</span>
-                                  </div>
-                                  <div className="bg-background/50 p-1 rounded font-mono text-[10px] truncate opacity-70">
-                                    {JSON.stringify(f.data)}
-                                  </div>
-                                </div>
-                              ))}
+                                  {isExportingRejects ? (
+                                    <>
+                                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                      Exportando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Download className="mr-1 h-3 w-3" />
+                                      Exportar rejeitados
+                                    </>
+                                  )}
+                                </Button>
+                              )}
                             </div>
-                            <p className="text-[10px] text-muted-foreground pt-1 text-center italic">
-                              Corrija os erros no arquivo original e tente
-                              importar novamente.
-                            </p>
+                            {result.failures && result.failures.length > 0 && (
+                              <>
+                                <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                  {result.failures.map(
+                                    (f: any, idx: number) => (
+                                      <div
+                                        key={idx}
+                                        className="flex flex-col gap-1 text-xs text-muted-foreground border-b border-destructive/10 pb-2 last:border-0"
+                                      >
+                                        <div className="flex justify-between font-mono font-medium text-destructive/80">
+                                          <span>Linha {f.row}</span>
+                                          <span>{f.reason}</span>
+                                        </div>
+                                        <div className="bg-background/50 p-1 rounded font-mono text-[10px] truncate opacity-70">
+                                          {JSON.stringify(f.data)}
+                                        </div>
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-muted-foreground pt-1 text-center italic">
+                                  Corrija os erros no arquivo original e tente
+                                  importar novamente.
+                                </p>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
@@ -570,4 +716,31 @@ export function ImportDialog({
       </Dialog>
     </>
   )
+}
+
+function translateReason(reason: string) {
+  switch (reason) {
+    case 'invoice_number_vazio':
+      return 'Nota Fiscal vazia'
+    case 'customer_vazio':
+      return 'Cliente vazio'
+    case 'valor_invalido':
+      return 'Valor inválido'
+    case 'data_vencimento_invalida':
+      return 'Data Vencimento inválida'
+    case 'parcela_formato_invalido':
+      return 'Parcela inválida'
+    case 'duplicado_lote':
+      return 'Duplicado (Mesmo Lote)'
+    case 'valor_negativo':
+      return 'Valor Negativo'
+    case 'valor_atualizado_negativo':
+      return 'Valor Atualizado Negativo'
+    case 'vencimento_menor_emissao':
+      return 'Vencimento menor que Emissão'
+    case 'linha_invalida':
+      return 'Linha Inválida (Lixo/Total)'
+    default:
+      return reason
+  }
 }
