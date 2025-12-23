@@ -181,7 +181,7 @@ export async function fetchPaginatedReceivables(
       let query = supabase
         .from('receivables')
         .select(
-          'id, invoice_number, order_number, customer, customer_name, principal_value, updated_value, due_date, issue_date, title_status, new_status, days_overdue, uf, installment, fine, interest',
+          'id, invoice_number, order_number, customer, customer_name, principal_value, updated_value, due_date, issue_date, title_status, new_status, days_overdue, uf, installment, fine, interest, description, created_at',
           { count: 'exact' },
         )
         .eq('company_id', companyId)
@@ -202,7 +202,7 @@ export async function fetchPaginatedReceivables(
       if (filters && filters.search) {
         const term = `%${filters.search}%`
         query = query.or(
-          `customer.ilike.${term},invoice_number.ilike.${term},order_number.ilike.${term},customer_name.ilike.${term}`,
+          `customer.ilike.${term},invoice_number.ilike.${term},order_number.ilike.${term},customer_name.ilike.${term},description.ilike.${term}`,
         )
       }
 

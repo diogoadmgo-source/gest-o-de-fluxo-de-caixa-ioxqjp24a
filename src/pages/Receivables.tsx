@@ -300,14 +300,10 @@ export default function Receivables() {
                     <TableHead className="w-[10%] text-center">
                       Status
                     </TableHead>
-                    <TableHead className="w-[10%]">Info</TableHead>
-                    <TableHead className="w-[10%] text-center">
-                      Atraso
-                    </TableHead>
+                    <TableHead className="w-[10%]">Descrição</TableHead>
+                    <TableHead className="w-[10%]">Criação</TableHead>
+                    <TableHead className="w-[8%] text-center">Atraso</TableHead>
                     <TableHead className="w-[10%] text-right">Valor</TableHead>
-                    <TableHead className="w-[10%] text-right">
-                      Atualizado
-                    </TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -379,19 +375,37 @@ export default function Receivables() {
                           {getStatusBadge(item.title_status, item.due_date)}
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col text-[10px] text-muted-foreground">
+                          <div className="flex flex-col text-[10px] text-muted-foreground max-w-[150px]">
+                            <span
+                              className="truncate font-medium text-foreground"
+                              title={item.description}
+                            >
+                              {item.description || '-'}
+                            </span>
                             {item.new_status && (
                               <span
                                 title="Status Secundário"
-                                className="truncate max-w-[100px]"
+                                className="truncate"
                               >
                                 {item.new_status}
                               </span>
                             )}
-                            {item.installment && (
-                              <span>Parc: {item.installment}</span>
-                            )}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className="text-xs text-muted-foreground"
+                            title={
+                              item.created_at
+                                ? format(
+                                    parseISO(item.created_at),
+                                    'dd/MM/yyyy HH:mm',
+                                  )
+                                : '-'
+                            }
+                          >
+                            {formatDate(item.created_at)}
+                          </span>
                         </TableCell>
                         <TableCell className="text-center">
                           {(() => {
@@ -410,25 +424,26 @@ export default function Receivables() {
                           })()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <span className="text-xs text-muted-foreground">
-                            {toNumber(item.principal_value).toLocaleString(
-                              'pt-BR',
-                              {
+                          <div className="flex flex-col">
+                            <span className="text-xs text-muted-foreground">
+                              {toNumber(item.principal_value).toLocaleString(
+                                'pt-BR',
+                                {
+                                  style: 'currency',
+                                  currency: 'BRL',
+                                },
+                              )}
+                            </span>
+                            <span className="font-medium text-[10px]">
+                              At:{' '}
+                              {toNumber(
+                                item.updated_value || item.principal_value,
+                              ).toLocaleString('pt-BR', {
                                 style: 'currency',
                                 currency: 'BRL',
-                              },
-                            )}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className="font-medium text-xs">
-                            {toNumber(
-                              item.updated_value || item.principal_value,
-                            ).toLocaleString('pt-BR', {
-                              style: 'currency',
-                              currency: 'BRL',
-                            })}
-                          </span>
+                              })}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
