@@ -207,29 +207,44 @@ export async function fetchPaginatedReceivables(
       }
 
       // Due Date Range
-      if (filters && filters.dateRange?.from) {
+      if (
+        filters &&
+        filters.dateRange?.from &&
+        isValid(filters.dateRange.from)
+      ) {
         const fromStr = format(filters.dateRange.from, 'yyyy-MM-dd')
-        const toStr = filters.dateRange.to
-          ? format(filters.dateRange.to, 'yyyy-MM-dd')
-          : fromStr
+        const toStr =
+          filters.dateRange.to && isValid(filters.dateRange.to)
+            ? format(filters.dateRange.to, 'yyyy-MM-dd')
+            : fromStr
         query = query.gte('due_date', fromStr).lte('due_date', toStr)
       }
 
       // Issue Date Range (Emission)
-      if (filters && filters.issueDateRange?.from) {
+      if (
+        filters &&
+        filters.issueDateRange?.from &&
+        isValid(filters.issueDateRange.from)
+      ) {
         const fromStr = format(filters.issueDateRange.from, 'yyyy-MM-dd')
-        const toStr = filters.issueDateRange.to
-          ? format(filters.issueDateRange.to, 'yyyy-MM-dd')
-          : fromStr
+        const toStr =
+          filters.issueDateRange.to && isValid(filters.issueDateRange.to)
+            ? format(filters.issueDateRange.to, 'yyyy-MM-dd')
+            : fromStr
         query = query.gte('issue_date', fromStr).lte('issue_date', toStr)
       }
 
       // Created At Range (Import Date / Audit)
-      if (filters && filters.createdAtRange?.from) {
+      if (
+        filters &&
+        filters.createdAtRange?.from &&
+        isValid(filters.createdAtRange.from)
+      ) {
         const fromStr = format(filters.createdAtRange.from, 'yyyy-MM-dd')
-        const toStr = filters.createdAtRange.to
-          ? format(filters.createdAtRange.to, 'yyyy-MM-dd')
-          : fromStr
+        const toStr =
+          filters.createdAtRange.to && isValid(filters.createdAtRange.to)
+            ? format(filters.createdAtRange.to, 'yyyy-MM-dd')
+            : fromStr
         // Append time to ensure we cover the full day for timestamps
         query = query
           .gte('created_at', `${fromStr}T00:00:00`)
@@ -252,15 +267,11 @@ export async function fetchPaginatedReceivables(
 
       const { data, count, error } = await query
 
-      // Enhanced Logging for debug
-      console.log('fetchPaginatedReceivables debug:', {
-        count,
-        first3: data?.slice(0, 3),
+      // AC: Output count, sample data and error for debugging
+      console.log('fetchPaginatedReceivables result:', {
+        count: count || 0,
+        sample: data?.slice(0, 3) || [],
         error,
-        filters,
-        companyId,
-        page,
-        pageSize,
       })
 
       // Robust return

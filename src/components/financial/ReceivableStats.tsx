@@ -1,7 +1,7 @@
 import { useQuery } from '@/hooks/use-query'
 import { getReceivablesDashboardStats } from '@/services/financial'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { DollarSign, AlertCircle, CheckCircle, Clock } from 'lucide-react'
+import { DollarSign, AlertCircle, Clock } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 
 interface ReceivableStatsProps {
@@ -41,7 +41,7 @@ export function ReceivableStats({
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-        {[1, 2, 3, 4].map((i) => (
+        {[1, 2, 3].map((i) => (
           <Card key={i}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
@@ -65,13 +65,12 @@ export function ReceivableStats({
   // Stats mapping:
   // total_open: A Vencer + Vencido (all Open)
   // total_overdue: Vencido
-  // received_month: Liquidado
   // (Derived) A Vencer: total_open - total_overdue
 
   const pendingAmount = (stats?.total_open || 0) - (stats?.total_overdue || 0)
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6 animate-fade-in">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6 animate-fade-in">
       {/* Total (Current Balance) */}
       <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-all">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -122,24 +121,6 @@ export function ReceivableStats({
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             Títulos com vencimento passado
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Received - Liquidado */}
-      <Card className="border-l-4 border-l-emerald-500 shadow-sm hover:shadow-md transition-all opacity-80">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Recebido (Total)
-          </CardTitle>
-          <CheckCircle className="h-4 w-4 text-emerald-500" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-emerald-600">
-            {formatCurrency(stats?.received_month || 0)}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Total de títulos liquidados
           </p>
         </CardContent>
       </Card>

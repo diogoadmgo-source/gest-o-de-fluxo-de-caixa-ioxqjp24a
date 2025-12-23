@@ -100,6 +100,17 @@ export default function Receivables() {
 
   if (!isLoading) perf.end({ count: paginatedData?.count })
 
+  // AC: Safe Data Handling - items and totalCount must be defined immediately after useQuery
+  // Ensuring no null pointer exceptions and defaulting to empty array
+  const items =
+    paginatedData?.data && Array.isArray(paginatedData.data)
+      ? paginatedData.data
+      : []
+
+  // Safe totalCount variable extraction
+  const totalCount =
+    typeof paginatedData?.count === 'number' ? paginatedData.count : 0
+
   const handleSave = async (data: any) => {
     if (data.id) await updateReceivable(data)
     else await addReceivable(data)
@@ -153,17 +164,6 @@ export default function Receivables() {
       </Badge>
     )
   }
-
-  // AC: Safe items extraction ensuring array structure
-  // Ensuring no null pointer exceptions and defaulting to empty array
-  const items =
-    paginatedData?.data && Array.isArray(paginatedData.data)
-      ? paginatedData.data
-      : []
-
-  // Safe totalCount variable extraction
-  const totalCount =
-    typeof paginatedData?.count === 'number' ? paginatedData.count : 0
 
   return (
     <div className="space-y-6 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
@@ -244,6 +244,7 @@ export default function Receivables() {
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <CardTitle className="text-base">Listagem de Títulos</CardTitle>
+              {/* AC: Use validated totalCount */}
               <CardDescription className="text-xs">
                 {totalCount} registros encontrados
               </CardDescription>
