@@ -160,6 +160,10 @@ export default function Receivables() {
       ? paginatedData.data
       : []
 
+  // Safe totalCount variable extraction
+  const totalCount =
+    typeof paginatedData?.count === 'number' ? paginatedData.count : 0
+
   return (
     <div className="space-y-6 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
       <div className="flex justify-between items-center shrink-0">
@@ -240,7 +244,7 @@ export default function Receivables() {
             <div className="space-y-1">
               <CardTitle className="text-base">Listagem de Títulos</CardTitle>
               <CardDescription className="text-xs">
-                {paginatedData?.count || 0} registros encontrados
+                {totalCount} registros encontrados
               </CardDescription>
             </div>
           </div>
@@ -432,7 +436,7 @@ export default function Receivables() {
           {/* AC 4: Pagination Functionality */}
           <PaginationControl
             currentPage={page}
-            totalCount={paginatedData?.count || 0}
+            totalCount={totalCount}
             pageSize={pageSize}
             onPageChange={setPage}
             onPageSizeChange={setPageSize}
