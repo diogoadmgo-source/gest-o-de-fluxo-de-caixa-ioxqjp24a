@@ -78,6 +78,7 @@ export default function Receivables() {
   const {
     data: paginatedData,
     isLoading,
+    error,
     refetch,
   } = useQuery(
     `receivables-${selectedCompanyId}-${page}-${pageSize}-${debouncedSearch}-${statusFilter}-${JSON.stringify(dueDateRange)}-${JSON.stringify(issueDateRange)}-${JSON.stringify(createdAtRange)}-${dataVersion}`,
@@ -263,14 +264,18 @@ export default function Receivables() {
         </CardHeader>
 
         <CardContent className="p-0 flex-1 overflow-hidden flex flex-col relative bg-background">
-          {paginatedData?.error && (
+          {(error || paginatedData?.error) && (
             <div className="p-4 shrink-0">
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Erro ao carregar dados</AlertTitle>
+                <AlertTitle>
+                  {error ? 'Erro real do hook' : 'Erro ao carregar dados'}
+                </AlertTitle>
                 <AlertDescription>
-                  {paginatedData.error.message ||
-                    JSON.stringify(paginatedData.error)}
+                  {error
+                    ? (error as any)?.message || String(error)
+                    : paginatedData?.error?.message ||
+                      JSON.stringify(paginatedData?.error)}
                 </AlertDescription>
               </Alert>
             </div>
