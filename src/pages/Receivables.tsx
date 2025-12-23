@@ -57,7 +57,6 @@ export default function Receivables() {
   const perf = usePerformanceMeasure('/recebiveis', 'render')
 
   // State
-  // AC 3: Default View 30 items
   const [pageSize, setPageSize] = useState(30)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
@@ -75,8 +74,7 @@ export default function Receivables() {
 
   const debouncedSearch = useDebounce(searchTerm, 400)
 
-  // Data Fetching with full filter support
-  // AC 4: Server-side Pagination & Filtering
+  // Data Fetching
   const {
     data: paginatedData,
     isLoading,
@@ -102,14 +100,11 @@ export default function Receivables() {
 
   if (!isLoading) perf.end({ count: paginatedData?.count })
 
-  // AC: Safe Data Handling - items and totalCount must be defined immediately after useQuery
-  // Ensuring no null pointer exceptions and defaulting to empty array
   const items =
     paginatedData?.data && Array.isArray(paginatedData.data)
       ? paginatedData.data
       : []
 
-  // Safe totalCount variable extraction
   const totalCount =
     typeof paginatedData?.count === 'number' ? paginatedData.count : 0
 
@@ -129,7 +124,6 @@ export default function Receivables() {
     }
   }
 
-  // Safe Date Formatting
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-'
     try {
@@ -141,13 +135,16 @@ export default function Receivables() {
     }
   }
 
-  // AC 4: Robust numeric conversion utility
   const toNumber = (value: any) => {
     if (value === null || value === undefined) return 0
     if (typeof value === 'number') return value
     if (typeof value === 'string') {
-      const normalized = value.replace(',', '.')
-      const parsed = parseFloat(normalized)
+      if (value.includes(',')) {
+        const normalized = value.replace(/\./g, '').replace(',', '.')
+        const parsed = parseFloat(normalized)
+        return isNaN(parsed) ? 0 : parsed
+      }
+      const parsed = parseFloat(value)
       return isNaN(parsed) ? 0 : parsed
     }
     return 0
@@ -258,7 +255,6 @@ export default function Receivables() {
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <CardTitle className="text-base">Listagem de Títulos</CardTitle>
-              {/* AC: Use validated totalCount */}
               <CardDescription className="text-xs">
                 {totalCount} registros encontrados
               </CardDescription>
@@ -266,9 +262,7 @@ export default function Receivables() {
           </div>
         </CardHeader>
 
-        {/* AC 2: Flex column layout with overflow-hidden for CardContent */}
         <CardContent className="p-0 flex-1 overflow-hidden flex flex-col relative bg-background">
-          {/* AC 3: Error Visibility Block */}
           {paginatedData?.error && (
             <div className="p-4 shrink-0">
               <Alert variant="destructive">
@@ -291,10 +285,8 @@ export default function Receivables() {
               <p>Selecione uma empresa para visualizar os dados.</p>
             </div>
           ) : (
-            /* AC 2: Wrapper div with flex-1 and overflow-auto to centralize vertical scroll */
             <div className="flex-1 overflow-auto relative">
               <Table>
-                {/* AC 2: Sticky Header */}
                 <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
                   <TableRow>
                     <TableHead className="w-[15%]">NF / Pedido</TableHead>
@@ -315,7 +307,6 @@ export default function Receivables() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {/* AC: TableBody iterates over items and shows empty state message only if explicitly 0 results */}
                   {items.length === 0 ? (
                     <TableRow>
                       <TableCell

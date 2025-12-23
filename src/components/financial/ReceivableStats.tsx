@@ -28,8 +28,8 @@ export function ReceivableStats({
 
   if (!companyId || companyId === 'all') {
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-        <Card className="col-span-4 bg-muted/20 border-dashed">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
+        <Card className="col-span-3 bg-muted/20 border-dashed">
           <CardContent className="flex items-center justify-center py-6 text-muted-foreground">
             Selecione uma empresa para visualizar os indicadores.
           </CardContent>
@@ -40,7 +40,7 @@ export function ReceivableStats({
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
         {[1, 2, 3].map((i) => (
           <Card key={i}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -60,12 +60,6 @@ export function ReceivableStats({
 
   const formatCurrency = (value: number) =>
     value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-  // Data comes from getReceivablesDashboardStats which uses get_dashboard_kpis RPC
-  // Stats mapping:
-  // total_open: A Vencer + Vencido (all Open)
-  // total_overdue: Vencido
-  // (Derived) A Vencer: total_open - total_overdue
 
   const pendingAmount = (stats?.total_open || 0) - (stats?.total_overdue || 0)
 

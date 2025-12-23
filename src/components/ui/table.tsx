@@ -7,7 +7,6 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  /* AC 1: Updated overflow-auto to overflow-x-auto to prevent duplicate vertical scrollbars */
   <div className="relative w-full overflow-x-auto">
     <table
       ref={ref}
