@@ -297,9 +297,13 @@ export async function fetchPaginatedPayables(
     '/payables',
     'fetch_paginated',
     (async () => {
+      // Explicitly selecting all required fields including description and created_at
       let query = supabase
         .from('transactions')
-        .select('*', { count: 'exact' })
+        .select(
+          'id, document_number, entity_name, issue_date, due_date, amount, principal_value, fine, interest, category, status, description, created_at',
+          { count: 'exact' },
+        )
         .eq('company_id', companyId)
         .eq('type', 'payable')
 
@@ -323,7 +327,7 @@ export async function fetchPaginatedPayables(
       if (filters.search) {
         const term = `%${filters.search}%`
         query = query.or(
-          `document_number.ilike.${term},entity_name.ilike.${term}`,
+          `document_number.ilike.${term},entity_name.ilike.${term},description.ilike.${term}`,
         )
       }
 
@@ -343,10 +347,23 @@ export async function fetchPaginatedPayables(
         query = query.gte('due_date', fromStr).lte('due_date', toStr)
       }
 
-      query = query
-        .order('due_date', { ascending: true })
-        .range((page - 1) * pageSize, page * pageSize - 1)
+      const from = (page - 1) * pageSize
+      const to = from + pageSize - 1
+
+      query = query.order('due_date', { ascending: true }).range(from, to)
+
       const { data, count, error } = await query
+
+      console.log('fetchPaginatedPayables debug:', {
+        companyId,
+        page,
+        pageSize,
+        filters,
+        count: count || 0,
+        dataLength: data?.length || 0,
+        error,
+      })
+
       return { data: data || [], count: count || 0, error }
     })(),
     { companyId, page, filters },

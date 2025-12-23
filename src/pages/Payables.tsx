@@ -8,7 +8,15 @@ import {
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { FilePlus, Upload, Trash2, Edit, Loader2, BellRing } from 'lucide-react'
+import {
+  FilePlus,
+  Upload,
+  Trash2,
+  Edit,
+  Loader2,
+  BellRing,
+  AlertCircle,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -37,6 +45,7 @@ import { fetchPaginatedPayables } from '@/services/financial'
 import { useDebounce } from '@/hooks/use-debounce'
 import { usePerformanceMeasure } from '@/lib/performance'
 import { PaginationControl } from '@/components/common/PaginationControl'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 export default function Payables() {
   const {
@@ -114,6 +123,7 @@ export default function Payables() {
   const {
     data: paginatedData,
     isLoading,
+    error,
     refetch,
   } = useQuery(
     `payables-${selectedCompanyId}-${page}-${pageSize}-${JSON.stringify(filters)}`,
@@ -128,6 +138,9 @@ export default function Payables() {
       staleTime: 60000,
     },
   )
+
+  // Debug log for developer inspection
+  console.log('Payables paginatedData:', paginatedData)
 
   // Fetch Stats when filters change
   useEffect(() => {
@@ -220,14 +233,19 @@ export default function Payables() {
   const columns: VirtualTableColumn<Transaction>[] = [
     {
       header: 'Documento',
-      width: '15%',
+      width: '10%',
       cell: (item) => (
-        <span className="font-medium text-xs">{item.document_number}</span>
+        <span
+          className="font-medium text-xs truncate"
+          title={item.document_number}
+        >
+          {item.document_number}
+        </span>
       ),
     },
     {
       header: 'Fornecedor',
-      width: '25%',
+      width: '20%',
       cell: (item) => (
         <span className="truncate block" title={item.entity_name}>
           {item.entity_name}
@@ -235,20 +253,43 @@ export default function Payables() {
       ),
     },
     {
-      header: 'Vencimento',
+      header: 'Descrição',
       width: '15%',
+      cell: (item) => (
+        <span
+          className="text-xs truncate block text-muted-foreground"
+          title={item.description}
+        >
+          {item.description || '-'}
+        </span>
+      ),
+    },
+    {
+      header: 'Criação',
+      width: '10%',
+      cell: (item) => (
+        <span className="text-xs text-muted-foreground">
+          {item.created_at
+            ? format(parseISO(item.created_at), 'dd/MM/yyyy')
+            : '-'}
+        </span>
+      ),
+    },
+    {
+      header: 'Vencimento',
+      width: '10%',
       cell: (item) => (
         <span>{format(parseISO(item.due_date), 'dd/MM/yyyy')}</span>
       ),
     },
     {
       header: 'Situação',
-      width: '20%',
+      width: '15%',
       cell: (item) => getSituationBadge(item.due_date, item.status),
     },
     {
       header: 'Total',
-      width: '15%',
+      width: '10%',
       className: 'text-right',
       cell: (item) => (
         <span className="font-bold text-sm">
@@ -393,13 +434,29 @@ export default function Payables() {
             </CardDescription>
           </div>
         </CardHeader>
-        <CardContent className="p-0 flex-1 relative">
+        <CardContent className="p-0 flex-1 relative flex flex-col">
+          {(error || (paginatedData as any)?.error) && (
+            <div className="p-4 shrink-0">
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>
+                  {error ? 'Erro ao carregar dados' : 'Erro na consulta'}
+                </AlertTitle>
+                <AlertDescription>
+                  {error
+                    ? (error as any)?.message || String(error)
+                    : (paginatedData as any)?.error?.message ||
+                      JSON.stringify((paginatedData as any)?.error)}
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
           {isLoading ? (
             <div className="h-full flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : (
-            <div className="h-full">
+            <div className="flex-1 min-h-0">
               <VirtualTable
                 data={paginatedData?.data || []}
                 columns={columns}
