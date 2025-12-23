@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ImportResult } from '@/services/financial'
+import { ImportRejectsDialog } from '@/components/financial/ImportRejectsDialog'
 import {
   CheckCircle2,
   Download,
@@ -8,6 +10,7 @@ import {
   Loader2,
   XOctagon,
   AlertCircle,
+  Eye,
 } from 'lucide-react'
 
 interface ImportResultViewProps {
@@ -50,6 +53,8 @@ export function ImportResultView({
   isExportingRejects,
   canExportRejects,
 }: ImportResultViewProps) {
+  const [showRejectsDialog, setShowRejectsDialog] = useState(false)
+
   if (!result.success) {
     return (
       <div className="space-y-2 animate-fade-in">
@@ -122,27 +127,40 @@ export function ImportResultView({
               <XOctagon className="h-4 w-4" />
               Erros Encontrados ({failuresCount})
             </h4>
-            {canExportRejects && onExportRejects && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onExportRejects}
-                disabled={isExportingRejects}
-                className="h-7 text-xs bg-white hover:bg-white/90 border-destructive/20 text-destructive hover:text-destructive"
-              >
-                {isExportingRejects ? (
-                  <>
-                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                    Exportando...
-                  </>
-                ) : (
-                  <>
-                    <Download className="mr-1 h-3 w-3" />
-                    Exportar rejeitados
-                  </>
-                )}
-              </Button>
-            )}
+            <div className="flex gap-2">
+              {canExportRejects && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowRejectsDialog(true)}
+                  className="h-7 text-xs bg-white hover:bg-white/90 border-destructive/20 text-destructive hover:text-destructive"
+                >
+                  <Eye className="mr-1 h-3 w-3" />
+                  Ver rejeitados
+                </Button>
+              )}
+              {canExportRejects && onExportRejects && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onExportRejects}
+                  disabled={isExportingRejects}
+                  className="h-7 text-xs bg-white hover:bg-white/90 border-destructive/20 text-destructive hover:text-destructive"
+                >
+                  {isExportingRejects ? (
+                    <>
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      Exportando...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-1 h-3 w-3" />
+                      Exportar rejeitados
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
           {result.failures && result.failures.length > 0 && (
             <>
@@ -168,6 +186,14 @@ export function ImportResultView({
             </>
           )}
         </div>
+      )}
+
+      {result.stats?.batchId && (
+        <ImportRejectsDialog
+          batchId={result.stats.batchId}
+          open={showRejectsDialog}
+          onOpenChange={setShowRejectsDialog}
+        />
       )}
     </div>
   )
