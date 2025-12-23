@@ -22,6 +22,7 @@ import {
   Edit,
   Trash2,
   AlertCircle,
+  ArrowUpDown,
 } from 'lucide-react'
 import { usePerformanceMeasure } from '@/lib/performance'
 import { ImportDialog } from '@/components/common/ImportDialog'
@@ -46,6 +47,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { format, parseISO, isValid } from 'date-fns'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { cn } from '@/lib/utils'
 
 export default function Receivables() {
   const {
@@ -112,9 +114,6 @@ export default function Receivables() {
     },
   )
 
-  // Debug log for developer inspection
-  console.log('Receivables paginatedData:', paginatedData)
-
   if (!isLoading) perf.end({ count: paginatedData?.count })
 
   const items =
@@ -173,20 +172,29 @@ export default function Receivables() {
 
     if (status === 'Liquidado')
       return (
-        <Badge className="bg-emerald-500 hover:bg-emerald-600">Liquidado</Badge>
+        <Badge className="bg-emerald-500 hover:bg-emerald-600 border-emerald-600/20 text-white shadow-none font-medium">
+          Liquidado
+        </Badge>
       )
     if (status === 'Cancelado')
-      return <Badge variant="destructive">Cancelado</Badge>
+      return (
+        <Badge variant="destructive" className="shadow-none">
+          Cancelado
+        </Badge>
+      )
     if (isOverdue)
       return (
-        <Badge variant="destructive" className="bg-rose-500 hover:bg-rose-600">
+        <Badge
+          variant="destructive"
+          className="bg-rose-500 hover:bg-rose-600 border-rose-600/20 shadow-none"
+        >
           Vencido
         </Badge>
       )
     return (
       <Badge
         variant="secondary"
-        className="bg-blue-100 text-blue-700 hover:bg-blue-200"
+        className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 shadow-none"
       >
         Aberto
       </Badge>
@@ -194,19 +202,20 @@ export default function Receivables() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
-      <div className="flex justify-between items-center shrink-0">
+    <div className="space-y-4 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">
+          <h2 className="text-2xl font-bold tracking-tight">
             Contas a Receber
           </h2>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Gestão completa de recebíveis e títulos.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
+            className="flex-1 sm:flex-none"
             onClick={() => setIsImportOpen(true)}
             disabled={!selectedCompanyId || selectedCompanyId === 'all'}
             title={
@@ -217,7 +226,10 @@ export default function Receivables() {
           >
             <Upload className="mr-2 h-4 w-4" /> Importar
           </Button>
-          <Button onClick={() => setEditingItem({})}>
+          <Button
+            className="flex-1 sm:flex-none"
+            onClick={() => setEditingItem({})}
+          >
             <Plus className="mr-2 h-4 w-4" /> Novo Título
           </Button>
         </div>
@@ -262,23 +274,13 @@ export default function Receivables() {
             !!dueDateRange ||
             !!issueDateRange ||
             !!createdAtRange ||
-            !!minValue
+            !!minValue ||
+            !!maxValue
           }
         />
       </div>
 
       <Card className="flex-1 overflow-hidden flex flex-col border shadow-sm">
-        <CardHeader className="py-4 shrink-0 border-b bg-muted/5">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <CardTitle className="text-base">Listagem de Títulos</CardTitle>
-              <CardDescription className="text-xs">
-                {totalCount} registros encontrados
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-
         <CardContent className="p-0 flex-1 overflow-hidden flex flex-col relative bg-background">
           {(error || paginatedData?.error) && (
             <div className="p-4 shrink-0">
@@ -308,18 +310,35 @@ export default function Receivables() {
           ) : (
             <div className="flex-1 overflow-auto relative">
               <Table>
-                <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
+                <TableHeader className="bg-muted/40 sticky top-0 z-10 shadow-sm">
                   <TableRow>
-                    <TableHead className="w-[15%]">NF / Pedido</TableHead>
-                    <TableHead className="w-[20%]">Cliente</TableHead>
-                    <TableHead className="w-[12%]">Vencimento</TableHead>
-                    <TableHead className="w-[10%] text-center">
+                    <TableHead className="min-w-[140px] font-semibold text-foreground">
+                      NF / Pedido
+                    </TableHead>
+                    <TableHead className="min-w-[220px] font-semibold text-foreground">
+                      Cliente
+                    </TableHead>
+                    <TableHead className="min-w-[110px] font-semibold text-foreground">
+                      <div className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors">
+                        Vencimento
+                        <ArrowUpDown className="h-3 w-3" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="min-w-[100px] text-center font-semibold text-foreground">
                       Status
                     </TableHead>
-                    <TableHead className="w-[10%]">Descrição</TableHead>
-                    <TableHead className="w-[10%]">Criação</TableHead>
-                    <TableHead className="w-[8%] text-center">Atraso</TableHead>
-                    <TableHead className="w-[10%] text-right">Valor</TableHead>
+                    <TableHead className="min-w-[200px] font-semibold text-foreground">
+                      Descrição
+                    </TableHead>
+                    <TableHead className="min-w-[110px] font-semibold text-foreground">
+                      Criação
+                    </TableHead>
+                    <TableHead className="min-w-[80px] text-center font-semibold text-foreground">
+                      Atraso
+                    </TableHead>
+                    <TableHead className="min-w-[120px] text-right font-semibold text-foreground">
+                      Valor
+                    </TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -328,42 +347,47 @@ export default function Receivables() {
                     <TableRow>
                       <TableCell
                         colSpan={9}
-                        className="text-center h-24 text-muted-foreground"
+                        className="text-center h-48 text-muted-foreground"
                       >
-                        {totalCount > 0
-                          ? 'Nenhum dado encontrado para esta página (verifique os filtros ou a paginação).'
-                          : 'Nenhum título encontrado com os filtros atuais.'}
+                        <div className="flex flex-col items-center gap-2">
+                          <Search className="h-8 w-8 opacity-20" />
+                          <p>
+                            {totalCount > 0
+                              ? 'Nenhum dado encontrado para esta página.'
+                              : 'Nenhum título encontrado com os filtros atuais.'}
+                          </p>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (
                     items.map((item) => (
                       <TableRow
                         key={item.id}
-                        className="group cursor-pointer hover:bg-muted/40 transition-colors"
+                        className="group cursor-pointer hover:bg-muted/50 transition-colors border-b border-border/50"
                         onClick={() => setEditingItem(item)}
                       >
                         <TableCell>
-                          <div className="flex flex-col">
+                          <div className="flex flex-col gap-0.5">
                             <span
-                              className="font-medium text-xs truncate"
+                              className="font-medium text-sm truncate"
                               title={item.invoice_number}
                             >
                               {item.invoice_number || '-'}
                             </span>
                             {item.order_number && (
-                              <span
-                                className="text-[10px] text-muted-foreground truncate"
-                                title={`Pedido: ${item.order_number}`}
+                              <Badge
+                                variant="outline"
+                                className="w-fit text-[10px] h-4 px-1 text-muted-foreground font-normal border-border/60"
                               >
-                                Ped: {item.order_number}
-                              </span>
+                                {item.order_number}
+                              </Badge>
                             )}
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col max-w-[200px]">
+                          <div className="flex flex-col max-w-[300px]">
                             <span
-                              className="font-medium truncate text-xs"
+                              className="font-medium truncate text-sm"
                               title={item.customer}
                             >
                               {item.customer}
@@ -371,7 +395,7 @@ export default function Receivables() {
                             {item.customer_name &&
                               item.customer_name !== item.customer && (
                                 <span
-                                  className="text-[10px] text-muted-foreground truncate"
+                                  className="text-[11px] text-muted-foreground truncate"
                                   title={item.customer_name}
                                 >
                                   {item.customer_name}
@@ -381,7 +405,7 @@ export default function Receivables() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">
-                            <span className="text-xs font-medium">
+                            <span className="text-sm font-medium">
                               {formatDate(item.due_date)}
                             </span>
                             <span className="text-[10px] text-muted-foreground">
@@ -393,9 +417,9 @@ export default function Receivables() {
                           {getStatusBadge(item.title_status, item.due_date)}
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col text-[10px] text-muted-foreground max-w-[150px]">
+                          <div className="flex flex-col text-xs text-muted-foreground max-w-[250px]">
                             <span
-                              className="truncate font-medium text-foreground"
+                              className="truncate font-medium text-foreground/80"
                               title={item.description}
                             >
                               {item.description || '-'}
@@ -403,7 +427,7 @@ export default function Receivables() {
                             {item.new_status && (
                               <span
                                 title="Status Secundário"
-                                className="truncate"
+                                className="truncate text-[10px] bg-muted w-fit px-1 rounded"
                               >
                                 {item.new_status}
                               </span>
@@ -430,20 +454,23 @@ export default function Receivables() {
                             const days = item.days_overdue || 0
                             if (days <= 0)
                               return (
-                                <span className="text-muted-foreground text-xs">
+                                <span className="text-muted-foreground text-xs opacity-50">
                                   -
                                 </span>
                               )
                             return (
-                              <span className="text-red-600 font-bold text-xs">
+                              <Badge
+                                variant="outline"
+                                className="text-red-600 bg-red-50 border-red-200 font-bold text-xs hover:bg-red-100"
+                              >
                                 {days}d
-                              </span>
+                              </Badge>
                             )
                           })()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex flex-col">
-                            <span className="text-xs text-muted-foreground">
+                          <div className="flex flex-col items-end">
+                            <span className="text-xs text-muted-foreground line-through opacity-70">
                               {toNumber(item.principal_value).toLocaleString(
                                 'pt-BR',
                                 {
@@ -452,8 +479,7 @@ export default function Receivables() {
                                 },
                               )}
                             </span>
-                            <span className="font-medium text-[10px]">
-                              At:{' '}
+                            <span className="font-bold text-sm">
                               {toNumber(
                                 item.updated_value || item.principal_value,
                               ).toLocaleString('pt-BR', {
@@ -468,7 +494,7 @@ export default function Receivables() {
                             <DropdownMenuTrigger asChild>
                               <Button
                                 variant="ghost"
-                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
                               >
                                 <span className="sr-only">Abrir menu</span>
                                 <MoreHorizontal className="h-4 w-4" />
@@ -501,7 +527,7 @@ export default function Receivables() {
             </div>
           )}
         </CardContent>
-        <div className="shrink-0 border-t bg-muted/5">
+        <div className="shrink-0 border-t bg-muted/5 p-2">
           <PaginationControl
             currentPage={page}
             totalCount={totalCount}

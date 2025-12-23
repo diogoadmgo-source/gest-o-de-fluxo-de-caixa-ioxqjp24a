@@ -1,6 +1,8 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
 import {
   Select,
   SelectContent,
@@ -9,13 +11,22 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { DateRangePicker } from '@/components/common/DateRangePicker'
-import { X, Filter, Search } from 'lucide-react'
+import {
+  X,
+  ListFilter,
+  Search,
+  Calendar,
+  DollarSign,
+  Tag,
+  CircleDollarSign,
+} from 'lucide-react'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { DateRange } from 'react-day-picker'
+import { cn } from '@/lib/utils'
 
 interface ReceivableFiltersProps {
   searchTerm: string
@@ -54,161 +65,182 @@ export function ReceivableFilters({
   onClearFilters,
   hasActiveFilters,
 }: ReceivableFiltersProps) {
+  // Calculate active filters count for the badge
+  const activeCount = [
+    status !== 'all',
+    !!dueDateRange,
+    !!issueDateRange,
+    !!createdAtRange,
+    !!minValue || !!maxValue,
+  ].filter(Boolean).length
+
   return (
-    <div className="space-y-4 bg-muted/20 p-4 rounded-lg border border-border/40">
-      <div className="flex flex-col xl:flex-row gap-4 flex-wrap">
-        {/* Search */}
-        <div className="flex-1 min-w-[250px]">
-          <Label className="text-xs mb-1.5 block text-muted-foreground">
-            Buscar
-          </Label>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar cliente, NF ou pedido..."
-              className="pl-9 bg-background"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-        </div>
+    <div className="flex flex-col sm:flex-row gap-2 items-center bg-card p-1.5 rounded-lg border shadow-sm">
+      {/* Consolidated Search Input */}
+      <div className="relative flex-1 w-full">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Filtrar por cliente, nota fiscal, pedido ou descrição..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-9 border-none shadow-none focus-visible:ring-0 bg-transparent h-10 text-base md:text-sm"
+        />
+      </div>
 
-        {/* Status */}
-        <div className="w-full sm:w-[180px]">
-          <Label className="text-xs mb-1.5 block text-muted-foreground">
-            Status
-          </Label>
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="bg-background">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="a_vencer">A Vencer</SelectItem>
-              <SelectItem value="vencida">Vencida</SelectItem>
-              <SelectItem value="Liquidado">Liquidado</SelectItem>
-              <SelectItem value="Cancelado">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="hidden sm:block">
+        <Separator orientation="vertical" className="h-6" />
+      </div>
 
-        {/* Due Date */}
-        <div>
-          <Label className="text-xs mb-1.5 block text-muted-foreground">
-            Vencimento
-          </Label>
-          <DateRangePicker
-            date={dueDateRange}
-            setDate={setDueDateRange}
-            placeholder="Período de Vencimento"
-            className="w-full sm:w-[260px]"
-          />
-        </div>
+      {/* Filter Trigger */}
+      <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end px-2 sm:px-0">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn(
+                'h-9 gap-2 border-dashed border-input hover:border-accent-foreground/50 transition-colors',
+                activeCount > 0 &&
+                  'bg-secondary/50 border-solid border-secondary-foreground/20 text-secondary-foreground',
+              )}
+            >
+              <ListFilter className="h-4 w-4" />
+              <span className="hidden sm:inline">Filtros</span>
+              <span className="sm:hidden">Opções</span>
+              {activeCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="h-5 px-1.5 min-w-[20px] justify-center rounded-full text-[10px] ml-0.5 bg-background text-foreground border shadow-sm"
+                >
+                  {activeCount}
+                </Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-[340px] p-4 space-y-4">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b pb-2">
+                <h4 className="font-semibold text-sm">Filtros Avançados</h4>
+                {activeCount > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto p-0 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={onClearFilters}
+                  >
+                    Limpar tudo
+                  </Button>
+                )}
+              </div>
 
-        {/* Issue Date */}
-        <div>
-          <Label className="text-xs mb-1.5 block text-muted-foreground">
-            Emissão
-          </Label>
-          <DateRangePicker
-            date={issueDateRange}
-            setDate={setIssueDateRange}
-            placeholder="Período de Emissão"
-            className="w-full sm:w-[260px]"
-          />
-        </div>
+              {/* Status Filter */}
+              <div className="space-y-2">
+                <Label className="text-xs flex items-center gap-2 text-muted-foreground">
+                  <Tag className="h-3.5 w-3.5" /> Status
+                </Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Selecione o status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os status</SelectItem>
+                    <SelectItem value="a_vencer">A Vencer</SelectItem>
+                    <SelectItem value="vencida">Vencida</SelectItem>
+                    <SelectItem value="Liquidado">Liquidado</SelectItem>
+                    <SelectItem value="Cancelado">Cancelado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-        {/* Created At (Batch Audit) */}
-        <div>
-          <Label className="text-xs mb-1.5 block text-muted-foreground">
-            Importação / Criação
-          </Label>
-          <DateRangePicker
-            date={createdAtRange}
-            setDate={setCreatedAtRange}
-            placeholder="Período de Criação"
-            className="w-full sm:w-[260px]"
-          />
-        </div>
-
-        {/* Value Range (Min/Max) */}
-        <div>
-          <Label className="text-xs mb-1.5 block text-muted-foreground">
-            Valor (R$)
-          </Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={`w-full sm:w-[140px] justify-between ${
-                  minValue || maxValue
-                    ? 'text-primary border-primary/50 bg-primary/5'
-                    : 'text-muted-foreground'
-                }`}
-              >
-                {minValue || maxValue
-                  ? `${minValue || '0'} - ${maxValue || '∞'}`
-                  : 'Filtrar Valor'}
-                <Filter className="h-3 w-3 ml-2 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80 p-4">
-              <div className="space-y-4">
-                <h4 className="font-medium leading-none">Faixa de Valor</h4>
-                <div className="grid gap-2">
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <Label htmlFor="minVal">Mínimo</Label>
+              {/* Value Range */}
+              <div className="space-y-2">
+                <Label className="text-xs flex items-center gap-2 text-muted-foreground">
+                  <CircleDollarSign className="h-3.5 w-3.5" /> Valor (R$)
+                </Label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-2.5 top-2.5 text-xs text-muted-foreground">
+                      Min
+                    </span>
                     <Input
-                      id="minVal"
                       type="number"
-                      placeholder="0.00"
-                      className="col-span-2 h-8"
+                      placeholder="0,00"
+                      className="h-9 pl-9"
                       value={minValue}
                       onChange={(e) => setMinValue(e.target.value)}
                     />
                   </div>
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <Label htmlFor="maxVal">Máximo</Label>
+                  <span className="text-muted-foreground">-</span>
+                  <div className="relative flex-1">
+                    <span className="absolute left-2.5 top-2.5 text-xs text-muted-foreground">
+                      Max
+                    </span>
                     <Input
-                      id="maxVal"
                       type="number"
-                      placeholder="0.00"
-                      className="col-span-2 h-8"
+                      placeholder="∞"
+                      className="h-9 pl-9"
                       value={maxValue}
                       onChange={(e) => setMaxValue(e.target.value)}
                     />
                   </div>
-                  {(minValue || maxValue) && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mt-2 h-8 w-full"
-                      onClick={() => {
-                        setMinValue('')
-                        setMaxValue('')
-                      }}
-                    >
-                      Limpar Valores
-                    </Button>
-                  )}
                 </div>
               </div>
-            </PopoverContent>
-          </Popover>
-        </div>
 
-        {/* Clear Filters Button */}
+              {/* Dates Group */}
+              <div className="space-y-3 pt-2 border-t">
+                {/* Due Date */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-2 text-muted-foreground">
+                    <Calendar className="h-3.5 w-3.5" /> Vencimento
+                  </Label>
+                  <DateRangePicker
+                    date={dueDateRange}
+                    setDate={setDueDateRange}
+                    placeholder="Qualquer data"
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Issue Date */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-2 text-muted-foreground">
+                    <Calendar className="h-3.5 w-3.5" /> Emissão
+                  </Label>
+                  <DateRangePicker
+                    date={issueDateRange}
+                    setDate={setIssueDateRange}
+                    placeholder="Qualquer data"
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Created At */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-2 text-muted-foreground">
+                    <Calendar className="h-3.5 w-3.5" /> Criação / Importação
+                  </Label>
+                  <DateRangePicker
+                    date={createdAtRange}
+                    setDate={setCreatedAtRange}
+                    placeholder="Qualquer data"
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
         {hasActiveFilters && (
-          <div className="flex items-end">
-            <Button
-              variant="ghost"
-              onClick={onClearFilters}
-              className="h-10 text-destructive hover:text-destructive hover:bg-destructive/10"
-            >
-              <X className="mr-2 h-4 w-4" />
-              Limpar Filtros
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClearFilters}
+            className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            title="Limpar filtros"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         )}
       </div>
     </div>
