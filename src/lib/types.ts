@@ -30,6 +30,7 @@ export interface Transaction {
   payment_method?: string
   notes?: string
   description?: string
+  created_at?: string
 }
 
 export interface Receivable {

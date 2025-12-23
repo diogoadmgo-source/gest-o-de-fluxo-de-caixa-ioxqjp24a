@@ -252,11 +252,14 @@ export async function fetchPaginatedReceivables(
       }
 
       // Sorting
+      // Force due_date sorting if not explicitly overridden, handling nulls properly
       const sortCol = (filters && filters.sortBy) || 'due_date'
       const sortOrder = (filters && filters.sortOrder) || 'asc'
+
       query = query
         .order(sortCol, {
           ascending: sortOrder === 'desc' ? false : true,
+          nullsFirst: false,
         })
         .order('invoice_number', { ascending: true })
 
@@ -350,7 +353,11 @@ export async function fetchPaginatedPayables(
       const from = (page - 1) * pageSize
       const to = from + pageSize - 1
 
-      query = query.order('due_date', { ascending: true }).range(from, to)
+      // Sorting by due_date ascending (closest first), nulls last
+      query = query
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .range(from, to)
 
       const { data, count, error } = await query
 
@@ -361,6 +368,7 @@ export async function fetchPaginatedPayables(
         filters,
         count: count || 0,
         dataLength: data?.length || 0,
+        sample: data?.slice(0, 3) || [],
         error,
       })
 
