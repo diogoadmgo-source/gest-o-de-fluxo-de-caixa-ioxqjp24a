@@ -594,8 +594,14 @@ export async function importReceivablesRobust(
       throw fallbackError
     }
 
+    // Success Validation (New Requirement)
+    const res = fallbackResult as any
+    if (res && res.success === false) {
+      throw new Error(res.error || 'Erro na importação via fallback')
+    }
+
     // Map fallback result to expected format
-    const stats = (fallbackResult as any)?.stats || {}
+    const stats = res?.stats || {}
     const inserted = stats.inserted || 0
     const skipped = stats.skipped || 0
 
