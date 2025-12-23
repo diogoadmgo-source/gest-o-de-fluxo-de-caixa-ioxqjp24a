@@ -83,7 +83,7 @@ export default function Receivables() {
     `receivables-${selectedCompanyId}-${page}-${pageSize}-${debouncedSearch}-${statusFilter}-${JSON.stringify(dueDateRange)}-${JSON.stringify(issueDateRange)}-${JSON.stringify(createdAtRange)}-${dataVersion}`,
     () => {
       if (!selectedCompanyId || selectedCompanyId === 'all')
-        return Promise.resolve({ data: [], count: 0 })
+        return Promise.resolve({ data: [], count: 0, error: null })
       return fetchPaginatedReceivables(selectedCompanyId, page, pageSize, {
         search: debouncedSearch,
         status: statusFilter,
@@ -153,6 +153,12 @@ export default function Receivables() {
       </Badge>
     )
   }
+
+  // Safe items extraction ensuring array structure
+  const items =
+    paginatedData?.data && Array.isArray(paginatedData.data)
+      ? paginatedData.data
+      : []
 
   return (
     <div className="space-y-6 animate-fade-in pb-2 h-[calc(100vh-100px)] flex flex-col">
@@ -268,7 +274,7 @@ export default function Receivables() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedData?.data.length === 0 ? (
+                {items.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={9}
@@ -278,7 +284,7 @@ export default function Receivables() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedData?.data.map((item) => (
+                  items.map((item) => (
                     <TableRow
                       key={item.id}
                       className="group cursor-pointer hover:bg-muted/40 transition-colors"

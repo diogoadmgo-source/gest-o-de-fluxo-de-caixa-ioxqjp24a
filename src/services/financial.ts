@@ -186,6 +186,7 @@ export async function fetchPaginatedReceivables(
         )
         .eq('company_id', companyId)
 
+      // Status Filter
       if (filters.status && filters.status !== 'all') {
         if (filters.status === 'vencida') {
           query = query
@@ -200,6 +201,7 @@ export async function fetchPaginatedReceivables(
         }
       }
 
+      // Search
       if (filters.search) {
         const term = `%${filters.search}%`
         query = query.or(
@@ -207,6 +209,7 @@ export async function fetchPaginatedReceivables(
         )
       }
 
+      // Due Date Range
       if (filters.dateRange?.from) {
         const fromStr = format(filters.dateRange.from, 'yyyy-MM-dd')
         const toStr = filters.dateRange.to
@@ -215,6 +218,28 @@ export async function fetchPaginatedReceivables(
         query = query.gte('due_date', fromStr).lte('due_date', toStr)
       }
 
+      // Issue Date Range (Emission)
+      if (filters.issueDateRange?.from) {
+        const fromStr = format(filters.issueDateRange.from, 'yyyy-MM-dd')
+        const toStr = filters.issueDateRange.to
+          ? format(filters.issueDateRange.to, 'yyyy-MM-dd')
+          : fromStr
+        query = query.gte('issue_date', fromStr).lte('issue_date', toStr)
+      }
+
+      // Created At Range (Import Date / Audit)
+      if (filters.createdAtRange?.from) {
+        const fromStr = format(filters.createdAtRange.from, 'yyyy-MM-dd')
+        const toStr = filters.createdAtRange.to
+          ? format(filters.createdAtRange.to, 'yyyy-MM-dd')
+          : fromStr
+        // Append time to ensure we cover the full day for timestamps
+        query = query
+          .gte('created_at', `${fromStr}T00:00:00`)
+          .lte('created_at', `${toStr}T23:59:59`)
+      }
+
+      // Sorting
       const sortCol = filters.sortBy || 'due_date'
       query = query
         .order(sortCol, {
@@ -222,11 +247,22 @@ export async function fetchPaginatedReceivables(
         })
         .order('invoice_number', { ascending: true })
 
+      // Pagination
       const from = (page - 1) * pageSize
       const to = from + pageSize - 1
       query = query.range(from, to)
 
       const { data, count, error } = await query
+
+      // Logging for debug as requested
+      console.log('fetchPaginatedReceivables debug:', {
+        count,
+        first3: data?.slice(0, 3),
+        error,
+        filters,
+      })
+
+      // Robust return
       return { data: data || [], count: count || 0, error }
     })(),
     { companyId, page, filters },
@@ -464,7 +500,6 @@ export async function saveReceivablesImportLog(data: {
 
   if (error) {
     console.error('Failed to save receivables import log:', error)
-    // We log but don't throw to avoid interrupting the user flow if the import itself succeeded
   }
 }
 
@@ -482,14 +517,11 @@ export async function importReceivablesRobust(
       )
       const customer = normalizeText(get(RECEIVABLE_MAPPINGS.customer))
 
-      // Check missing mandatory fields (also checked in RPC, but good to filter garbage early)
       if (!invoiceNumber || !customer) return false
 
-      // Check garbage keywords
       if (isGarbageCompany(invoiceNumber) || isGarbageCompany(customer))
         return false
 
-      // Check specific keywords from requirements (case insensitive)
       const invStr = String(invoiceNumber).toLowerCase()
       const custStr = String(customer).toLowerCase()
       if (
@@ -557,13 +589,11 @@ export async function importReceivablesRobust(
       }
     })
 
-  // Calculate totals for potential fallback usage
   const totalAmount = sanitized.reduce(
     (sum, item) => sum + (Number(item.principal_value) || 0),
     0,
   )
 
-  // Attempt 1: import_receivables_replace (Primary - Strict Mode with logging)
   let { data: result, error } = await supabase.rpc(
     'import_receivables_replace',
     {
@@ -574,7 +604,6 @@ export async function importReceivablesRobust(
     },
   )
 
-  // Attempt 2: strict_replace_receivables (Fallback - Legacy)
   if (error) {
     console.warn(
       'Primary import RPC failed, attempting fallback to strict_replace_receivables.',
@@ -594,13 +623,11 @@ export async function importReceivablesRobust(
       throw fallbackError
     }
 
-    // Success Validation (New Requirement)
     const res = fallbackResult as any
     if (res && res.success === false) {
       throw new Error(res.error || 'Erro na importação via fallback')
     }
 
-    // Map fallback result to expected format
     const stats = res?.stats || {}
     const inserted = stats.inserted || 0
     const skipped = stats.skipped || 0
@@ -608,11 +635,11 @@ export async function importReceivablesRobust(
     result = {
       success: true,
       message: 'Importado via fallback (Substituição Total)',
-      batch_id: '', // Fallback doesn't create a detailed batch log
+      batch_id: '',
       total_rows: sanitized.length,
       imported_rows: inserted,
       rejected_rows: skipped,
-      imported_amount: totalAmount, // Approximate
+      imported_amount: totalAmount,
       total_amount: totalAmount,
       rejected_amount: 0,
       total_value: totalAmount,
@@ -669,11 +696,9 @@ export async function importPayablesRobust(
         // ignore error
       }
 
-      // If principal is 0 but amount has value, use amount as principal
       if (principal_value === 0 && csv_amount !== 0)
         principal_value = csv_amount
 
-      // Enforce mathematical consistency: Amount = Principal + Fine + Interest
       const amount = principal_value + fine + interest
 
       let status = normalizeText(get(PAYABLE_MAPPINGS.status))
@@ -762,12 +787,10 @@ export async function importPaymentsAdvances(
       const parseDate = (val: any) => {
         if (!val) return null
         const str = String(val).trim()
-        // DD/MM/YYYY
         if (str.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
           const [d, m, y] = str.split('/')
           return `${y}-${m}-${d}`
         }
-        // YYYY-MM-DD
         if (str.match(/^\d{4}-\d{2}-\d{2}$/)) return str
         return null
       }
@@ -798,15 +821,12 @@ export async function importPaymentsAdvances(
         fine,
         interest,
         amount,
-        status: 'pending', // Assume pending unless specified otherwise, but payments/advances implies money out?
-        // Usually imports are payables to be paid or already paid. "Adiantamento" often implies paid.
-        // However, let's stick to "pending" or try to read status.
+        status: 'pending',
         category,
         description,
       }
     })
 
-  // Batch Insert
   const chunkSize = 100
   let insertedCount = 0
   let errors: any[] = []
@@ -830,7 +850,7 @@ export async function importPaymentsAdvances(
     message: `Importado ${insertedCount} registros com sucesso.`,
     stats: {
       records: insertedCount,
-      importedTotal: 0, // Not calculating sum here for now
+      importedTotal: 0,
       rejectedRows: errors.length > 0 ? sanitized.length - insertedCount : 0,
     },
   }
@@ -847,7 +867,6 @@ export async function fetchImportRejects(
     p_page_size: pageSize,
   })
 
-  // The RPC returns { ..., total_count }[]
   const count = data && data.length > 0 ? data[0].total_count : 0
 
   return { data: data || [], count: count, error }
@@ -869,8 +888,6 @@ export async function importarReceivables(
       fileName,
     )
 
-    // IMPORTANT: Only create a manual log if the RPC didn't return a batch_id
-    // This avoids duplication since the RPC now handles logging.
     if (!summary.batch_id) {
       try {
         await saveReceivablesImportLog({
@@ -884,7 +901,6 @@ export async function importarReceivables(
         })
       } catch (e) {
         console.error('Error saving manual import log', e)
-        // Swallow error to not block success flow
       }
     }
 
