@@ -187,22 +187,19 @@ export async function fetchPaginatedReceivables(
         .eq('company_id', companyId)
 
       // Status Filter
-      if (filters.status && filters.status !== 'all') {
+      if (filters && filters.status && filters.status !== 'all') {
+        const today = format(new Date(), 'yyyy-MM-dd')
         if (filters.status === 'vencida') {
-          query = query
-            .eq('title_status', 'Aberto')
-            .lt('due_date', format(new Date(), 'yyyy-MM-dd'))
+          query = query.eq('title_status', 'Aberto').lt('due_date', today)
         } else if (filters.status === 'a_vencer') {
-          query = query
-            .eq('title_status', 'Aberto')
-            .gte('due_date', format(new Date(), 'yyyy-MM-dd'))
+          query = query.eq('title_status', 'Aberto').gte('due_date', today)
         } else {
           query = query.eq('title_status', filters.status)
         }
       }
 
       // Search
-      if (filters.search) {
+      if (filters && filters.search) {
         const term = `%${filters.search}%`
         query = query.or(
           `customer.ilike.${term},invoice_number.ilike.${term},order_number.ilike.${term},customer_name.ilike.${term}`,
@@ -210,7 +207,7 @@ export async function fetchPaginatedReceivables(
       }
 
       // Due Date Range
-      if (filters.dateRange?.from) {
+      if (filters && filters.dateRange?.from) {
         const fromStr = format(filters.dateRange.from, 'yyyy-MM-dd')
         const toStr = filters.dateRange.to
           ? format(filters.dateRange.to, 'yyyy-MM-dd')
@@ -219,7 +216,7 @@ export async function fetchPaginatedReceivables(
       }
 
       // Issue Date Range (Emission)
-      if (filters.issueDateRange?.from) {
+      if (filters && filters.issueDateRange?.from) {
         const fromStr = format(filters.issueDateRange.from, 'yyyy-MM-dd')
         const toStr = filters.issueDateRange.to
           ? format(filters.issueDateRange.to, 'yyyy-MM-dd')
@@ -228,7 +225,7 @@ export async function fetchPaginatedReceivables(
       }
 
       // Created At Range (Import Date / Audit)
-      if (filters.createdAtRange?.from) {
+      if (filters && filters.createdAtRange?.from) {
         const fromStr = format(filters.createdAtRange.from, 'yyyy-MM-dd')
         const toStr = filters.createdAtRange.to
           ? format(filters.createdAtRange.to, 'yyyy-MM-dd')
@@ -240,10 +237,11 @@ export async function fetchPaginatedReceivables(
       }
 
       // Sorting
-      const sortCol = filters.sortBy || 'due_date'
+      const sortCol = (filters && filters.sortBy) || 'due_date'
+      const sortOrder = (filters && filters.sortOrder) || 'asc'
       query = query
         .order(sortCol, {
-          ascending: filters.sortOrder === 'desc' ? false : true,
+          ascending: sortOrder === 'desc' ? false : true,
         })
         .order('invoice_number', { ascending: true })
 
@@ -254,12 +252,15 @@ export async function fetchPaginatedReceivables(
 
       const { data, count, error } = await query
 
-      // Logging for debug as requested
+      // Enhanced Logging for debug
       console.log('fetchPaginatedReceivables debug:', {
         count,
         first3: data?.slice(0, 3),
         error,
         filters,
+        companyId,
+        page,
+        pageSize,
       })
 
       // Robust return

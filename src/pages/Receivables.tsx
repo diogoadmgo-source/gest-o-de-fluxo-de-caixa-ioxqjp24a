@@ -154,7 +154,8 @@ export default function Receivables() {
     )
   }
 
-  // Safe items extraction ensuring array structure
+  // AC: Safe items extraction ensuring array structure
+  // Ensuring no null pointer exceptions and defaulting to empty array
   const items =
     paginatedData?.data && Array.isArray(paginatedData.data)
       ? paginatedData.data
@@ -250,7 +251,6 @@ export default function Receivables() {
           </div>
         </CardHeader>
 
-        {/* AC 2: Grid Layout Fix - Using Shadcn Table instead of VirtualTable */}
         <CardContent className="p-0 flex-1 overflow-auto relative bg-background">
           {isLoading ? (
             <div className="h-full flex items-center justify-center">
@@ -278,6 +278,7 @@ export default function Receivables() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {/* AC: TableBody iterates over items and shows empty state message only if explicitly 0 results */}
                 {items.length === 0 ? (
                   <TableRow>
                     <TableCell
@@ -433,7 +434,6 @@ export default function Receivables() {
           )}
         </CardContent>
         <div className="shrink-0 border-t bg-muted/5">
-          {/* AC 4: Pagination Functionality */}
           <PaginationControl
             currentPage={page}
             totalCount={totalCount}
