@@ -15,10 +15,6 @@ import {
   AlertCircle,
   AlertTriangle,
   Download,
-  Info,
-  CheckCircle2,
-  XOctagon,
-  Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Progress } from '@/components/ui/progress'
@@ -31,8 +27,10 @@ import {
   importarPayables,
   importarPaymentsAdvances,
   fetchImportRejects,
+  ImportResult,
 } from '@/services/financial'
 import { importProductImports } from '@/services/product-imports'
+import { ImportResultView, translateReason } from './ImportResultView'
 
 interface ImportDialogProps {
   open: boolean
@@ -62,90 +60,32 @@ export function ImportDialog({
   const [isProcessing, setIsProcessing] = useState(false)
   const [isExportingRejects, setIsExportingRejects] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [result, setResult] = useState<{
-    success: boolean
-    message: string
-    stats?: {
-      records: number
-      importedTotal: number
-      fileTotal?: number
-      fileTotalPrincipal?: number
-      failuresTotal?: number
-      duplicatesSkipped?: number
-      batchId?: string
-      rejectedRows?: number
-      rejectedAmount?: number
-      auditDbRows?: number
-      auditDbValue?: number
-    }
-    failures?: any[]
-  } | null>(null)
+  const [result, setResult] = useState<ImportResult | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const selectedCompanyName = companies.find(
     (c) => c.id === selectedCompanyId,
   )?.name
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }
-
-  const handleDragLeave = () => {
-    setIsDragging(false)
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    const files = e.dataTransfer.files
-    if (files.length > 0) {
-      validateAndSetFile(files[0])
-    }
-  }
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      validateAndSetFile(e.target.files[0])
-    }
-  }
-
-  const validateAndSetFile = (file: File) => {
+  const handleFileSelect = (file: File) => {
     const isCsv = file.name.endsWith('.csv') || file.name.endsWith('.txt')
     const isXlsx = file.name.endsWith('.xlsx')
-
     if (!isCsv && !isXlsx) {
       toast.error('Por favor, utilize arquivos CSV ou XLSX.')
       return
     }
-
     if (file.size > 10 * 1024 * 1024) {
       toast.error('O arquivo excede o tamanho máximo de 10MB.')
       return
     }
-
     setSelectedFile(file)
     setResult(null)
     toast.info(`Arquivo "${file.name}" selecionado.`)
   }
 
-  const removeFile = () => {
-    setSelectedFile(null)
-    setResult(null)
-    setProgress(0)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-  }
-
-  const triggerFileInput = () => {
-    fileInputRef.current?.click()
-  }
-
   const downloadTemplate = () => {
     let headers: string[] = []
     let content = ''
-
     if (type === 'product_import') {
       headers = [
         'Linha',
@@ -163,8 +103,7 @@ export function ImportDialog({
       ]
       content =
         headers.join(';') +
-        '\n' +
-        'P&P;BR-42428100;MINDRAY;Aguardando registro DI;NF 43349;4237.00;26/12/2025;19/12/2025;3500.00;737.00;4237.00;Concluído'
+        '\nP&P;BR-42428100;MINDRAY;Aguardando registro DI;NF 43349;4237.00;26/12/2025;19/12/2025;3500.00;737.00;4237.00;Concluído'
     } else if (type === 'payments_advances') {
       headers = [
         'Data',
@@ -176,8 +115,7 @@ export function ImportDialog({
       ]
       content =
         headers.join(';') +
-        '\n' +
-        '15/01/2025;Adiantamento de Fornecedor;China Supply Co;5000.00;Adiantamento;ADV-001'
+        '\n15/01/2025;Adiantamento de Fornecedor;China Supply Co;5000.00;Adiantamento;ADV-001'
     } else {
       headers = [
         'Empresa',
@@ -193,10 +131,8 @@ export function ImportDialog({
       ]
       content =
         headers.join(';') +
-        '\n' +
-        'Minha Empresa;12345;PED-001;Cliente Exemplo;00.000.000/0001-00;01/01/2025;01/02/2025;1.500,00;Aberto;Exemplo'
+        '\nMinha Empresa;12345;PED-001;Cliente Exemplo;00.000.000/0001-00;01/01/2025;01/02/2025;1.500,00;Aberto;Exemplo'
     }
-
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -212,10 +148,8 @@ export function ImportDialog({
       toast.error('Não há lote de rejeitos disponível para exportação.')
       return
     }
-
     setIsExportingRejects(true)
     const toastId = toast.loading('Preparando exportação...')
-
     try {
       const batchId = result.stats.batchId
       let allRejects: any[] = []
@@ -240,7 +174,6 @@ export function ImportDialog({
         return
       }
 
-      // Generate CSV
       const header = [
         'linha',
         'motivo',
@@ -253,7 +186,6 @@ export function ImportDialog({
         'installment',
         'raw_json',
       ].join(';')
-
       const escapeCsv = (val: any) => {
         if (val === null || val === undefined) return ''
         const str = String(val)
@@ -287,7 +219,6 @@ export function ImportDialog({
         .join('\n')
 
       const csvContent = header + '\n' + rows
-
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -315,432 +246,257 @@ export function ImportDialog({
   }
 
   const handleImport = async () => {
-    if (!selectedFile) return
-    if (!selectedCompanyId || selectedCompanyId === 'all') {
-      toast.error('Selecione uma empresa antes de prosseguir.')
+    if (
+      !selectedFile ||
+      !selectedCompanyId ||
+      selectedCompanyId === 'all' ||
+      !user
+    )
       return
-    }
-    if (!user) {
-      toast.error('Sessão expirada. Por favor, faça login novamente.')
-      return
-    }
-
     setIsProcessing(true)
     setProgress(0)
     setResult(null)
-
     try {
-      // Step 1: Read File
       setProgress(10)
       let parsedData: any[] = []
-
       if (selectedFile.name.endsWith('.xlsx')) {
         await new Promise((resolve) => setTimeout(resolve, 500))
         throw new Error(
-          'O processamento de arquivos XLSX requer conversão prévia. Por favor, salve seu arquivo como CSV (separado por ponto e vírgula) e tente novamente.',
+          'Arquivos XLSX requerem conversão. Salve como CSV e tente novamente.',
         )
       } else {
         const text = await selectedFile.text()
         setProgress(30)
         parsedData = parseCSV(text)
       }
-
-      if (parsedData.length === 0) {
-        throw new Error(
-          'O arquivo está vazio ou não pôde ser lido corretamente.',
-        )
-      }
-
+      if (parsedData.length === 0) throw new Error('O arquivo está vazio.')
       setProgress(50)
 
-      // Step 2: Send to Service
-      let res
-
-      // Simulate progress since RPC is atomic
-      const progressTimer = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 90) return prev
-          return prev + 10
-        })
-      }, 500)
-
+      let res: ImportResult
+      const progressTimer = setInterval(
+        () => setProgress((prev) => (prev >= 90 ? prev : prev + 10)),
+        500,
+      )
       try {
-        if (type === 'receivable') {
+        if (type === 'receivable')
           res = await importarReceivables(
             user.id,
             parsedData,
             selectedCompanyId,
             selectedFile.name,
           )
-        } else if (type === 'payable') {
+        else if (type === 'payable')
           res = await importarPayables(user.id, parsedData, selectedCompanyId)
-        } else if (type === 'product_import') {
+        else if (type === 'product_import')
           res = await importProductImports(
             user.id,
             selectedCompanyId,
             parsedData,
           )
-        } else if (type === 'payments_advances') {
+        else if (type === 'payments_advances')
           res = await importarPaymentsAdvances(
             user.id,
             parsedData,
             selectedCompanyId,
             selectedFile.name,
           )
-        } else {
-          throw new Error('Tipo de importação desconhecido')
-        }
+        else throw new Error('Tipo desconhecido')
       } finally {
         clearInterval(progressTimer)
       }
-
       setResult(res)
       setProgress(100)
-
       if (res.success) {
-        const count = res.stats?.records || 0
-        const rejected = res.stats?.rejectedRows || 0
-        let msg = `Importação concluída! ${count} registros inseridos.`
-        if (rejected > 0) {
-          msg += ` (${rejected} rejeitados/duplicados)`
-        }
-        toast.success(msg)
-
+        toast.success(`Concluído! ${res.stats?.records || 0} registros.`)
         if (type !== 'product_import') recalculateCashFlow()
         onImported?.()
       } else {
         toast.error(res.message || 'Falha na importação.')
       }
     } catch (error: any) {
-      console.error(error)
       setResult({
         success: false,
-        message: error.message || 'Erro desconhecido na importação.',
+        message: error.message || 'Erro desconhecido',
+        failures: [],
       })
-      toast.error(error.message || 'Falha na importação.')
+      toast.error(error.message)
     } finally {
       setIsProcessing(false)
     }
   }
 
-  const showWarning = type === 'receivable' || type === 'payable'
   const hasRejects =
     result?.stats?.rejectedRows && result.stats.rejectedRows > 0
-  const canExportRejects = hasRejects && result?.stats?.batchId
+  const canExportRejects = Boolean(hasRejects && result?.stats?.batchId)
 
   return (
-    <>
-      <Dialog
-        open={open}
-        onOpenChange={(val) => {
-          if (!isProcessing) {
-            onOpenChange(val)
-            if (!val) {
-              setTimeout(() => {
-                setResult(null)
-                setSelectedFile(null)
-                setProgress(0)
-              }, 300)
-            }
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{title}</DialogTitle>
-            <DialogDescription>
-              Faça upload de arquivo CSV para atualizar a base de dados.
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Governance / Context Check */}
-          {!selectedCompanyId || selectedCompanyId === 'all' ? (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Seleção Obrigatória</AlertTitle>
-              <AlertDescription>
-                Por favor, selecione uma empresa no menu principal antes de
-                iniciar a importação.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <>
-              {showWarning && (
-                <Alert
-                  variant="destructive"
-                  className="py-2 bg-destructive/5 border-destructive/20 text-destructive"
+    <Dialog
+      open={open}
+      onOpenChange={(val) =>
+        !isProcessing &&
+        (onOpenChange(val),
+        !val &&
+          setTimeout(() => {
+            setResult(null)
+            setSelectedFile(null)
+            setProgress(0)
+          }, 300))
+      }
+    >
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            Faça upload de arquivo CSV para atualizar a base de dados.
+          </DialogDescription>
+        </DialogHeader>
+        {!selectedCompanyId || selectedCompanyId === 'all' ? (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Seleção Obrigatória</AlertTitle>
+            <AlertDescription>
+              Selecione uma empresa antes de iniciar.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className="grid gap-4 py-2">
+            {(type === 'receivable' || type === 'payable') && (
+              <Alert
+                variant="destructive"
+                className="py-2 bg-destructive/5 border-destructive/20 text-destructive"
+              >
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle className="text-sm font-semibold">
+                  Substituição Total: {selectedCompanyName}
+                </AlertTitle>
+                <AlertDescription className="text-xs">
+                  Esta importação substituirá todos os títulos existentes.
+                </AlertDescription>
+              </Alert>
+            )}
+            {!selectedFile ? (
+              <div
+                className={cn(
+                  'border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all',
+                  isDragging
+                    ? 'border-primary bg-primary/5'
+                    : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50',
+                )}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setIsDragging(true)
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setIsDragging(false)
+                  if (e.dataTransfer.files.length > 0)
+                    handleFileSelect(e.dataTransfer.files[0])
+                }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept=".csv,.xlsx,.txt"
+                  onChange={(e) =>
+                    e.target.files?.length &&
+                    handleFileSelect(e.target.files[0])
+                  }
+                />
+                <Upload className="h-10 w-10 text-muted-foreground mb-4" />
+                <p className="text-sm font-medium">
+                  Clique ou arraste o arquivo
+                </p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="mt-4 h-auto p-0 text-xs text-primary"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    downloadTemplate()
+                  }}
                 >
-                  <AlertTriangle className="h-4 w-4 text-destructive" />
-                  <AlertTitle className="text-sm font-semibold">
-                    Substituição Total: {selectedCompanyName}
-                  </AlertTitle>
-                  <AlertDescription className="text-xs text-destructive/90">
-                    Esta importação <strong>substituirá todos</strong> os
-                    títulos existentes para a empresa selecionada. A operação é
-                    irreversível.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <div className="grid gap-4 py-2">
-                {!selectedFile ? (
-                  <div
-                    className={cn(
-                      'border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all',
-                      isDragging
-                        ? 'border-primary bg-primary/5'
-                        : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50',
-                    )}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={triggerFileInput}
-                  >
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      className="hidden"
-                      accept=".csv,.xlsx,.txt"
-                      onChange={handleFileSelect}
-                    />
-                    <Upload className="h-10 w-10 text-muted-foreground mb-4" />
-                    <p className="text-sm font-medium">
-                      Clique para selecionar ou arraste o arquivo
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Suporta CSV (Excel via Salvar Como CSV)
-                    </p>
+                  <Download className="mr-1 h-3 w-3" />
+                  Baixar modelo CSV
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="border rounded-lg p-4 bg-muted/10">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 text-primary rounded">
+                        <FileSpreadsheet className="h-6 w-6" />
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="font-medium truncate max-w-[250px]">
+                          {selectedFile.name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {(selectedFile.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                    </div>
                     <Button
-                      variant="link"
-                      size="sm"
-                      className="mt-4 h-auto p-0 text-xs text-primary"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        downloadTemplate()
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setSelectedFile(null)
+                        setResult(null)
+                        setProgress(0)
+                        if (fileInputRef.current)
+                          fileInputRef.current.value = ''
                       }}
+                      disabled={isProcessing}
                     >
-                      <Download className="mr-1 h-3 w-3" />
-                      Baixar modelo CSV
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="border rounded-lg p-4 bg-muted/10">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-primary/10 text-primary rounded">
-                            <FileSpreadsheet className="h-6 w-6" />
-                          </div>
-                          <div className="overflow-hidden">
-                            <p className="font-medium truncate max-w-[250px]">
-                              {selectedFile.name}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {(selectedFile.size / 1024).toFixed(2)} KB
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={removeFile}
-                          disabled={isProcessing}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                  {isProcessing && (
+                    <div className="mt-4 space-y-2">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Processando...</span>
+                        <span>{progress}%</span>
                       </div>
-
-                      {isProcessing && (
-                        <div className="mt-4 space-y-2">
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>Processando...</span>
-                            <span>{progress}%</span>
-                          </div>
-                          <Progress value={progress} className="h-2" />
-                        </div>
-                      )}
+                      <Progress value={progress} className="h-2" />
                     </div>
-
-                    {result && !result.success && (
-                      <div className="space-y-2 animate-fade-in">
-                        <Alert variant="destructive">
-                          <AlertCircle className="h-4 w-4" />
-                          <AlertTitle>Erro na importação</AlertTitle>
-                          <AlertDescription className="text-xs mt-1 font-medium">
-                            {result.message}
-                          </AlertDescription>
-                        </Alert>
-                      </div>
-                    )}
-
-                    {result && result.success && (
-                      <div className="space-y-3 animate-fade-in">
-                        <Alert
-                          variant="default"
-                          className="border-green-500/50 bg-green-500/10 text-green-700"
-                        >
-                          <Info className="h-4 w-4 text-green-600" />
-                          <AlertTitle>Importação Concluída</AlertTitle>
-                          <AlertDescription className="text-xs mt-1">
-                            {result.message}
-                          </AlertDescription>
-                        </Alert>
-
-                        {/* Detailed Stats */}
-                        <div className="rounded-md border p-4 bg-card text-card-foreground shadow-sm space-y-4">
-                          <h4 className="text-sm font-semibold flex items-center gap-2">
-                            <CheckCircle2 className="h-4 w-4 text-primary" />
-                            Resumo Detalhado
-                          </h4>
-                          <div className="grid grid-cols-3 gap-4 text-center">
-                            <div className="flex flex-col p-2 bg-muted/30 rounded">
-                              <span className="text-xs text-muted-foreground font-medium uppercase">
-                                Total Linhas
-                              </span>
-                              <span className="text-lg font-bold">
-                                {result.stats?.fileTotal ||
-                                  (result.stats?.records || 0) +
-                                    (result.stats?.rejectedRows || 0)}
-                              </span>
-                            </div>
-                            <div className="flex flex-col p-2 bg-emerald-50 rounded border border-emerald-100">
-                              <span className="text-xs text-emerald-600 font-medium uppercase">
-                                Sucesso
-                              </span>
-                              <span className="text-lg font-bold text-emerald-700">
-                                {result.stats?.records}
-                              </span>
-                            </div>
-                            <div className="flex flex-col p-2 bg-rose-50 rounded border border-rose-100">
-                              <span className="text-xs text-rose-600 font-medium uppercase">
-                                Rejeitados
-                              </span>
-                              <span className="text-lg font-bold text-rose-700">
-                                {result.stats?.rejectedRows || 0}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Failures List */}
-                        {((result.failures && result.failures.length > 0) ||
-                          canExportRejects) && (
-                          <div className="rounded-md border border-destructive/20 bg-destructive/5 p-4 text-sm space-y-2">
-                            <div className="flex items-center justify-between">
-                              <h4 className="font-semibold text-destructive flex items-center gap-2">
-                                <XOctagon className="h-4 w-4" />
-                                Erros Encontrados (
-                                {result.failures?.length ||
-                                  result.stats?.rejectedRows}
-                                )
-                              </h4>
-                              {canExportRejects && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={handleExportRejects}
-                                  disabled={isExportingRejects}
-                                  className="h-7 text-xs bg-white hover:bg-white/90 border-destructive/20 text-destructive hover:text-destructive"
-                                >
-                                  {isExportingRejects ? (
-                                    <>
-                                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                                      Exportando...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Download className="mr-1 h-3 w-3" />
-                                      Exportar rejeitados
-                                    </>
-                                  )}
-                                </Button>
-                              )}
-                            </div>
-                            {result.failures && result.failures.length > 0 && (
-                              <>
-                                <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                                  {result.failures.map(
-                                    (f: any, idx: number) => (
-                                      <div
-                                        key={idx}
-                                        className="flex flex-col gap-1 text-xs text-muted-foreground border-b border-destructive/10 pb-2 last:border-0"
-                                      >
-                                        <div className="flex justify-between font-mono font-medium text-destructive/80">
-                                          <span>Linha {f.row}</span>
-                                          <span>{f.reason}</span>
-                                        </div>
-                                        <div className="bg-background/50 p-1 rounded font-mono text-[10px] truncate opacity-70">
-                                          {JSON.stringify(f.data)}
-                                        </div>
-                                      </div>
-                                    ),
-                                  )}
-                                </div>
-                                <p className="text-[10px] text-muted-foreground pt-1 text-center italic">
-                                  Corrija os erros no arquivo original e tente
-                                  importar novamente.
-                                </p>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  )}
+                </div>
+                {result && (
+                  <ImportResultView
+                    result={result}
+                    onExportRejects={handleExportRejects}
+                    isExportingRejects={isExportingRejects}
+                    canExportRejects={canExportRejects}
+                  />
                 )}
               </div>
-            </>
-          )}
-
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isProcessing}
-            >
-              Fechar
-            </Button>
-            {!result?.success &&
-              selectedCompanyId &&
-              selectedCompanyId !== 'all' && (
-                <Button
-                  onClick={handleImport}
-                  disabled={!selectedFile || isProcessing}
-                >
-                  {isProcessing ? 'Importando...' : 'Confirmar Importação'}
-                  {!isProcessing && <Play className="ml-2 h-4 w-4" />}
-                </Button>
-              )}
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
-    </>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isProcessing}
+          >
+            Fechar
+          </Button>
+          {!result?.success &&
+            selectedCompanyId &&
+            selectedCompanyId !== 'all' && (
+              <Button
+                onClick={handleImport}
+                disabled={!selectedFile || isProcessing}
+              >
+                {isProcessing ? 'Importando...' : 'Confirmar Importação'}
+                {!isProcessing && <Play className="ml-2 h-4 w-4" />}
+              </Button>
+            )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
-}
-
-function translateReason(reason: string) {
-  switch (reason) {
-    case 'invoice_number_vazio':
-      return 'Nota Fiscal vazia'
-    case 'customer_vazio':
-      return 'Cliente vazio'
-    case 'valor_invalido':
-      return 'Valor inválido'
-    case 'data_vencimento_invalida':
-      return 'Data Vencimento inválida'
-    case 'parcela_formato_invalido':
-      return 'Parcela inválida'
-    case 'duplicado_lote':
-      return 'Duplicado (Mesmo Lote)'
-    case 'valor_negativo':
-      return 'Valor Negativo'
-    case 'valor_atualizado_negativo':
-      return 'Valor Atualizado Negativo'
-    case 'vencimento_menor_emissao':
-      return 'Vencimento menor que Emissão'
-    case 'linha_invalida':
-      return 'Linha Inválida (Lixo/Total)'
-    default:
-      return reason
-  }
 }
