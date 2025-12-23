@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
+  Eye,
 } from 'lucide-react'
 import {
   Tooltip,
@@ -55,9 +56,9 @@ export function CashFlowGrid({
     <>
       <div className="rounded-md border bg-card shadow-sm overflow-hidden">
         <div className="p-4 border-b bg-muted/20">
-          <h3 className="font-semibold text-lg">Fluxo de Caixa Diário</h3>
+          <h3 className="font-semibold text-lg">Detalhamento Diário</h3>
           <p className="text-sm text-muted-foreground">
-            Visão detalhada das movimentações e saldos projetados.
+            Visualize as movimentações e o impacto no saldo acumulado dia a dia.
           </p>
         </div>
         <div className="overflow-x-auto">
@@ -71,19 +72,10 @@ export function CashFlowGrid({
                   Saldo Inicial
                 </TableHead>
                 <TableHead className="text-right text-success font-semibold min-w-[120px]">
-                  Total a Receber
+                  Entradas
                 </TableHead>
                 <TableHead className="text-right text-destructive font-semibold min-w-[120px]">
-                  Total a Pagar
-                </TableHead>
-                <TableHead className="text-right text-orange-500 font-semibold min-w-[150px]">
-                  Pagamentos Importações
-                </TableHead>
-                <TableHead className="text-right text-purple-500 font-semibold min-w-[150px]">
-                  Desembaraço Aduaneiro
-                </TableHead>
-                <TableHead className="text-right text-muted-foreground font-semibold min-w-[120px]">
-                  Outras Desp.
+                  Saídas (Total)
                 </TableHead>
                 <TableHead className="text-right font-bold min-w-[120px] bg-secondary/20">
                   Saldo do Dia
@@ -91,7 +83,9 @@ export function CashFlowGrid({
                 <TableHead className="text-right font-bold bg-primary/5 min-w-[140px]">
                   Saldo Acumulado
                 </TableHead>
-                <TableHead className="min-w-[180px]">Observações</TableHead>
+                <TableHead className="min-w-[100px] text-center">
+                  Ações
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -100,6 +94,11 @@ export function CashFlowGrid({
                 const isSelected =
                   format(currentDate, 'yyyy-MM-dd') ===
                   format(selectedDate, 'yyyy-MM-dd')
+
+                const totalOutflow =
+                  entry.total_payables +
+                  entry.import_payments +
+                  entry.customs_cost
 
                 return (
                   <TableRow
@@ -112,7 +111,10 @@ export function CashFlowGrid({
                       isSelected &&
                         'bg-primary/10 hover:bg-primary/15 border-l-2 border-l-primary',
                     )}
-                    onClick={() => onSelectDate(currentDate)}
+                    onClick={() => {
+                      onSelectDate(currentDate)
+                      setReviewEntry(entry)
+                    }}
                   >
                     <TableCell className="font-medium sticky left-0 bg-background z-10 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
                       <div className="flex flex-col">
@@ -124,20 +126,10 @@ export function CashFlowGrid({
                         <span className="text-xs text-muted-foreground capitalize">
                           {format(currentDate, 'EEEE', { locale: ptBR })}
                         </span>
-                        {entry.is_weekend && (
-                          <span className="text-[10px] text-muted-foreground mt-0.5 font-medium">
-                            Final de Semana
-                          </span>
-                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
-                      <div className="flex items-center justify-end gap-2 group">
-                        {formatCurrency(entry.opening_balance)}
-                        {isSelected && !entry.is_weekend && (
-                          <Edit2 className="h-3 w-3 text-muted-foreground opacity-50" />
-                        )}
-                      </div>
+                      {formatCurrency(entry.opening_balance)}
                     </TableCell>
                     <TableCell className="text-right text-success">
                       {entry.total_receivables > 0
@@ -145,25 +137,11 @@ export function CashFlowGrid({
                         : '-'}
                     </TableCell>
                     <TableCell className="text-right text-destructive">
-                      {entry.total_payables > 0
-                        ? `- ${formatCurrency(entry.total_payables)}`
+                      {totalOutflow > 0
+                        ? `- ${formatCurrency(totalOutflow)}`
                         : '-'}
                     </TableCell>
-                    <TableCell className="text-right text-orange-500">
-                      {entry.import_payments > 0
-                        ? `- ${formatCurrency(entry.import_payments)}`
-                        : '-'}
-                    </TableCell>
-                    <TableCell className="text-right text-purple-500">
-                      {entry.customs_cost > 0
-                        ? `- ${formatCurrency(entry.customs_cost)}`
-                        : '-'}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {entry.other_expenses > 0
-                        ? `- ${formatCurrency(entry.other_expenses)}`
-                        : '-'}
-                    </TableCell>
+
                     <TableCell className="text-right font-bold bg-secondary/10">
                       <div
                         className={cn(
@@ -203,32 +181,17 @@ export function CashFlowGrid({
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-between gap-2">
-                        {entry.notes ? (
-                          <span
-                            className="text-xs text-muted-foreground truncate max-w-[100px]"
-                            title={entry.notes}
-                          >
-                            {entry.notes}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic opacity-50">
-                            -
-                          </span>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs px-2"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setReviewEntry(entry)
-                          }}
-                        >
-                          Revisar
-                        </Button>
-                      </div>
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setReviewEntry(entry)
+                        }}
+                      >
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 )
@@ -242,9 +205,9 @@ export function CashFlowGrid({
         open={!!reviewEntry}
         onOpenChange={(open) => !open && setReviewEntry(null)}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Detalhes do Lançamento</DialogTitle>
+            <DialogTitle>Detalhes do Dia</DialogTitle>
             <DialogDescription>
               {reviewEntry &&
                 format(parseISO(reviewEntry.date), "dd 'de' MMMM 'de' yyyy", {
@@ -254,61 +217,83 @@ export function CashFlowGrid({
           </DialogHeader>
 
           {reviewEntry && (
-            <div className="space-y-4 py-4">
+            <div className="space-y-6 py-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="p-4 bg-muted/20 rounded-lg">
                   <span className="text-sm font-medium text-muted-foreground">
                     Saldo Inicial
                   </span>
-                  <p className="text-lg font-semibold">
+                  <p className="text-xl font-bold">
                     {formatCurrency(reviewEntry.opening_balance)}
                   </p>
                 </div>
-                <div>
-                  <span className="text-sm font-medium text-muted-foreground">
+                <div
+                  className={cn(
+                    'p-4 rounded-lg',
+                    reviewEntry.accumulated_balance < 0
+                      ? 'bg-red-50 text-red-900'
+                      : 'bg-emerald-50 text-emerald-900',
+                  )}
+                >
+                  <span className="text-sm font-medium opacity-80">
                     Saldo Final
                   </span>
-                  <p className="text-lg font-semibold">
+                  <p className="text-xl font-bold">
                     {formatCurrency(reviewEntry.accumulated_balance)}
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <span className="text-sm font-medium text-muted-foreground">
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                   Movimentações
-                </span>
-                <div className="grid grid-cols-2 gap-2 text-sm border p-3 rounded-md">
-                  <span>Recebimentos:</span>
-                  <span className="text-right text-success font-medium">
-                    {formatCurrency(reviewEntry.total_receivables)}
-                  </span>
-                  <span>Pagamentos:</span>
-                  <span className="text-right text-destructive font-medium">
-                    {formatCurrency(reviewEntry.total_payables)}
-                  </span>
-                  <span>Pagamentos Importações:</span>
-                  <span className="text-right text-orange-500 font-medium">
-                    {formatCurrency(reviewEntry.import_payments)}
-                  </span>
-                  <span>Desembaraço Aduaneiro:</span>
-                  <span className="text-right text-purple-500 font-medium">
-                    {formatCurrency(reviewEntry.customs_cost)}
-                  </span>
-                  <span>Outras Despesas:</span>
-                  <span className="text-right text-muted-foreground font-medium">
-                    {formatCurrency(reviewEntry.other_expenses)}
-                  </span>
+                </h4>
+                <div className="grid grid-cols-1 gap-2 text-sm">
+                  <div className="flex justify-between items-center p-3 border rounded-md hover:bg-muted/50">
+                    <span className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                      Recebimentos (Operacional)
+                    </span>
+                    <span className="font-bold text-success">
+                      {formatCurrency(reviewEntry.total_receivables)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center p-3 border rounded-md hover:bg-muted/50">
+                    <span className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-rose-500" />
+                      Pagamentos (Operacional)
+                    </span>
+                    <span className="font-bold text-destructive">
+                      {formatCurrency(reviewEntry.total_payables)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center p-3 border rounded-md hover:bg-muted/50">
+                    <span className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-orange-500" />
+                      Pagamentos de Importação
+                    </span>
+                    <span className="font-bold text-orange-600">
+                      {formatCurrency(reviewEntry.import_payments)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center p-3 border rounded-md hover:bg-muted/50">
+                    <span className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-purple-500" />
+                      Custos Aduaneiros
+                    </span>
+                    <span className="font-bold text-purple-600">
+                      {formatCurrency(reviewEntry.customs_cost)}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <span className="text-sm font-medium text-muted-foreground">
-                  Observações
-                </span>
-                <div className="p-3 bg-muted rounded-md text-sm">
-                  {reviewEntry.notes || 'Nenhuma observação registrada.'}
-                </div>
+              <div className="text-xs text-muted-foreground text-center pt-2">
+                * Clique em "Contas a Pagar" ou "Receber" no menu para ver os
+                títulos individuais.
               </div>
             </div>
           )}

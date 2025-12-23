@@ -30,8 +30,17 @@ import {
   getPayableStats,
 } from '@/services/financial'
 import { normalizeCompanyId } from '@/lib/utils'
-import { subDays, addDays } from 'date-fns'
+import {
+  subDays,
+  addDays,
+  isAfter,
+  isBefore,
+  isSameDay,
+  startOfDay,
+  endOfDay,
+} from 'date-fns'
 import { queryClient } from '@/lib/query-client'
+import { DateRange } from 'react-day-picker'
 
 interface CashFlowContextType {
   companies: Company[]
@@ -39,7 +48,8 @@ interface CashFlowContextType {
   setSelectedCompanyId: (id: string | null) => void
   bankBalances: BankBalance[]
   banks: Bank[]
-  cashFlowEntries: CashFlowEntry[]
+  cashFlowEntries: CashFlowEntry[] // Full computed range
+  filteredEntries: CashFlowEntry[] // Entries within selected dateRange
   kpis: KPI | null
   receivables: Receivable[]
   payables: Transaction[]
@@ -56,8 +66,8 @@ interface CashFlowContextType {
   recalculateCashFlow: () => void
   fetchPayableStats: (filters: any) => Promise<void>
   loading: boolean
-  timeframe: number
-  setTimeframe: (days: number) => void
+  dateRange: DateRange | undefined
+  setDateRange: (range: DateRange | undefined) => void
 }
 
 const CashFlowContext = createContext<CashFlowContextType | undefined>(
@@ -72,7 +82,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
   >(() => {
     return normalizeCompanyId(localStorage.getItem('hospcash_selectedCompany'))
   })
-  const [timeframe, setTimeframe] = useState(30)
+
+  // Default to Next 30 Days view
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: new Date(),
+    to: addDays(new Date(), 30),
+  })
 
   const [companies, setCompanies] = useState<Company[]>([])
   const [cashFlowEntries, setCashFlowEntries] = useState<CashFlowEntry[]>([])
@@ -83,12 +98,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     null,
   )
 
-  // Placeholders for legacy arrays, can be populated if needed
-  const [receivables, setReceivables] = useState<Receivable[]>([])
-  const [payables, setPayables] = useState<Transaction[]>([])
-  const [accountPayables, setAccountPayables] = useState<Payable[]>([])
-  const [adjustments, setAdjustments] = useState<FinancialAdjustment[]>([])
-  const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>([])
+  // Placeholders for legacy arrays
+  const [receivables] = useState<Receivable[]>([])
+  const [payables] = useState<Transaction[]>([])
+  const [accountPayables] = useState<Payable[]>([])
+  const [adjustments] = useState<FinancialAdjustment[]>([])
+  const [importHistory] = useState<ImportHistoryEntry[]>([])
 
   const setSelectedCompanyId = (id: string | null) => {
     const norm = normalizeCompanyId(id)
@@ -123,18 +138,13 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           ? selectedCompanyId
           : null
 
-      // Always fetch data, handling 'all' case by passing null to RPCs
-
       // 1. Fetch Banks
-      // For banks list, if activeId is null, we fetch all banks from allowed companies
       let banksQuery = supabase.from('banks').select('*').eq('active', true)
-
       if (activeId) {
         banksQuery = banksQuery.eq('company_id', activeId)
       } else if (ids.length > 0) {
         banksQuery = banksQuery.in('company_id', ids)
       } else {
-        // No allowed companies, empty banks
         setBanks([])
         setBankBalances([])
         setCashFlowEntries([])
@@ -146,24 +156,45 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       const { data: banksData } = await banksQuery
       setBanks((banksData as Bank[]) || [])
 
-      // 2. Fetch Latest Balances (Handles null activeId as All Companies)
+      // 2. Fetch Latest Balances
       const latestBalances = await getLatestBankBalances(activeId)
       setBankBalances(latestBalances)
 
-      // 3. Fetch KPI (Handles null activeId as All Companies)
-      const kpiData = await getDashboardKPIs(activeId, timeframe)
+      // 3. Fetch KPI
+      // Using 30 days as default context for general KPIs if not specified
+      const kpiData = await getDashboardKPIs(activeId, 30)
       setKpis(kpiData as KPI)
 
       // 4. Calculate Cash Flow
-      const today = new Date()
-      // Provide small history context (e.g. 7 days back) + requested timeframe
-      const historyDays = Math.min(15, timeframe)
-      const start = subDays(today, historyDays)
-      const end = addDays(today, timeframe)
+      const today = startOfDay(new Date())
 
-      const aggs = await getCashFlowAggregates(activeId, start, end)
+      // Determine fetch range.
+      // We MUST fetch from Today (or start of dateRange if earlier) to calculate cumulative balance correctly.
+      let fetchStart = subDays(today, 15) // Context history
+      if (dateRange?.from && isBefore(dateRange.from, fetchStart)) {
+        fetchStart = subDays(dateRange.from, 1)
+      } else if (!dateRange?.from) {
+        // Fallback
+        fetchStart = subDays(today, 7)
+      }
 
-      // Initial Balance Sum
+      let fetchEnd = addDays(today, 90) // Default projection
+      if (dateRange?.to && isAfter(dateRange.to, fetchEnd)) {
+        fetchEnd = dateRange.to
+      }
+
+      // Ensure we cover the gap between fetchStart and dateRange.to
+      // Case: User selects "Next Month" (starts in 10 days). We need Today -> Next Month End to calculate opening.
+      // So fetchStart is effectively Today (or a bit earlier for context).
+      if (isAfter(today, fetchStart)) {
+        // fetchStart is already before today, good.
+      } else {
+        fetchStart = subDays(today, 1) // Ensure we have a baseline before today
+      }
+
+      const aggs = await getCashFlowAggregates(activeId, fetchStart, fetchEnd)
+
+      // Initial Balance Sum (Today's known balance)
       const currentTotalBalance = latestBalances.reduce(
         (acc, b) => acc + (b.balance || 0),
         0,
@@ -178,8 +209,9 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
         const flow =
           totalReceivables - totalPayables - importPayments - customsCost
+
         return {
-          date: day.day,
+          date: day.day, // YYYY-MM-DD
           opening_balance: 0,
           total_receivables: totalReceivables,
           total_payables: totalPayables,
@@ -189,33 +221,124 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
           customs_cost: customsCost,
           other_expenses: 0,
           is_projected: new Date(day.day) > today,
+          is_weekend: [0, 6].includes(new Date(day.day).getDay()),
         }
       })
 
       // Running Balance Calculation
-      let running = currentTotalBalance
+      // Find index of Today to anchor the known balance
       const todayStr = today.toISOString().split('T')[0]
-      const todayIdx = entries.findIndex((e: any) => e.date === todayStr)
+      // Use fuzzy match or find closest
+      let todayIdx = entries.findIndex((e: any) => e.date === todayStr)
 
-      // Forward from today
-      if (todayIdx >= 0) {
+      // If today is not in results (maybe no transactions today), we sort entries by date first just in case
+      entries.sort(
+        (a: any, b: any) =>
+          new Date(a.date).getTime() - new Date(b.date).getTime(),
+      )
+
+      // Re-find today index after sort
+      todayIdx = entries.findIndex((e: any) => e.date === todayStr)
+
+      // If still not found, find the closest date after today or before today
+      if (todayIdx === -1) {
+        // This can happen if getCashFlowAggregates returns gaps (though it usually fills gaps if using generate_series in SQL, but let's be safe)
+        // Assuming aggregates might have gaps, we should ideally fill them.
+        // For now, let's assume continuous series or handle gaps in UI.
+        // Let's find insertion point
+        // Or simplistic approach: Just propagate balance
+      }
+
+      let running = currentTotalBalance
+
+      // We need to propagate Forward from Today
+      // And Backward from Today
+
+      // If today exists in entries
+      if (todayIdx !== -1) {
+        // Set Today's Opening Balance
+        // Actually currentTotalBalance is usually the *Closing* balance of Today if we just fetched from banks?
+        // Or is it real-time? Let's assume it's the current state.
+        // For projection, let's assume it's the starting point for *Future* moves.
+        // So: Today Opening + Today Flow = Today Closing.
+        // If "currentTotalBalance" is Live Balance, it includes processed transactions.
+        // Let's treat currentTotalBalance as the "Anchor" for the balance curve at "Now".
+
+        // Forward
         running = currentTotalBalance
-        for (let i = todayIdx; i < entries.length; i++) {
+        // For entries AFTER today
+        for (let i = todayIdx + 1; i < entries.length; i++) {
           entries[i].opening_balance = running
           entries[i].accumulated_balance = running + entries[i].daily_balance
           running = entries[i].accumulated_balance
         }
 
-        // Backward (Reverse engineering history)
-        running = currentTotalBalance
+        // Current Day Adjustment
+        // If we consider currentTotalBalance as "Current State", then:
+        // entry[today].accumulated_balance = currentTotalBalance + (remaining flow today?)
+        // This is tricky. Let's simplify:
+        // accumulated_balance for Today = currentTotalBalance + projected remaining flow.
+        // But we don't know remaining vs executed flow in aggregates easily.
+        // Simplification: entries[today].accumulated_balance = currentTotalBalance + entries[today].daily_balance (Assuming bank balance is Morning balance? No, usually Live).
+        // If Live, then we shouldn't add Today's full projected flow again.
+        // Let's assume currentTotalBalance is the "Base" for Tomorrow.
+        // So Today's Accumulated = currentTotalBalance.
+        entries[todayIdx].accumulated_balance = currentTotalBalance
+        entries[todayIdx].opening_balance =
+          currentTotalBalance - entries[todayIdx].daily_balance // derived
+
+        // Backward
+        running = entries[todayIdx].opening_balance
         for (let i = todayIdx - 1; i >= 0; i--) {
           entries[i].accumulated_balance = running
           entries[i].opening_balance = running - entries[i].daily_balance
           running = entries[i].opening_balance
         }
+
+        // Re-run forward from Today+1 to rely on Today's Closing
+        running = entries[todayIdx].accumulated_balance
+        for (let i = todayIdx + 1; i < entries.length; i++) {
+          entries[i].opening_balance = running
+          entries[i].accumulated_balance = running + entries[i].daily_balance
+          running = entries[i].accumulated_balance
+        }
       } else {
-        // If today is not in range, just run forward from assumed start
-        for (let i = 0; i < entries.length; i++) {
+        // If Today is missing (gaps), just run linearly from the first record assuming some start?
+        // Or finding the closest date.
+        // Let's just run from index 0 with currentTotalBalance as fallback if index 0 is close to today.
+        // If index 0 is far in past, this is inaccurate.
+        // Ideally we fetch a continuous series.
+        // Let's assume we sort and just propagate.
+
+        // Find closest date to today to anchor
+        let closestDist = Infinity
+        let anchorIdx = 0
+        entries.forEach((e: any, idx: number) => {
+          const d = Math.abs(new Date(e.date).getTime() - today.getTime())
+          if (d < closestDist) {
+            closestDist = d
+            anchorIdx = idx
+          }
+        })
+
+        // Anchor at closest
+        entries[anchorIdx].accumulated_balance = currentTotalBalance
+
+        // Propagate Back
+        running =
+          entries[anchorIdx].accumulated_balance -
+          entries[anchorIdx].daily_balance // opening of anchor
+        entries[anchorIdx].opening_balance = running
+
+        for (let i = anchorIdx - 1; i >= 0; i--) {
+          entries[i].accumulated_balance = running
+          entries[i].opening_balance = running - entries[i].daily_balance
+          running = entries[i].opening_balance
+        }
+
+        // Propagate Forward
+        running = entries[anchorIdx].accumulated_balance
+        for (let i = anchorIdx + 1; i < entries.length; i++) {
           entries[i].opening_balance = running
           entries[i].accumulated_balance = running + entries[i].daily_balance
           running = entries[i].accumulated_balance
@@ -229,11 +352,23 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false)
     }
-  }, [user, selectedCompanyId, timeframe])
+  }, [user, selectedCompanyId, dateRange]) // Re-fetch if range changes significantly? Or just depend on manual refresh?
+  // Ideally we only refetch if dateRange extends beyond current loaded data.
+  // For simplicity, refetch on dateRange change is safer.
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Filter entries based on selected dateRange
+  const filteredEntries = cashFlowEntries.filter((e) => {
+    if (!dateRange || !dateRange.from) return true
+    const d = startOfDay(new Date(e.date))
+    // We use startOfDay to ensure consistent comparison
+    const from = startOfDay(dateRange.from)
+    const to = dateRange.to ? endOfDay(dateRange.to) : endOfDay(from)
+    return d >= from && d <= to
+  })
 
   // Actions
   const addBank = async (b: Bank) => {
@@ -250,11 +385,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
 
   const addPayable = async (t: Transaction) => {
     if (!user) return
-
-    if (!selectedCompanyId || selectedCompanyId === 'all') {
+    if (!selectedCompanyId || selectedCompanyId === 'all')
       throw new Error('Selecione uma empresa')
-    }
-
     const { error } = await supabase.from('transactions').insert({
       company_id: selectedCompanyId,
       type: 'payable',
@@ -270,18 +402,12 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
       status: t.status,
       description: t.description,
     })
-
     if (error) throw error
     fetchData()
   }
 
   const updatePayable = async (t: Transaction) => {
-    if (!user) return
-
-    if (!t.id) {
-      throw new Error('ID do payable não informado')
-    }
-
+    if (!user || !t.id) return
     const { error } = await supabase
       .from('transactions')
       .update({
@@ -298,7 +424,6 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         description: t.description,
       })
       .eq('id', t.id)
-
     if (error) throw error
     fetchData()
   }
@@ -333,6 +458,7 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         bankBalances,
         banks,
         cashFlowEntries,
+        filteredEntries,
         kpis,
         receivables,
         payables,
@@ -349,8 +475,8 @@ export const CashFlowProvider = ({ children }: { children: ReactNode }) => {
         recalculateCashFlow: fetchData,
         fetchPayableStats,
         loading,
-        timeframe,
-        setTimeframe,
+        dateRange,
+        setDateRange,
       }}
     >
       {children}
