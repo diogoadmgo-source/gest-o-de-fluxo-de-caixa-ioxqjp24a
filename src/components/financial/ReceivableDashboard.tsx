@@ -1,26 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Receivable } from '@/lib/types'
 import { DollarSign, Percent, AlertCircle, Calculator } from 'lucide-react'
+import { parsePtBrFloat } from '@/lib/utils'
 
 interface ReceivableDashboardProps {
   items: Receivable[]
 }
 
 export function ReceivableDashboard({ items }: ReceivableDashboardProps) {
-  // Helper to safely parse numbers, duplicating logic to ensure self-containment
+  // Helper to safely parse numbers, using robust utility
   const toNumber = (value: any) => {
     if (value === null || value === undefined) return 0
     if (typeof value === 'number') return value
-    if (typeof value === 'string') {
-      if (value.includes(',')) {
-        const normalized = value.replace(/\./g, '').replace(',', '.')
-        const parsed = parseFloat(normalized)
-        return isNaN(parsed) ? 0 : parsed
-      }
-      const parsed = parseFloat(value)
-      return isNaN(parsed) ? 0 : parsed
-    }
-    return 0
+    return parsePtBrFloat(value)
   }
 
   const totals = items.reduce(

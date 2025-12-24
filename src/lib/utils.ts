@@ -15,39 +15,75 @@ export function parsePtBrFloat(value: any, label?: string): number {
   if (typeof value === 'number') return value
 
   let str = String(value).trim()
-  // Remove generic currency symbols (R$) and spaces
-  str = str.replace(/[R$\s]/g, '')
+  // Remove currency symbols (R$, $, etc) and spaces, keep digits, dots, commas, minus
+  // We use a broader regex to remove anything that is NOT a digit, dot, comma or minus
+  // This handles "R$ 1.200,00" -> "1.200,00"
+  str = str.replace(/[^\d.,-]/g, '')
 
   if (!str) return 0
 
-  // PT-BR format usually uses comma as decimal separator: 1.234,56
-  // Logic: Remove all dots (thousands separators), then replace comma with dot.
-  // This handles:
-  // 1.234,56 -> 1234.56
-  // 1.000 -> 1000
-  // 10,50 -> 10.50
+  // Handle negative sign
+  const isNegative = str.startsWith('-')
+  if (isNegative) str = str.substring(1)
 
-  // Note: This logic assumes PT-BR format.
-  // If the input is 10.50 (US format), it becomes 1050 (Wrong), but consistent with "parsePtBrFloat".
+  // Logic to detect format: PT-BR (1.234,56) vs US (1,234.56)
+  if (str.includes(',') && str.includes('.')) {
+    // Both separators present
+    if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+      // 1.234,56 -> PT-BR (Comma is decimal)
+      str = str.replace(/\./g, '').replace(',', '.')
+    } else {
+      // 1,234.56 -> US (Dot is decimal)
+      str = str.replace(/,/g, '')
+    }
+  } else if (str.includes(',')) {
+    // Only comma: 1234,56 -> PT-BR (Decimal separator)
+    str = str.replace(',', '.')
+  } else if (str.includes('.')) {
+    // Only dot: 1.234 or 1234.56
+    // Heuristic:
+    // - If it matches exactly 2 decimal places (e.g. 123.45), assume US Decimal.
+    // - If it matches 1 decimal place (e.g. 123.4), it's ambiguous, but usually US Decimal in CSVs.
+    // - If it matches 3 decimal places (e.g. 1.234), assume PT-BR Thousands (1234).
+    // - If multiple dots (1.234.567), assume PT-BR Thousands.
 
-  if (str.indexOf(',') > -1) {
-    str = str.replace(/\./g, '').replace(',', '.')
-  } else if (str.indexOf('.') > -1) {
-    // If there is a dot but no comma, it might be 1.000 (1000) or 1.5 (US 1.5).
-    // Given the function name, we treat dot as thousands separator (remove it).
-    str = str.replace(/\./g, '')
+    const parts = str.split('.')
+    const lastPart = parts[parts.length - 1]
+
+    // If multiple dots, definitely thousands separator (PT-BR)
+    if (parts.length > 2) {
+      str = str.replace(/\./g, '')
+    }
+    // Single dot
+    else {
+      // If 2 digits (cents), treat as US Decimal
+      if (lastPart.length === 2) {
+        // Keep dot
+      }
+      // If 1 digit, likely US Decimal too (e.g. 10.5)
+      else if (lastPart.length === 1) {
+        // Keep dot
+      }
+      // Otherwise (3+ digits or 0 digits), treat as thousands separator (PT-BR)
+      // e.g. 1.000 -> 1000
+      else {
+        str = str.replace(/\./g, '')
+      }
+    }
   }
 
   const num = parseFloat(str)
+  const result = isNegative ? -num : num
 
-  if (isNaN(num)) {
+  if (isNaN(result)) {
     if (label) {
-      throw new Error(`Valor inválido em '${label}': ${value}`)
+      // Log for debugging but don't crash unless critical
+      console.warn(`Parse error for ${label}: ${value}`)
     }
     return 0
   }
 
-  return num
+  return result
 }
 
 export function isGarbageCompany(name: any): boolean {
@@ -62,6 +98,8 @@ export function isGarbageCompany(name: any): boolean {
     'transporte',
     'saldo anterior',
     'filtros aplicados',
+    'geral',
+    'subtotal',
   ]
   return garbage.includes(n)
 }
@@ -77,7 +115,7 @@ export function parseCSV(content: string) {
   const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0)
   if (lines.length === 0) return []
 
-  // Detect separator
+  // Detect separator from first valid line
   const firstLine = lines[0]
   const separator = firstLine.includes(';') ? ';' : ','
 

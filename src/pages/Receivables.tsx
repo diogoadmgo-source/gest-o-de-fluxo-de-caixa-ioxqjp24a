@@ -48,7 +48,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { format, parseISO, isValid } from 'date-fns'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { cn } from '@/lib/utils'
+import { cn, parsePtBrFloat } from '@/lib/utils'
 
 export default function Receivables() {
   const {
@@ -152,19 +152,12 @@ export default function Receivables() {
     }
   }
 
+  // Safe number parsing
   const toNumber = (value: any) => {
     if (value === null || value === undefined) return 0
     if (typeof value === 'number') return value
-    if (typeof value === 'string') {
-      if (value.includes(',')) {
-        const normalized = value.replace(/\./g, '').replace(',', '.')
-        const parsed = parseFloat(normalized)
-        return isNaN(parsed) ? 0 : parsed
-      }
-      const parsed = parseFloat(value)
-      return isNaN(parsed) ? 0 : parsed
-    }
-    return 0
+    // If it's a string, use our robust parser
+    return parsePtBrFloat(value)
   }
 
   const getStatusBadge = (status: string, dueDate: string) => {

@@ -77,15 +77,20 @@ const RECEIVABLE_MAPPINGS = {
     'principal_value',
     'Valor Original',
     'Valor do Título',
+    'Vlr. Original',
   ],
-  fine: ['Multa', 'fine', 'Vlr Multa'],
-  interest: ['Juros', 'interest', 'Vlr Juros'],
+  fine: ['Multa', 'fine', 'Vlr Multa', 'Vlr. Multa'],
+  interest: ['Juros', 'interest', 'Vlr Juros', 'Vlr. Juros'],
   updated_value: [
     'Vlr Atualizado',
     'Valor Atualizado',
     'updated_value',
     'Valor Total',
     'Total',
+    'Valor Líquido',
+    'Vlr. Liquido',
+    'Valor Liquido',
+    'Vlr. Atualizado',
   ],
   installment: ['Parcela', 'installment', 'Parc'],
   title_status: ['Status', 'title_status', 'Situação'],
@@ -206,7 +211,7 @@ export async function fetchPaginatedReceivables(
         )
       }
 
-      // Due Date Range
+      // Date Filters
       if (
         filters &&
         filters.dateRange?.from &&
@@ -220,7 +225,6 @@ export async function fetchPaginatedReceivables(
         query = query.gte('due_date', fromStr).lte('due_date', toStr)
       }
 
-      // Issue Date Range (Emission)
       if (
         filters &&
         filters.issueDateRange?.from &&
@@ -234,7 +238,6 @@ export async function fetchPaginatedReceivables(
         query = query.gte('issue_date', fromStr).lte('issue_date', toStr)
       }
 
-      // Created At Range (Import Date / Audit)
       if (
         filters &&
         filters.createdAtRange?.from &&
@@ -245,14 +248,12 @@ export async function fetchPaginatedReceivables(
           filters.createdAtRange.to && isValid(filters.createdAtRange.to)
             ? format(filters.createdAtRange.to, 'yyyy-MM-dd')
             : fromStr
-        // Append time to ensure we cover the full day for timestamps
         query = query
           .gte('created_at', `${fromStr}T00:00:00`)
           .lte('created_at', `${toStr}T23:59:59`)
       }
 
       // Sorting
-      // Force due_date sorting if not explicitly overridden, handling nulls properly
       const sortCol = (filters && filters.sortBy) || 'due_date'
       const sortOrder = (filters && filters.sortOrder) || 'asc'
 
@@ -269,21 +270,6 @@ export async function fetchPaginatedReceivables(
       query = query.range(from, to)
 
       const { data, count, error } = await query
-
-      // AC: Output count, sample data and error for debugging with improved details
-      console.log('fetchPaginatedReceivables debug:', {
-        companyId,
-        page,
-        pageSize,
-        range: { from, to },
-        filters,
-        count: count || 0,
-        dataLength: data?.length || 0,
-        sample: data?.slice(0, 3) || [],
-        error,
-      })
-
-      // Robust return
       return { data: data || [], count: count || 0, error }
     })(),
     { companyId, page, filters },
@@ -300,7 +286,6 @@ export async function fetchPaginatedPayables(
     '/payables',
     'fetch_paginated',
     (async () => {
-      // Explicitly selecting all required fields including description and created_at
       let query = supabase
         .from('transactions')
         .select(
@@ -353,25 +338,12 @@ export async function fetchPaginatedPayables(
       const from = (page - 1) * pageSize
       const to = from + pageSize - 1
 
-      // Sorting by due_date ascending (closest first), nulls last
       query = query
         .order('due_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false })
         .range(from, to)
 
       const { data, count, error } = await query
-
-      console.log('fetchPaginatedPayables debug:', {
-        companyId,
-        page,
-        pageSize,
-        filters,
-        count: count || 0,
-        dataLength: data?.length || 0,
-        sample: data?.slice(0, 3) || [],
-        error,
-      })
-
       return { data: data || [], count: count || 0, error }
     })(),
     { companyId, page, filters },
@@ -552,6 +524,8 @@ export async function importReceivablesRobust(
   data: any[],
   fileName: string,
 ) {
+  console.log(`Starting import for ${companyId} - ${fileName}`)
+
   const sanitized = data
     .filter((d) => {
       const get = (k: string[]) => getCol(d, k)
@@ -561,7 +535,6 @@ export async function importReceivablesRobust(
       const customer = normalizeText(get(RECEIVABLE_MAPPINGS.customer))
 
       if (!invoiceNumber || !customer) return false
-
       if (isGarbageCompany(invoiceNumber) || isGarbageCompany(customer))
         return false
 
@@ -575,7 +548,7 @@ export async function importReceivablesRobust(
 
       return true
     })
-    .map((d) => {
+    .map((d, index) => {
       const get = (k: string[]) => getCol(d, k)
       let principalVal = 0
       let errorPrincipal = null
@@ -590,14 +563,51 @@ export async function importReceivablesRobust(
         errorPrincipal = e.message || 'erro_parse_valor_principal'
       }
 
-      let updatedVal = 0
+      let fine = 0
       try {
-        updatedVal = parsePtBrFloat(
-          get(RECEIVABLE_MAPPINGS.updated_value),
-          'Valor Atualizado',
+        fine = parsePtBrFloat(get(RECEIVABLE_MAPPINGS.fine))
+      } catch {
+        // ignore
+      }
+
+      let interest = 0
+      try {
+        interest = parsePtBrFloat(get(RECEIVABLE_MAPPINGS.interest))
+      } catch {
+        // ignore
+      }
+
+      // Updated Value Calculation Logic
+      let updatedVal = 0
+      const rawUpdated = get(RECEIVABLE_MAPPINGS.updated_value)
+
+      // Try parsing from column if exists
+      if (
+        rawUpdated !== undefined &&
+        rawUpdated !== null &&
+        String(rawUpdated).trim() !== ''
+      ) {
+        try {
+          updatedVal = parsePtBrFloat(rawUpdated, 'Valor Atualizado')
+        } catch {
+          // Fallback if parsing fails
+          updatedVal = principalVal + fine + interest
+        }
+      } else {
+        // Fallback if column missing
+        updatedVal = principalVal + fine + interest
+      }
+
+      // Safety check: if updatedVal became 0 but principal has value, recalculate
+      if (updatedVal === 0 && principalVal > 0) {
+        updatedVal = principalVal + fine + interest
+      }
+
+      // Debug log for first few rows
+      if (index < 3) {
+        console.log(
+          `Row ${index} debug: Principal=${principalVal}, Fine=${fine}, Interest=${interest}, Updated=${updatedVal} (Raw: ${rawUpdated})`,
         )
-      } catch (e) {
-        updatedVal = principalVal
       }
 
       const installment = normalizeText(get(RECEIVABLE_MAPPINGS.installment))
@@ -614,6 +624,8 @@ export async function importReceivablesRobust(
         payment_prediction: get(RECEIVABLE_MAPPINGS.payment_prediction),
         principal_value: principalVal,
         updated_value: updatedVal,
+        fine: fine,
+        interest: interest,
         title_status: status,
         description: normalizeText(get(RECEIVABLE_MAPPINGS.description)),
         installment: installment || null,
@@ -627,8 +639,6 @@ export async function importReceivablesRobust(
         utilization: normalizeText(get(RECEIVABLE_MAPPINGS.utilization)),
         negativado: normalizeText(get(RECEIVABLE_MAPPINGS.negativado)),
         customer_code: normalizeText(get(RECEIVABLE_MAPPINGS.customer_code)),
-        fine: parsePtBrFloat(get(RECEIVABLE_MAPPINGS.fine)),
-        interest: parsePtBrFloat(get(RECEIVABLE_MAPPINGS.interest)),
       }
     })
 
