@@ -23,10 +23,11 @@ import {
   Trash2,
   AlertCircle,
   ArrowUpDown,
+  Search,
 } from 'lucide-react'
 import { usePerformanceMeasure } from '@/lib/performance'
 import { ImportDialog } from '@/components/common/ImportDialog'
-import { ReceivableStats } from '@/components/financial/ReceivableStats'
+import { ReceivableDashboard } from '@/components/financial/ReceivableDashboard'
 import { Badge } from '@/components/ui/badge'
 import { PaginationControl } from '@/components/common/PaginationControl'
 import {
@@ -236,10 +237,7 @@ export default function Receivables() {
       </div>
 
       <div className="shrink-0">
-        <ReceivableStats
-          companyId={selectedCompanyId}
-          lastUpdate={dataVersion}
-        />
+        <ReceivableDashboard items={items} />
       </div>
 
       <div className="shrink-0">
@@ -404,14 +402,9 @@ export default function Receivables() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium">
-                              {formatDate(item.due_date)}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              Emis: {formatDate(item.issue_date)}
-                            </span>
-                          </div>
+                          <span className="text-sm font-medium">
+                            {formatDate(item.due_date)}
+                          </span>
                         </TableCell>
                         <TableCell className="text-center">
                           {getStatusBadge(item.title_status, item.due_date)}
@@ -469,25 +462,14 @@ export default function Receivables() {
                           })()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex flex-col items-end">
-                            <span className="text-xs text-muted-foreground line-through opacity-70">
-                              {toNumber(item.principal_value).toLocaleString(
-                                'pt-BR',
-                                {
-                                  style: 'currency',
-                                  currency: 'BRL',
-                                },
-                              )}
-                            </span>
-                            <span className="font-bold text-sm">
-                              {toNumber(
-                                item.updated_value || item.principal_value,
-                              ).toLocaleString('pt-BR', {
-                                style: 'currency',
-                                currency: 'BRL',
-                              })}
-                            </span>
-                          </div>
+                          <span className="font-bold text-sm">
+                            {toNumber(
+                              item.updated_value || item.principal_value,
+                            ).toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })}
+                          </span>
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
